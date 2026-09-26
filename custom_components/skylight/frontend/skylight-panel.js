@@ -6,10 +6,22 @@ const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
 ];
-const AVATARS = ["😀", "😎", "🦄", "🐶", "🐱", "🦊", "🐼", "🐸", "🦖", "🚀", "⚽", "🎨", "🌸", "👑", "🧸", "🐝"];
+const AVATARS = [
+  // faces & animals
+  "😀", "😎", "🤓", "🥳", "🦄", "🐶", "🐱", "🦊", "🐼", "🐨", "🐯", "🦁", "🐸", "🐵", "🦖", "🐢", "🐙", "🦋", "🐝", "🦉",
+  // sports
+  "⚾", "🥎", "⚽", "🏀", "🏈", "🏐", "🎾", "🏒", "🥍", "⛳", "🏓", "🏊", "🚴", "⛸️", "🛹", "🥋", "🤸", "🏋️", "💪", "🏃",
+  // music & arts
+  "🎸", "🎹", "🥁", "🎻", "🎺", "🎷", "🎤", "🎧", "🎨", "🩰", "📷", "🎭",
+  // home, food & hobbies
+  "👨‍🍳", "🍳", "🧁", "🍕", "🌮", "📚", "✏️", "🔬", "🧩", "🎮", "♟️", "🧶", "🪴", "🎣", "⛺", "🏕️",
+  // fun
+  "🚀", "🚗", "🚂", "✈️", "🌈", "⭐", "🌸", "🌻", "👑", "🧸", "💎", "🔥",
+];
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const TABS = [
+  ["home", "Today", "mdi:view-dashboard"],
   ["calendar", "Calendar", "mdi:calendar-month"],
   ["chores", "Chores", "mdi:checkbox-marked-circle-outline"],
   ["rewards", "Rewards", "mdi:star-circle"],
@@ -75,7 +87,7 @@ class SkylightPanel extends HTMLElement {
     this._todoSubs = {};
     this.forecast = {};
     this.ui = {
-      tab: "calendar", view: null, anchor: startOfDay(new Date()), filter: null,
+      tab: "home", view: null, anchor: startOfDay(new Date()), filter: null,
       list: null, dialog: null, saver: false, choreDay: startOfDay(new Date()),
     };
     this._eventsKey = "";
@@ -208,6 +220,7 @@ class SkylightPanel extends HTMLElement {
 
   // ---------- calendar data ----------
   _range() {
+    if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, 3)]; }
     const a = this.ui.anchor;
     switch (this.ui.view) {
       case "month": {
@@ -236,7 +249,7 @@ class SkylightPanel extends HTMLElement {
     }));
     if (key !== this._eventsKey) return; // a newer request superseded this one
     this.events = results.flat().sort((a, b) => a.start - b.start);
-    if (this.ui.tab === "calendar") this.render();
+    if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render();
   }
 
   _normalizeEvent(ev, entity) {
@@ -276,7 +289,7 @@ class SkylightPanel extends HTMLElement {
       const list = res?.response?.[w]?.forecast || [];
       this.forecast = {};
       for (const f of list) this.forecast[ymd(new Date(f.datetime))] = f;
-      if (this.ui.tab === "calendar") this.render();
+      if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render();
     } catch (e) { console.warn("Skylight: forecast unavailable", e); }
   }
 
@@ -286,7 +299,7 @@ class SkylightPanel extends HTMLElement {
     const D = this.data;
     switch (action) {
       // navigation
-      case "tab": this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar") this._loadEvents(); break;
+      case "tab": this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
       case "view": this.ui.view = d.view; this.render(); this._loadEvents(); break;
       case "filter": this.ui.filter = this.ui.filter === d.member ? null : d.member || null; this.render(); break;
       case "today": this.ui.anchor = startOfDay(new Date()); this.render(); this._loadEvents(); break;
@@ -298,7 +311,7 @@ class SkylightPanel extends HTMLElement {
           : addDays(a, dir * (this.ui.view === "day" ? 1 : this.ui.view === "schedule" ? 14 : 7));
         this.render(); this._loadEvents(); break;
       }
-      case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.render(); this._loadEvents(); break;
+      case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.ui.tab = "calendar"; this.render(); this._loadEvents(); break;
       case "close": this.closeDialog(); break;
 
       // calendar events
@@ -360,10 +373,11 @@ class SkylightPanel extends HTMLElement {
       // chores
       case "toggle-chore": {
         const chore = D.chores.find((c) => c.id === d.chore);
-        const wasDone = chore && choreDone(chore, this.ui.choreDay);
+        const day = d.date ? parseYmd(d.date) : this.ui.choreDay;
+        const wasDone = chore && choreDone(chore, day);
         el.classList.add("pop");
         const rect = el.getBoundingClientRect(); // capture before the re-render replaces el
-        await this._ws({ type: "skylight/chore/toggle", chore_id: d.chore, date: ymd(this.ui.choreDay) });
+        await this._ws({ type: "skylight/chore/toggle", chore_id: d.chore, date: ymd(day) });
         if (!wasDone) this._celebrate(rect);
         break;
       }
@@ -1075,7 +1089,7 @@ class SkylightPanel extends HTMLElement {
     const focusId = this.shadowRoot.activeElement?.id;
     const tab = this.ui.tab;
     const body = {
-      calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
+      home: () => this.renderHome(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
       meals: () => this.renderMeals(), lists: () => this.renderLists(), photos: () => this.renderPhotos(),
       settings: () => this.renderSettings(),
     }[tab]();
@@ -1096,7 +1110,7 @@ class SkylightPanel extends HTMLElement {
   renderHeader() {
     const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
     const weather = w ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(Number(w.attributes.temperature))}°</b></div>` : "";
-    const showChips = ["calendar"].includes(this.ui.tab);
+    const showChips = ["calendar", "home"].includes(this.ui.tab);
     return `<header>
       <div class="when"><div id="clock" class="clock"></div><div id="date" class="date"></div></div>
       ${showChips ? `<div class="chips members">${this.members.map((m) => `
@@ -1202,6 +1216,47 @@ class SkylightPanel extends HTMLElement {
             <span class="bar"></span><span class="av">${e.avatar}</span>
             <span class="sm"><b>${esc(e.summary)}</b>${e.location ? `<small>📍 ${esc(e.location)}</small>` : ""}</span>
           </button>`).join("")}</div></div>`).join("")}</div>`;
+  }
+
+  renderHome() {
+    const today = startOfDay(new Date());
+    const days = [0, 1, 2].map((i) => addDays(today, i));
+    const noCals = !this.shownCalendars().length;
+    const label = (d, i) => (i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString([], { weekday: "long" }));
+    const cal = noCals
+      ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
+      : `<div class="three">${days.map((d, i) => {
+          const f = this.forecast[ymd(d)];
+          const evs = this.eventsOn(d);
+          return `<div class="col ${i === 0 ? "today" : ""}">
+            <div class="dh" data-action="goto-day" data-date="${ymd(d)}">
+              <span class="dn">${label(d, i)}</span><span class="dd">${d.getDate()}</span>
+              ${f ? `<span class="wx">${WEATHER_ICONS[f.condition] || ""} ${Math.round(f.temperature)}°</span>` : ""}</div>
+            <div class="evs">${evs.map((e) => this.evPill(e, d)).join("") || `<p class="hint center">Nothing planned</p>`}</div>
+            <button class="add" data-action="new-event" data-date="${ymd(d)}">+</button>
+          </div>`;
+        }).join("")}</div>`;
+    const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
+    const chores = members.map((m) => {
+      const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
+      const done = list.filter((c) => choreDone(c, today)).length;
+      return `<div class="hchores" style="--c:${m.color}">
+        <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
+          <span class="hint">${done}/${list.length} · ⭐ ${this.data.stars?.[m.id] || 0}</span></div>
+        ${list.map((c) => { const dn = choreDone(c, today); return `<div class="chore ${dn ? "done" : ""}">
+          <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}" data-date="${ymd(today)}">
+            <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
+          || `<p class="hint">No chores today</p>`}
+        ${list.length && done === list.length ? `<div class="alldone">All done! 🎉</div>` : ""}
+      </div>`;
+    }).join("");
+    const meals = this.mealieOn ? this.mealieMeals.filter((m) => m.date === ymd(today)) : [];
+    return `<div class="home">
+      <section class="hcal">${cal}</section>
+      <aside class="hside">
+        ${meals.length ? `<div class="hmeals">🍽️ ${meals.map((m) => `<b>${esc(this.mealieName(m))}</b>`).join(" · ")}</div>` : ""}
+        ${chores || `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
+      </aside></div>`;
   }
 
   renderChores() {
@@ -1643,6 +1698,17 @@ label.check input { width:22px; height:22px; }
 .swatch { width:38px; height:38px; border-radius:50%; padding:0; border:3px solid transparent; }
 .swatch.sel { border-color:var(--ink); }
 .emoji { font-size:24px; padding:4px 8px; background:var(--bg); box-shadow:none; }
+.swatches:has(.emoji) { max-height:190px; overflow-y:auto; }
+.home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; min-height:calc(100vh - 150px); }
+.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; height:100%; }
+.three .dn { font-size:15px; }
+.hside { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
+.hchores { background:var(--card); border-radius:var(--radius); padding:12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:6px; }
+.hhead { display:flex; align-items:center; gap:8px; }
+.hhead .hint { margin-left:auto; font-weight:700; }
+.hchores .ctoggle { padding:8px 10px; }
+.hmeals { background:var(--card); border-radius:var(--radius); padding:12px 14px; }
+@media (max-width: 900px) { .home, .three { grid-template-columns:1fr; } }
 .emoji.sel { outline:3px solid var(--accent); }
 .avatar-preview { width:80px; height:80px; border-radius:50%; display:grid; place-items:center; font-size:44px; margin:4px auto 0; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
