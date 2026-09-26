@@ -1,96 +1,78 @@
-# Skylight replica for Home Assistant
+# Skylight for Home Assistant
 
-A Skylight Calendar–style family display for Home Assistant, shown full-screen on a large Android tablet.
+A Skylight Calendar–style family display for Home Assistant, built for a wall-mounted Android tablet.
+**Everything is set up from the touchscreen**: family members, calendars, events, chores, rewards,
+meals, lists, photos and display settings. No YAML editing.
 
-| Skylight feature | This replica |
+## What you get
+
+A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app with these tabs:
+
+| Tab | What it does |
 |---|---|
-| Color-coded family calendar (week view) | `week-planner-card` with one color per person, plus tap-to-filter chips |
-| Clock, date, weather header | Markdown + Mushroom cards |
-| Chore chart with stars | Local To-do list per person + `counter` stars, auto-award on check-off, daily reset |
-| Rewards | Star goal (`input_number`) with progress |
-| Meal plan | `calendar.meals` week view + today's menu |
-| Lists (groceries, to-do) | Local To-do lists |
-| Photo frame | Cross-fading slideshow page with clock overlay |
-| Always-on display, night off | Fully Kiosk Browser + automations |
+| **Calendar** | Day / Week / Month / Schedule views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. Repeating events and daily weather are supported. |
+| **Chores** | One column per person with a progress ring. Tap a chore to check it off and earn stars. Chores repeat daily, on certain weekdays, weekly or once. You can page back and forth by day. |
+| **Rewards** | Star balances with manual +/−, and rewards with progress bars. **Redeem** spends the stars. |
+| **Meals** | A weekly grid for breakfast, lunch, dinner and snack. Tap to fill in; recent meals are suggested. |
+| **Lists** | Groceries, to-dos, or any list you create, each with its own color. |
+| **Photos** | Upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
+| **Settings** | Add, edit and reorder family members (name, color, avatar, their calendars). Create new calendars, choose shared family calendars, and set the weather source, week start, 24-hour clock and screensaver timing. |
 
-## Files
+Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
-```
-packages/skylight.yaml     helpers, scripts, automations
-themes/skylight.yaml       warm, rounded Skylight-like theme
-dashboards/skylight.yaml   the dashboard (5 views)
-www/skylight/              photo slideshow (copy to <config>/www/skylight/)
-```
+## Install
 
-## 1. Install HACS frontend cards
+### Option A: HACS (recommended)
+1. HACS → ⋮ → **Custom repositories** → add `https://github.com/keithlyding/Skylight`, category **Integration**.
+2. Install **Skylight Family Display**, then restart Home Assistant.
 
-- [week-planner-card](https://github.com/FamousWolf/week-planner-card)
-- [Mushroom](https://github.com/piitaya/lovelace-mushroom)
-- [card-mod](https://github.com/thomasloven/lovelace-card-mod)
-- [kiosk-mode](https://github.com/NemesisRE/kiosk-mode)
+### Option B: manual
+Copy `custom_components/skylight` into your Home Assistant `config/custom_components/` folder and restart.
 
-## 2. Copy files and edit `configuration.yaml`
+### Then
+**Settings → Devices & Services → Add Integration → "Skylight Family Display"**. A **Skylight** item appears in the sidebar. Open it, go to **Settings**, and add your family.
 
-Copy `packages/`, `themes/`, `dashboards/` and `www/skylight/` into your HA config folder, then add:
+Requires Home Assistant **2024.7 or newer**. The automated tests run against 2026.2.
 
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
+## Calendars
 
-frontend:
-  themes: !include_dir_merge_named themes
+- **Create calendar** in Skylight Settings creates a Home Assistant *Local Calendar* stored on your HA server. This works from the kiosk tablet without an admin account.
+- **Google / iCloud / Outlook**: an admin adds the matching integration once (Google Calendar, CalDAV, or a remote-calendar integration) under Settings → Devices & Services. Those calendars then show up in Skylight's member and family calendar pickers. Whether you can *add* events to them from the tablet depends on that integration: Local and Google calendars support it, while read-only feeds such as ICS URLs do not.
+- A calendar assigned to a person uses that person's color. Calendars ticked as **Shared family calendars** use the family color.
 
-lovelace:
-  dashboards:
-    skylight-dashboard:
-      mode: yaml
-      filename: dashboards/skylight.yaml
-      title: Skylight
-      icon: mdi:calendar-heart
-      show_in_sidebar: true
-```
+## Android tablet setup
 
-Restart Home Assistant.
+1. Install **Fully Kiosk Browser** from the Play Store (the free version works; Plus adds remote control).
+2. **Start URL**: `http://<your-ha-address>:8123/skylight`
+3. Log in with a dedicated non-admin HA user, such as "kitchen". Tick *Keep me logged in*.
+4. Tap ☰ at the top of the HA sidebar to collapse it so Skylight fills the screen; Skylight has its own navigation rail. (A setting to hide the sidebar completely varies by HA version; check your user profile page.)
+5. In Fully Kiosk: **Keep screen on**, **Launch on boot**, and disable **Pull to refresh**.
+6. Optional: use Fully Kiosk's motion detection or its schedule to turn the screen off at night.
 
-## 3. Create entities the YAML can't create
+Skylight's own photo screensaver runs inside the page, so Fully's screensaver is not needed.
 
-- **Calendars**: add Google Calendar / CalDAV / Local Calendar integrations so you have
-  `calendar.family`, `calendar.alex`, `calendar.jordan`, `calendar.sam`, `calendar.riley`, `calendar.meals`.
-  If your entity IDs differ, find/replace them in `dashboards/skylight.yaml`.
-- **To-do lists** (Settings → Devices & Services → Add Integration → *Local To-do*), one per list:
-  `Chores Alex`, `Chores Jordan`, `Chores Sam`, `Chores Riley`, `Groceries`, `Family Todo`
-  (these become `todo.chores_alex`, …, `todo.groceries`, `todo.family_todo`).
-- **Weather**: any weather integration; default ID is `weather.home`.
-- **Family names**: find/replace `alex|jordan|sam|riley` (and capitalized) in `packages/` and `dashboards/`.
+You can also place Skylight on any dashboard as a card (`type: custom:skylight-panel`). It is designed to fill the screen, so the sidebar panel works best.
 
-## 4. Photos
+## Where data lives
 
-Put images in `<config>/www/skylight/photos/` and list them in `<config>/www/skylight/photos.json`:
+- Family data (members, chores, stars, rewards, meals, lists, settings): `config/.storage/skylight.data`. This is included in HA backups.
+- Photos: `config/skylight_photos/`, also included in backups.
+- Calendar events: in the calendar integrations themselves.
 
-```json
-["photos/beach.jpg", "photos/birthday.jpg"]
+## Known limitations
+
+- **Photos are served without login**, at `/skylight_photos/<random-24-hex-name>`. The names are unguessable, but anyone who has a link can view that photo. Don't upload anything you'd consider sensitive.
+- **Creating a calendar from the tablet bypasses HA's admin-only rule** for adding integrations (limited to Local Calendars). Leave the integration out if that matters in your setup.
+- **Any logged-in HA user can change Skylight data.** There are no per-person permissions or parent PINs yet.
+- **No Google Photos or iCloud album sync.** Photos must be uploaded.
+- **Editing a repeating event changes only the tapped occurrence.** There's no "this and following" option yet.
+- **Concurrent edits: the last save wins.** If two people edit the *same* list on two devices at the exact same moment, one change can be lost. Chore check-offs and star changes are atomic on the server.
+
+## Development
+
+```bash
+pip install pytest-homeassistant-custom-component home-assistant-frontend ical
+pytest            # 13 tests: chore rules + integration against a real HA core
 ```
 
-The Photos view shows them full-screen, cross-fading every 15 s.
-
-## 5. Android tablet setup
-
-1. Install **Fully Kiosk Browser** (Plus license needed for remote admin / HA integration).
-2. Start URL: `http://<ha-ip>:8123/skylight-dashboard/calendar`
-3. Settings → Web Content: enable **Autoplay**, disable **pull to refresh**.
-4. Settings → Device Management: **Keep screen on**, launch on boot.
-5. Screensaver: timeout 5–10 min, **Screensaver URL** `http://<ha-ip>:8123/local/skylight/slideshow.html`
-   — this gives Skylight's "photo frame when idle" behavior.
-6. Enable **Remote Administration**, then add the *Fully Kiosk Browser* integration in HA.
-   Rename its screen switch / brightness number to `switch.skylight_tablet_screen` and
-   `number.skylight_tablet_screen_brightness` (used by the night-mode automations).
-7. Log the tablet into a dedicated **non-admin** HA user so kiosk-mode hides the header and sidebar.
-
-## Behavior notes / known limitations
-
-- Checking off a chore awards a star. **Deleting** an unchecked chore also awards one (the automation
-  only sees the incomplete-item count drop).
-- Completed chores are unchecked at 04:00 every day, so every chore is treated as daily.
-- Adding calendar events from the tablet uses HA's built-in calendar dialog (tap an event/day in the
-  core Calendar panel); `week-planner-card` is display-focused.
-- Stars: tap a star tile to add one, long-press to remove one.
+The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

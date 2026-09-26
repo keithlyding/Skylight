@@ -1,0 +1,1263 @@
+/* Skylight Family Display - full-screen panel (also usable as a Lovelace card:
+ *   type: custom:skylight-panel
+ * ). Plain web component, no build step. */
+
+const PALETTE = [
+  "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
+  "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
+];
+const AVATARS = ["😀", "😎", "🦄", "🐶", "🐱", "🦊", "🐼", "🐸", "🦖", "🚀", "⚽", "🎨", "🌸", "👑", "🧸", "🐝"];
+const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const TABS = [
+  ["calendar", "Calendar", "mdi:calendar-month"],
+  ["chores", "Chores", "mdi:checkbox-marked-circle-outline"],
+  ["rewards", "Rewards", "mdi:star-circle"],
+  ["meals", "Meals", "mdi:silverware-fork-knife"],
+  ["lists", "Lists", "mdi:format-list-checks"],
+  ["photos", "Photos", "mdi:image-multiple"],
+  ["settings", "Settings", "mdi:cog"],
+];
+const WEATHER_ICONS = {
+  "clear-night": "🌙", cloudy: "☁️", fog: "🌫️", hail: "🌨️", lightning: "🌩️", "lightning-rainy": "⛈️",
+  partlycloudy: "⛅", pouring: "🌧️", rainy: "🌦️", snowy: "❄️", "snowy-rainy": "🌨️", sunny: "☀️",
+  windy: "💨", "windy-variant": "💨", exceptional: "⚠️",
+};
+
+// ---------- date helpers (all local time) ----------
+const pad = (n) => String(n).padStart(2, "0");
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseYmd = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const sameDay = (a, b) => ymd(a) === ymd(b);
+// Python weekday: Mon=0..Sun=6
+const pyWeekday = (d) => (d.getDay() + 6) % 7;
+const isoWeek = (d) => {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-${Math.ceil(((t - y0) / 86400000 + 1) / 7)}`;
+};
+const localIso = (d) => {
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
+};
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- chore rules (mirror of chores.py) ----------
+const choreMatches = (c, day) => {
+  const comps = c.completions || [];
+  if (c.repeat === "once") return comps;
+  if (c.repeat === "weekly") return comps.filter((x) => isoWeek(parseYmd(x)) === isoWeek(day));
+  return comps.filter((x) => x === ymd(day));
+};
+const choreDone = (c, day) => choreMatches(c, day).length > 0;
+const choreDue = (c, day) => {
+  if (c.repeat === "days") return (c.days || []).includes(pyWeekday(day));
+  if (c.repeat === "once") { const comps = c.completions || []; return !comps.length || comps.includes(ymd(day)); }
+  return true;
+};
+
+class SkylightPanel extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this.data = null;
+    this.events = [];
+    this.forecast = {};
+    this.ui = {
+      tab: "calendar", view: null, anchor: startOfDay(new Date()), filter: null,
+      list: null, dialog: null, saver: false, choreDay: startOfDay(new Date()),
+    };
+    this._eventsKey = "";
+    this._shadowBuilt = false;
+  }
+
+  // ---------- HA lifecycle ----------
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (first) this._start();
+  }
+  get hass() { return this._hass; }
+  set panel(_p) {}
+  set narrow(n) { this._narrow = n; }
+  setConfig(config) { this.config = config || {}; }
+  getCardSize() { return 12; }
+
+  connectedCallback() { if (this._hass && !this._unsub) this._start(); }
+  disconnectedCallback() {
+    if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
+    clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
+    clearInterval(this._refreshTimer);
+  }
+
+  _start() {
+    if (!this.isConnected) return;
+    this._buildShadow();
+    this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
+    this._unsub.catch((e) => this._fatal(e));
+    this._clockTimer = setInterval(() => this._tickClock(), 10000);
+    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); }, 5 * 60000);
+    this._lastActivity = Date.now();
+    this._idleTimer = setInterval(() => this._checkIdle(), 15000);
+  }
+
+  _fatal(e) {
+    this.$app.innerHTML = `<div class="empty"><h2>Skylight is not available</h2><p>${esc(e?.message || e)}</p>
+      <p>Make sure the Skylight integration is installed and added under Settings → Devices &amp; Services.</p></div>`;
+  }
+
+  _onData(data) {
+    const firstLoad = !this.data;
+    this.data = data;
+    if (firstLoad) this.ui.view = data.settings.default_view || "week";
+    if (this.ui.filter && !data.members.find((m) => m.id === this.ui.filter)) this.ui.filter = null;
+    this.render();
+    this._loadEvents();
+    if (firstLoad) this._loadForecast();
+  }
+
+  // ---------- shadow & events ----------
+  _buildShadow() {
+    if (this._shadowBuilt) return;
+    this._shadowBuilt = true;
+    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="dialog"></div><div id="saver"></div>`;
+    this.$app = this.shadowRoot.getElementById("app");
+    this.$dialog = this.shadowRoot.getElementById("dialog");
+    this.$saver = this.shadowRoot.getElementById("saver");
+    this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
+    this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
+    this.shadowRoot.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.dataset.enter) { e.preventDefault(); this._action(e.target.dataset.enter, e.target); }
+    });
+    for (const ev of ["pointerdown", "keydown", "touchstart"]) {
+      this.shadowRoot.addEventListener(ev, () => { this._lastActivity = Date.now(); }, { passive: true });
+    }
+  }
+
+  _onClick(e) {
+    const el = e.target.closest("[data-action]");
+    if (!el) return;
+    if (el.classList.contains("backdrop") && e.target !== el) return;
+    e.stopPropagation();
+    this._action(el.dataset.action, el);
+  }
+
+  _onChange(e) {
+    const el = e.target;
+    if (el.dataset.change) this._action(el.dataset.change, el);
+  }
+
+  async _ws(msg) {
+    try { return await this._hass.callWS(msg); }
+    catch (err) { this._toast(err?.message || String(err)); throw err; }
+  }
+  _set(key, value) { return this._ws({ type: "skylight/set", key, value }); }
+
+  _toast(text) {
+    const t = document.createElement("div");
+    t.className = "toast"; t.textContent = text;
+    this.shadowRoot.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // ---------- data helpers ----------
+  get members() { return this.data?.members || []; }
+  get settings() { return this.data?.settings || {}; }
+  member(id) { return this.members.find((m) => m.id === id); }
+  calendarOwner(entity) {
+    return this.members.find((m) => (m.calendars || []).includes(entity));
+  }
+  allCalendars() {
+    return Object.keys(this._hass.states).filter((e) => e.startsWith("calendar.")).sort();
+  }
+  entityName(e) { return this._hass.states[e]?.attributes?.friendly_name || e; }
+  shownCalendars() {
+    const set = new Set(this.data.family_calendars || []);
+    for (const m of this.members) for (const c of m.calendars || []) set.add(c);
+    return [...set].filter((e) => this._hass.states[e]);
+  }
+  weekStart(d) {
+    const ws = Number(this.settings.week_start || 0); // 0=Sun, 1=Mon
+    const diff = (d.getDay() - ws + 7) % 7;
+    return addDays(startOfDay(d), -diff);
+  }
+  fmtTime(d) {
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !this.settings.clock_24h });
+  }
+
+  // ---------- calendar data ----------
+  _range() {
+    const a = this.ui.anchor;
+    switch (this.ui.view) {
+      case "month": {
+        const first = new Date(a.getFullYear(), a.getMonth(), 1);
+        const start = this.weekStart(first);
+        return [start, addDays(start, 42)];
+      }
+      case "day": return [a, addDays(a, 1)];
+      case "schedule": return [a, addDays(a, 14)];
+      default: { const s = this.weekStart(a); return [s, addDays(s, 7)]; }
+    }
+  }
+
+  async _loadEvents() {
+    if (!this.data) return;
+    const [start, end] = this._range();
+    const cals = this.shownCalendars();
+    const key = `${ymd(start)}|${ymd(end)}|${cals.join(",")}`;
+    if (key === this._eventsKey) return;
+    this._eventsKey = key;
+    const results = await Promise.all(cals.map(async (entity) => {
+      try {
+        const evs = await this._hass.callApi("GET", `calendars/${entity}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+        return evs.map((ev) => this._normalizeEvent(ev, entity));
+      } catch (e) { console.warn("Skylight: failed to load", entity, e); return []; }
+    }));
+    if (key !== this._eventsKey) return; // a newer request superseded this one
+    this.events = results.flat().sort((a, b) => a.start - b.start);
+    if (this.ui.tab === "calendar") this.render();
+  }
+
+  _normalizeEvent(ev, entity) {
+    const allDay = !!ev.start.date;
+    const start = allDay ? parseYmd(ev.start.date) : new Date(ev.start.dateTime);
+    const end = allDay ? parseYmd(ev.end.date) : new Date(ev.end.dateTime);
+    const owner = this.calendarOwner(entity);
+    return {
+      entity, allDay, start, end, summary: ev.summary || "(No title)", description: ev.description || "",
+      location: ev.location || "", uid: ev.uid, recurrence_id: ev.recurrence_id, rrule: ev.rrule,
+      member: owner?.id || null,
+      color: owner?.color || this.settings.family_color || "#ff9f43",
+      avatar: owner?.avatar || "🏠",
+    };
+  }
+
+  eventsOn(day) {
+    const ds = startOfDay(day), de = addDays(ds, 1);
+    return this.visibleEvents().filter((e) => e.start < de && e.end > ds)
+      .sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
+  }
+  visibleEvents() {
+    if (!this.ui.filter) return this.events;
+    const m = this.member(this.ui.filter);
+    const cals = new Set(m?.calendars || []);
+    return this.events.filter((e) => cals.has(e.entity));
+  }
+
+  async _loadForecast() {
+    const w = this.settings.weather_entity;
+    if (!w || !this._hass.states[w]) return;
+    try {
+      const res = await this._hass.callWS({
+        type: "call_service", domain: "weather", service: "get_forecasts",
+        service_data: { type: "daily" }, target: { entity_id: w }, return_response: true,
+      });
+      const list = res?.response?.[w]?.forecast || [];
+      this.forecast = {};
+      for (const f of list) this.forecast[ymd(new Date(f.datetime))] = f;
+      if (this.ui.tab === "calendar") this.render();
+    } catch (e) { console.warn("Skylight: forecast unavailable", e); }
+  }
+
+  // ---------- actions ----------
+  async _action(action, el) {
+    const d = el.dataset;
+    const D = this.data;
+    switch (action) {
+      // navigation
+      case "tab": this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar") this._loadEvents(); break;
+      case "view": this.ui.view = d.view; this.render(); this._loadEvents(); break;
+      case "filter": this.ui.filter = this.ui.filter === d.member ? null : d.member || null; this.render(); break;
+      case "today": this.ui.anchor = startOfDay(new Date()); this.render(); this._loadEvents(); break;
+      case "prev": case "next": {
+        const dir = action === "next" ? 1 : -1;
+        const a = this.ui.anchor;
+        if (this.ui.tab === "meals") { this.ui.anchor = addDays(a, dir * 7); this.render(); break; }
+        this.ui.anchor = this.ui.view === "month" ? new Date(a.getFullYear(), a.getMonth() + dir, 1)
+          : addDays(a, dir * (this.ui.view === "day" ? 1 : this.ui.view === "schedule" ? 14 : 7));
+        this.render(); this._loadEvents(); break;
+      }
+      case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.render(); this._loadEvents(); break;
+      case "close": this.closeDialog(); break;
+
+      // calendar events
+      case "new-event": this.openEventDialog(null, d.date); break;
+      case "open-event": this.openEventDialog(this.visibleEvents()[Number(d.idx)]); break;
+      case "save-event": await this.saveEvent(); break;
+      case "delete-event": await this.deleteEvent(); break;
+      case "event-allday": this.shadowRoot.querySelectorAll(".timefield").forEach((x) => { x.hidden = el.checked; }); break;
+
+      // members
+      case "new-member": this.openMemberDialog(); break;
+      case "edit-member": this.openMemberDialog(this.member(d.member)); break;
+      case "pick-color": this.ui.dialog.color = d.color; this.renderDialog(); break;
+      case "pick-avatar": this.ui.dialog.avatar = d.avatar; this.renderDialog(); break;
+      case "save-member": await this.saveMember(); break;
+      case "delete-member": {
+        const m = this.ui.dialog.member;
+        if (!confirm(`Remove ${m.name}? Their chores are removed too; calendars are kept.`)) return;
+        await this._set("chores", D.chores.filter((c) => c.member_id !== m.id));
+        await this._set("members", D.members.filter((x) => x.id !== m.id));
+        this.closeDialog(); break;
+      }
+      case "member-up": case "member-down": {
+        const arr = [...D.members]; const i = arr.findIndex((m) => m.id === d.member);
+        const j = i + (action === "member-up" ? -1 : 1);
+        if (j < 0 || j >= arr.length) return;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        await this._set("members", arr); break;
+      }
+      case "family-cal": {
+        const set = new Set(D.family_calendars || []);
+        el.checked ? set.add(d.entity) : set.delete(d.entity);
+        await this._set("family_calendars", [...set]); this._eventsKey = ""; break;
+      }
+      case "create-calendar": {
+        const input = this.shadowRoot.getElementById("newcal");
+        const name = input.value.trim();
+        if (!name) return;
+        el.disabled = true;
+        try {
+          await this._ws({ type: "skylight/calendar/create", name });
+          input.value = "";
+          this._toast(`Calendar "${name}" created — assign it to a member or the family below.`);
+          setTimeout(() => this.render(), 1500); // wait for the entity to appear
+        } finally { el.disabled = false; }
+        break;
+      }
+      case "setting": {
+        let v = el.type === "checkbox" ? el.checked : el.value;
+        if (el.type === "number" || d.num) v = Number(v);
+        if (v === "") v = null;
+        await this._set("settings", { [d.key]: v });
+        if (d.key === "weather_entity") setTimeout(() => this._loadForecast(), 300);
+        if (d.key === "week_start") { this._eventsKey = ""; }
+        break;
+      }
+
+      // chores
+      case "toggle-chore": {
+        const chore = D.chores.find((c) => c.id === d.chore);
+        const wasDone = chore && choreDone(chore, this.ui.choreDay);
+        el.classList.add("pop");
+        const rect = el.getBoundingClientRect(); // capture before the re-render replaces el
+        await this._ws({ type: "skylight/chore/toggle", chore_id: d.chore, date: ymd(this.ui.choreDay) });
+        if (!wasDone) this._celebrate(rect);
+        break;
+      }
+      case "chore-day": this.ui.choreDay = addDays(this.ui.choreDay, Number(d.dir)); if (d.dir === "0") this.ui.choreDay = startOfDay(new Date()); this.render(); break;
+      case "new-chore": this.openChoreDialog(null, d.member); break;
+      case "edit-chore": this.openChoreDialog(D.chores.find((c) => c.id === d.chore)); break;
+      case "chore-repeat": this.ui.dialog.repeat = el.value; this._syncChoreDialog(); break;
+      case "save-chore": await this.saveChore(); break;
+      case "delete-chore": await this._set("chores", D.chores.filter((c) => c.id !== this.ui.dialog.chore.id)); this.closeDialog(); break;
+
+      // stars & rewards
+      case "stars": await this._ws({ type: "skylight/stars/adjust", member_id: d.member, delta: Number(d.delta) }); break;
+      case "new-reward": this.openRewardDialog(); break;
+      case "edit-reward": this.openRewardDialog(D.rewards.find((r) => r.id === d.reward)); break;
+      case "save-reward": await this.saveReward(); break;
+      case "delete-reward": await this._set("rewards", D.rewards.filter((r) => r.id !== this.ui.dialog.reward.id)); this.closeDialog(); break;
+      case "redeem": {
+        const r = D.rewards.find((x) => x.id === d.reward); const m = this.member(d.member);
+        if (!confirm(`${m.name} spends ${r.cost} ⭐ on "${r.title}"?`)) return;
+        const res = await this._ws({ type: "skylight/reward/redeem", reward_id: d.reward, member_id: d.member });
+        if (res.redeemed) this._celebrate(el.getBoundingClientRect(), "🎉"); else this._toast("Not enough stars yet!");
+        break;
+      }
+
+      // meals
+      case "edit-meal": this.openMealDialog(d.date, d.slot); break;
+      case "save-meal": {
+        const { date, slot } = this.ui.dialog;
+        const text = this.shadowRoot.getElementById("mealtext").value.trim();
+        const cutoff = ymd(addDays(new Date(), -45));
+        const meals = Object.fromEntries(Object.entries(D.meals || {}).filter(([k]) => k >= cutoff));
+        meals[date] = { ...(meals[date] || {}), [slot]: text };
+        await this._set("meals", meals); this.closeDialog(); break;
+      }
+
+      // lists
+      case "pick-list": this.ui.list = d.list; this.render(); break;
+      case "add-item": {
+        const input = this.shadowRoot.getElementById("newitem");
+        const text = input.value.trim(); if (!text) return;
+        await this._updateList(this.ui.list, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
+        this.shadowRoot.getElementById("newitem")?.focus(); break;
+      }
+      case "toggle-item": await this._updateList(this.ui.list, (l) => { l.items = l.items.map((i) => i.id === d.item ? { ...i, done: !i.done } : i); }); break;
+      case "delete-item": await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => i.id !== d.item); }); break;
+      case "clear-done": await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => !i.done); }); break;
+      case "new-list": this.openListDialog(); break;
+      case "edit-list": this.openListDialog(D.lists.find((l) => l.id === d.list)); break;
+      case "save-list": await this.saveList(); break;
+      case "delete-list": {
+        const l = this.ui.dialog.list;
+        if (!confirm(`Delete the list "${l.name}"?`)) return;
+        await this._set("lists", D.lists.filter((x) => x.id !== l.id)); this.ui.list = null; this.closeDialog(); break;
+      }
+
+      // photos
+      case "upload-photos": await this.uploadPhotos(el); break;
+      case "delete-photo": if (confirm("Delete this photo?")) await this._ws({ type: "skylight/photo/delete", name: d.name }); break;
+      case "start-saver": this.startSaver(); break;
+      case "stop-saver": this.stopSaver(); break;
+      default: console.warn("Skylight: unknown action", action);
+    }
+  }
+
+  async _updateList(id, fn) {
+    const lists = this.data.lists.map((l) => (l.id === id ? { ...l, items: [...l.items] } : l));
+    const list = lists.find((l) => l.id === id);
+    if (!list) return;
+    fn(list);
+    await this._set("lists", lists);
+  }
+
+  _celebrate(r, emoji = "⭐") {
+    for (let i = 0; i < 8; i++) {
+      const s = document.createElement("div");
+      s.className = "burst"; s.textContent = emoji;
+      s.style.left = `${r.left + r.width / 2}px`; s.style.top = `${r.top + r.height / 2}px`;
+      s.style.setProperty("--dx", `${Math.cos((i / 8) * 6.28) * 90}px`);
+      s.style.setProperty("--dy", `${Math.sin((i / 8) * 6.28) * 90}px`);
+      this.shadowRoot.appendChild(s);
+      setTimeout(() => s.remove(), 900);
+    }
+  }
+
+  // ---------- dialogs ----------
+  closeDialog() { this.ui.dialog = null; this.$dialog.innerHTML = ""; }
+  renderDialog() {
+    const dlg = this.ui.dialog;
+    if (!dlg) { this.$dialog.innerHTML = ""; return; }
+    // keep typed values across re-renders of the same dialog
+    const saved = {};
+    this.$dialog.querySelectorAll("input[id],textarea[id],select[id]").forEach((i) => { saved[i.id] = i.type === "checkbox" ? i.checked : i.value; });
+    this.$dialog.innerHTML = `<div class="backdrop" data-action="close"><div class="dialog">${dlg.html()}</div></div>`;
+    for (const [id, v] of Object.entries(saved)) {
+      const i = this.shadowRoot.getElementById(id);
+      if (!i || i.dataset.fresh) continue;
+      if (i.type === "checkbox") i.checked = v; else i.value = v;
+    }
+    this.$dialog.querySelector("[autofocus]")?.focus();
+  }
+  _openDialog(dlg) { this.ui.dialog = dlg; this.$dialog.innerHTML = ""; this.renderDialog(); }
+
+  openEventDialog(ev, date) {
+    const writable = this.shownCalendars();
+    const dateStr = ev ? ymd(ev.start) : date || ymd(this.ui.anchor);
+    const now = new Date();
+    const startT = ev && !ev.allDay ? `${pad(ev.start.getHours())}:${pad(ev.start.getMinutes())}` : `${pad(Math.min(now.getHours() + 1, 23))}:00`;
+    const endT = ev && !ev.allDay ? `${pad(ev.end.getHours())}:${pad(ev.end.getMinutes())}` : `${pad(Math.min(now.getHours() + 2, 23))}:00`;
+    const endDate = ev ? ymd(ev.allDay ? addDays(ev.end, -1) : ev.end) : dateStr;
+    const defaultCal = ev?.entity || (this.ui.filter && this.member(this.ui.filter)?.calendars?.[0]) || (this.data.family_calendars || [])[0] || writable[0];
+    const calLabel = (e) => { const o = this.calendarOwner(e); return `${o ? o.avatar + " " + o.name + " – " : "🏠 "}${this.entityName(e)}`; };
+    this._openDialog({
+      type: "event", event: ev,
+      html: () => `
+        <h2>${ev ? "Edit event" : "New event"}</h2>
+        ${!writable.length ? `<p class="hint">No calendars yet. Add one in Settings first.</p>` : ""}
+        <label>Title<input id="ev-title" value="${esc(ev?.summary)}" autofocus placeholder="Soccer practice"></label>
+        <label>Calendar<select id="ev-cal">${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
+        <div class="row">
+          <label>Starts<input type="date" id="ev-date" value="${dateStr}"></label>
+          <label class="timefield" ${ev?.allDay ? "hidden" : ""}>&nbsp;<input type="time" id="ev-start" value="${startT}"></label>
+        </div>
+        <div class="row">
+          <label>Ends<input type="date" id="ev-enddate" value="${endDate}"></label>
+          <label class="timefield" ${ev?.allDay ? "hidden" : ""}>&nbsp;<input type="time" id="ev-end" value="${endT}"></label>
+        </div>
+        ${ev ? "" : `<label>Repeats<select id="ev-repeat">
+          <option value="">Never</option><option value="FREQ=DAILY">Every day</option>
+          <option value="FREQ=WEEKLY">Every week</option><option value="FREQ=MONTHLY">Every month</option>
+          <option value="FREQ=YEARLY">Every year</option></select></label>`}
+        ${ev?.rrule ? `<p class="hint">Repeating event — changes apply to this occurrence only.</p>` : ""}
+        <label>Location<input id="ev-loc" value="${esc(ev?.location)}"></label>
+        <label>Notes<textarea id="ev-desc" rows="2">${esc(ev?.description)}</textarea></label>
+        <div class="actions">
+          ${ev ? `<button class="danger" data-action="delete-event">Delete</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-event" ${writable.length ? "" : "disabled"}>Save</button>
+        </div>`,
+    });
+  }
+
+  _readEventForm() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const allDay = $("ev-allday").checked;
+    const date = $("ev-date").value, endDate = $("ev-enddate").value || date;
+    const event = { summary: $("ev-title").value.trim() || "(No title)" };
+    if ($("ev-desc").value.trim()) event.description = $("ev-desc").value.trim();
+    if ($("ev-loc").value.trim()) event.location = $("ev-loc").value.trim();
+    if (allDay) {
+      event.dtstart = date;
+      event.dtend = ymd(addDays(parseYmd(endDate < date ? date : endDate), 1));
+    } else {
+      const [sh, sm] = $("ev-start").value.split(":").map(Number);
+      const [eh, em] = $("ev-end").value.split(":").map(Number);
+      const s = parseYmd(date); s.setHours(sh, sm);
+      let e = parseYmd(endDate < date ? date : endDate); e.setHours(eh, em);
+      if (e <= s) e = new Date(s.getTime() + 3600000);
+      event.dtstart = localIso(s); event.dtend = localIso(e);
+    }
+    const rr = $("ev-repeat")?.value;
+    if (rr) event.rrule = rr;
+    return { entity: $("ev-cal").value, event };
+  }
+
+  async saveEvent() {
+    const { entity, event } = this._readEventForm();
+    const ev = this.ui.dialog.event;
+    if (ev && ev.entity !== entity) {
+      // moving between calendars: create in new, delete from old
+      await this._ws({ type: "calendar/event/create", entity_id: entity, event });
+      await this._ws({ type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid, ...(ev.recurrence_id ? { recurrence_id: ev.recurrence_id } : {}) });
+    } else if (ev) {
+      await this._ws({ type: "calendar/event/update", entity_id: entity, uid: ev.uid, ...(ev.recurrence_id ? { recurrence_id: ev.recurrence_id } : {}), event });
+    } else {
+      await this._ws({ type: "calendar/event/create", entity_id: entity, event });
+    }
+    this.closeDialog(); this._eventsKey = ""; this._loadEvents();
+  }
+
+  async deleteEvent() {
+    const ev = this.ui.dialog.event;
+    if (!confirm(`Delete "${ev.summary}"?`)) return;
+    await this._ws({ type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid, ...(ev.recurrence_id ? { recurrence_id: ev.recurrence_id } : {}) });
+    this.closeDialog(); this._eventsKey = ""; this._loadEvents();
+  }
+
+  openMemberDialog(m) {
+    const used = new Set(this.members.map((x) => x.color));
+    const dlg = {
+      type: "member", member: m,
+      color: m?.color || PALETTE.find((c) => !used.has(c)) || PALETTE[0],
+      avatar: m?.avatar || AVATARS[this.members.length % AVATARS.length],
+      html: () => {
+        const cals = this.allCalendars();
+        const mine = new Set(m?.calendars || []);
+        return `
+        <h2>${m ? "Edit" : "Add"} family member</h2>
+        <div class="avatar-preview" style="background:${dlg.color}">${dlg.avatar}</div>
+        <label>Name<input id="m-name" value="${esc(m?.name)}" autofocus placeholder="Name"></label>
+        <div class="label">Color</div>
+        <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
+        <div class="label">Avatar</div>
+        <div class="swatches">${AVATARS.map((a) => `<button class="emoji ${a === dlg.avatar ? "sel" : ""}" data-action="pick-avatar" data-avatar="${a}">${a}</button>`).join("")}</div>
+        <div class="label">Calendars</div>
+        <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
+        <div class="actions">
+          ${m ? `<button class="danger" data-action="delete-member">Remove</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-member">Save</button>
+        </div>`;
+      },
+    };
+    this._openDialog(dlg);
+  }
+
+  async saveMember() {
+    const dlg = this.ui.dialog;
+    const name = this.shadowRoot.getElementById("m-name").value.trim();
+    if (!name) { this._toast("Please enter a name"); return; }
+    const calendars = [...this.shadowRoot.querySelectorAll(".m-cal:checked")].map((i) => i.value);
+    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars };
+    const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
+    await this._set("members", members);
+    this._eventsKey = ""; this.closeDialog();
+  }
+
+  openChoreDialog(c, memberId) {
+    const dlg = {
+      type: "chore", chore: c, repeat: c?.repeat || "daily",
+      html: () => `
+        <h2>${c ? "Edit" : "New"} chore</h2>
+        ${!this.members.length ? `<p class="hint">Add family members in Settings first.</p>` : ""}
+        <div class="row">
+          <label style="flex:0 0 80px">Icon<input id="c-icon" value="${esc(c?.icon || "✅")}" maxlength="4"></label>
+          <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
+        </div>
+        <label>Who<select id="c-member">${this.members.map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Stars earned<input type="number" id="c-stars" min="0" max="20" value="${c?.stars ?? 1}"></label>
+        <label>Repeats<select id="c-repeat" data-change="chore-repeat">
+          <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
+          <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days</option>
+          <option value="weekly" ${dlg.repeat === "weekly" ? "selected" : ""}>Once a week (any day)</option>
+          <option value="once" ${dlg.repeat === "once" ? "selected" : ""}>Just once</option></select></label>
+        <div class="daypick" ${dlg.repeat === "days" ? "" : "hidden"}>${WEEKDAYS.map((w, i) => `<label class="daychip"><input type="checkbox" class="c-day" id="cd-${i}" value="${i}" ${(c?.days || [0, 1, 2, 3, 4]).includes(i) ? "checked" : ""}><span>${w}</span></label>`).join("")}</div>
+        <div class="actions">
+          ${c ? `<button class="danger" data-action="delete-chore">Delete</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-chore" ${this.members.length ? "" : "disabled"}>Save</button>
+        </div>`,
+    };
+    this._openDialog(dlg);
+  }
+  _syncChoreDialog() {
+    const dp = this.shadowRoot.querySelector(".daypick");
+    if (dp) dp.hidden = this.ui.dialog.repeat !== "days";
+  }
+  async saveChore() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const c = this.ui.dialog.chore;
+    const title = $("c-title").value.trim();
+    if (!title) { this._toast("Please name the chore"); return; }
+    const rec = {
+      ...(c || { id: uid(), completions: [] }),
+      title, icon: $("c-icon").value.trim() || "✅", member_id: $("c-member").value,
+      stars: Math.max(0, Number($("c-stars").value) || 0), repeat: $("c-repeat").value,
+      days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
+    };
+    const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
+    await this._set("chores", chores); this.closeDialog();
+  }
+
+  openRewardDialog(r) {
+    this._openDialog({
+      type: "reward", reward: r,
+      html: () => `
+        <h2>${r ? "Edit" : "New"} reward</h2>
+        <div class="row">
+          <label style="flex:0 0 80px">Icon<input id="r-icon" value="${esc(r?.icon || "🎁")}" maxlength="4"></label>
+          <label>Reward<input id="r-title" value="${esc(r?.title)}" autofocus placeholder="Movie night pick"></label>
+        </div>
+        <label>Cost (stars)<input type="number" id="r-cost" min="1" value="${r?.cost ?? 20}"></label>
+        <label>For<select id="r-member"><option value="">Everyone</option>${this.members.map((m) => `<option value="${m.id}" ${m.id === r?.member_id ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        <div class="actions">
+          ${r ? `<button class="danger" data-action="delete-reward">Delete</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-reward">Save</button>
+        </div>`,
+    });
+  }
+  async saveReward() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const r = this.ui.dialog.reward;
+    const title = $("r-title").value.trim();
+    if (!title) { this._toast("Please name the reward"); return; }
+    const rec = { ...(r || { id: uid() }), title, icon: $("r-icon").value.trim() || "🎁", cost: Math.max(1, Number($("r-cost").value) || 1), member_id: $("r-member").value || null };
+    const rewards = r ? this.data.rewards.map((x) => (x.id === r.id ? rec : x)) : [...this.data.rewards, rec];
+    await this._set("rewards", rewards); this.closeDialog();
+  }
+
+  openMealDialog(date, slot) {
+    const current = this.data.meals?.[date]?.[slot] || "";
+    const label = MEAL_SLOTS.find((s) => s[0] === slot);
+    const recent = [...new Set(Object.values(this.data.meals || {}).map((m) => m[slot]).filter(Boolean))].slice(-8);
+    this._openDialog({
+      type: "meal", date, slot,
+      html: () => `
+        <h2>${label[2]} ${label[1]} · ${parseYmd(date).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h2>
+        <label>What's on the menu?<input id="mealtext" value="${esc(current)}" autofocus data-enter="save-meal" placeholder="Tacos"></label>
+        ${recent.length ? `<div class="label">Recent</div><div class="chips">${recent.map((r) => `<button class="chip" onclick="this.getRootNode().getElementById('mealtext').value=this.textContent">${esc(r)}</button>`).join("")}</div>` : ""}
+        <div class="actions"><span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-meal">Save</button></div>`,
+    });
+  }
+
+  openListDialog(l) {
+    const dlg = {
+      type: "list", list: l, color: l?.color || PALETTE[(this.data.lists.length * 3) % PALETTE.length],
+      html: () => `
+        <h2>${l ? "Edit" : "New"} list</h2>
+        <label>Name<input id="l-name" value="${esc(l?.name)}" autofocus placeholder="Packing list"></label>
+        <div class="label">Color</div>
+        <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
+        <div class="actions">
+          ${l ? `<button class="danger" data-action="delete-list">Delete</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-list">Save</button>
+        </div>`,
+    };
+    this._openDialog(dlg);
+  }
+  async saveList() {
+    const dlg = this.ui.dialog;
+    const name = this.shadowRoot.getElementById("l-name").value.trim();
+    if (!name) return;
+    const rec = { ...(dlg.list || { id: uid(), items: [] }), name, color: dlg.color };
+    const lists = dlg.list ? this.data.lists.map((x) => (x.id === rec.id ? rec : x)) : [...this.data.lists, rec];
+    await this._set("lists", lists); this.ui.list = rec.id; this.closeDialog(); this.render();
+  }
+
+  async uploadPhotos(el) {
+    const input = this.shadowRoot.getElementById("photo-input");
+    const files = [...(input?.files || [])];
+    if (!files.length) { input?.click(); return; }
+    el.disabled = true;
+    let ok = 0;
+    for (const f of files) {
+      const fd = new FormData(); fd.append("file", f, f.name);
+      try {
+        const res = this._hass.fetchWithAuth
+          ? await this._hass.fetchWithAuth("/api/skylight/photo", { method: "POST", body: fd })
+          : await fetch("/api/skylight/photo", { method: "POST", body: fd, headers: { Authorization: `Bearer ${this._hass.auth.data.access_token}` } });
+        if (!res.ok) throw new Error((await res.json()).message || res.statusText);
+        ok++;
+      } catch (e) { this._toast(`${f.name}: ${e.message}`); }
+    }
+    input.value = ""; el.disabled = false;
+    if (ok) this._toast(`Uploaded ${ok} photo${ok > 1 ? "s" : ""}`);
+  }
+
+  // ---------- screensaver ----------
+  _checkIdle() {
+    const mins = Number(this.settings.screensaver_minutes || 0);
+    if (!mins || this.ui.saver || this.ui.dialog || !this.data?.photos?.length) return;
+    if (Date.now() - this._lastActivity > mins * 60000) this.startSaver();
+  }
+  startSaver() {
+    const photos = this.data.photos;
+    if (!photos.length) { this._toast("Upload photos in the Photos tab first"); return; }
+    this.ui.saver = true;
+    this._slideOrder = [...photos].sort(() => Math.random() - 0.5);
+    this._slideIdx = 0;
+    this.$saver.innerHTML = `<div class="saver" data-action="stop-saver">
+      <img class="bg" id="sv-bg"><img id="sv-a" class="show"><img id="sv-b">
+      <div class="saver-clock"><div id="sv-time"></div><div id="sv-date"></div></div></div>`;
+    this._nextSlide(); this._tickClock();
+    clearInterval(this._slideTimer);
+    this._slideTimer = setInterval(() => this._nextSlide(), Math.max(5, Number(this.settings.photo_seconds || 15)) * 1000);
+  }
+  stopSaver() {
+    this.ui.saver = false; this.$saver.innerHTML = ""; clearInterval(this._slideTimer); this._lastActivity = Date.now();
+  }
+  _nextSlide() {
+    const a = this.shadowRoot.getElementById("sv-a"), b = this.shadowRoot.getElementById("sv-b"), bg = this.shadowRoot.getElementById("sv-bg");
+    if (!a) return;
+    const [front, back] = a.classList.contains("show") ? [a, b] : [b, a];
+    const src = `/skylight_photos/${this._slideOrder[this._slideIdx++ % this._slideOrder.length]}`;
+    back.onload = () => { back.classList.add("show"); front.classList.remove("show"); bg.src = src; };
+    back.src = src;
+  }
+
+  _tickClock() {
+    const now = new Date();
+    const t = this.fmtTime(now);
+    const dt = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    for (const [id, v] of [["clock", t], ["date", dt], ["sv-time", t], ["sv-date", dt]]) {
+      const el = this.shadowRoot.getElementById(id); if (el) el.textContent = v;
+    }
+    // roll over "today" at midnight
+    if (this._lastDay && this._lastDay !== ymd(now)) { this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this.render(); this._loadEvents(); this._loadForecast(); }
+    this._lastDay = ymd(now);
+  }
+
+  // ---------- rendering ----------
+  render() {
+    if (!this.$app || !this.data) return;
+    const scroll = this._resetScroll ? 0 : this.$app.querySelector(".content")?.scrollTop || 0;
+    this._resetScroll = false;
+    const focusId = this.shadowRoot.activeElement?.id;
+    const tab = this.ui.tab;
+    const body = {
+      calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
+      meals: () => this.renderMeals(), lists: () => this.renderLists(), photos: () => this.renderPhotos(),
+      settings: () => this.renderSettings(),
+    }[tab]();
+    this.$app.innerHTML = `
+      <nav class="rail">
+        <div class="logo">☀︎</div>
+        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></button>`).join("")}
+      </nav>
+      <main>
+        ${this.renderHeader()}
+        <div class="content">${body}</div>
+      </main>`;
+    const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    if (focusId === "newitem" || focusId === "newcal") this.shadowRoot.getElementById(focusId)?.focus();
+    this._tickClock();
+  }
+
+  renderHeader() {
+    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
+    const weather = w ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(Number(w.attributes.temperature))}°</b></div>` : "";
+    const showChips = ["calendar"].includes(this.ui.tab);
+    return `<header>
+      <div class="when"><div id="clock" class="clock"></div><div id="date" class="date"></div></div>
+      ${showChips ? `<div class="chips members">${this.members.map((m) => `
+        <button class="mchip ${this.ui.filter === m.id ? "on" : this.ui.filter ? "dim" : ""}" style="--c:${m.color}" data-action="filter" data-member="${m.id}">
+          <span class="av" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}</button>`).join("")}
+        ${this.members.length ? "" : `<button class="chip" data-action="tab" data-tab="settings">+ Add your family in Settings</button>`}
+      </div>` : "<div></div>"}
+      ${weather}
+    </header>`;
+  }
+
+  renderCalendar() {
+    const v = this.ui.view, a = this.ui.anchor;
+    let title;
+    if (v === "month") title = a.toLocaleDateString([], { month: "long", year: "numeric" });
+    else if (v === "day") title = a.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    else { const [s, e] = this._range(); title = `${s.toLocaleDateString([], { month: "short", day: "numeric" })} – ${addDays(e, -1).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`; }
+    const noCals = !this.shownCalendars().length;
+    const toolbar = `<div class="toolbar">
+      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button><h1>${title}</h1></div>
+      <div class="seg">${["day", "week", "month", "schedule"].map((x) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${x[0].toUpperCase() + x.slice(1)}</button>`).join("")}</div>
+      <button class="primary fab" data-action="new-event">+ Event</button>
+    </div>`;
+    if (noCals) return toolbar + `<div class="empty"><h2>No calendars connected yet</h2><p>Open <b>Settings</b> to add family members and create or link calendars.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    const body = { month: () => this.renderMonth(), week: () => this.renderWeek(), day: () => this.renderDay(), schedule: () => this.renderSchedule() }[v]();
+    return toolbar + body;
+  }
+
+  evIndex(ev) { return this.visibleEvents().indexOf(ev); }
+  evPill(ev, day, compact) {
+    const time = ev.allDay ? "" : `<span class="t">${this.fmtTime(ev.start)}</span>`;
+    const multi = ev.allDay && (ev.end - ev.start) > 86400000;
+    const cont = day && ev.start < startOfDay(day);
+    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""}" style="--c:${ev.color}" data-action="open-event" data-idx="${this.evIndex(ev)}">
+      ${compact ? "" : `<span class="av">${ev.avatar}</span>`}<span class="s">${cont ? "↳ " : ""}${esc(ev.summary)}</span>${multi || compact ? "" : time}${compact && !ev.allDay ? `<span class="t">${this.fmtTime(ev.start)}</span>` : ""}</button>`;
+  }
+  dayHead(d) {
+    const f = this.forecast[ymd(d)];
+    const wx = f ? `<span class="wx">${WEATHER_ICONS[f.condition] || ""} ${Math.round(f.temperature)}°</span>` : "";
+    return `<div class="dh ${sameDay(d, new Date()) ? "today" : ""}" data-action="goto-day" data-date="${ymd(d)}">
+      <span class="dn">${d.toLocaleDateString([], { weekday: "short" })}</span><span class="dd">${d.getDate()}</span>${wx}</div>`;
+  }
+
+  renderWeek() {
+    const [s] = this._range();
+    const days = [...Array(7)].map((_, i) => addDays(s, i));
+    return `<div class="week">${days.map((d) => `
+      <div class="col ${sameDay(d, new Date()) ? "today" : ""}">
+        ${this.dayHead(d)}
+        <div class="evs">${this.eventsOn(d).map((e) => this.evPill(e, d)).join("")}</div>
+        <button class="add" data-action="new-event" data-date="${ymd(d)}">+</button>
+      </div>`).join("")}</div>`;
+  }
+
+  renderMonth() {
+    const [s] = this._range();
+    const month = this.ui.anchor.getMonth();
+    const heads = [...Array(7)].map((_, i) => addDays(s, i).toLocaleDateString([], { weekday: "short" }));
+    const cells = [...Array(42)].map((_, i) => {
+      const d = addDays(s, i);
+      const evs = this.eventsOn(d);
+      return `<div class="cell ${d.getMonth() !== month ? "other" : ""} ${sameDay(d, new Date()) ? "today" : ""}" >
+        <div class="cn" data-action="goto-day" data-date="${ymd(d)}">${d.getDate()}</div>
+        ${evs.slice(0, 3).map((e) => this.evPill(e, d, true)).join("")}
+        ${evs.length > 3 ? `<button class="more" data-action="goto-day" data-date="${ymd(d)}">+${evs.length - 3} more</button>` : ""}
+        <button class="celladd" data-action="new-event" data-date="${ymd(d)}"></button>
+      </div>`;
+    }).join("");
+    return `<div class="month"><div class="mh">${heads.map((h) => `<div>${h}</div>`).join("")}</div><div class="mg">${cells}</div></div>`;
+  }
+
+  renderDay() {
+    const d = this.ui.anchor;
+    const evs = this.eventsOn(d);
+    const all = evs.filter((e) => e.allDay || e.start < startOfDay(d));
+    const timed = evs.filter((e) => !all.includes(e));
+    const HOUR = 64, from = 6;
+    const hours = [...Array(24 - from)].map((_, i) => i + from);
+    const blocks = timed.map((e) => {
+      const st = Math.max(from, e.start.getHours() + e.start.getMinutes() / 60);
+      const en = Math.max(st + 0.5, sameDay(e.end, d) ? e.end.getHours() + e.end.getMinutes() / 60 : 24);
+      return `<button class="block" style="--c:${e.color};top:${(st - from) * HOUR}px;height:${(en - st) * HOUR - 4}px" data-action="open-event" data-idx="${this.evIndex(e)}">
+        <b>${e.avatar} ${esc(e.summary)}</b><span>${this.fmtTime(e.start)} – ${this.fmtTime(e.end)}</span>${e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
+    }).join("");
+    const nowLine = sameDay(d, new Date()) ? `<div class="now" style="top:${(new Date().getHours() + new Date().getMinutes() / 60 - from) * HOUR}px"></div>` : "";
+    return `<div class="day">
+      ${all.length ? `<div class="alldays">${all.map((e) => this.evPill(e, d)).join("")}</div>` : ""}
+      <div class="timeline" style="height:${hours.length * HOUR}px">
+        ${hours.map((h) => `<div class="hr" style="top:${(h - from) * HOUR}px" data-action="new-event" data-date="${ymd(d)}"><span>${this.fmtTime(new Date(2000, 0, 1, h))}</span></div>`).join("")}
+        ${nowLine}${blocks}
+      </div></div>`;
+  }
+
+  renderSchedule() {
+    const [s] = this._range();
+    const days = [...Array(14)].map((_, i) => addDays(s, i)).filter((d) => this.eventsOn(d).length);
+    if (!days.length) return `<div class="empty"><h2>Nothing scheduled 🎉</h2></div>`;
+    return `<div class="schedule">${days.map((d) => `
+      <div class="sday">${this.dayHead(d)}
+        <div class="slist">${this.eventsOn(d).map((e) => `
+          <button class="srow" style="--c:${e.color}" data-action="open-event" data-idx="${this.evIndex(e)}">
+            <span class="st">${e.allDay ? "All day" : `${this.fmtTime(e.start)}<br><small>${this.fmtTime(e.end)}</small>`}</span>
+            <span class="bar"></span><span class="av">${e.avatar}</span>
+            <span class="sm"><b>${esc(e.summary)}</b>${e.location ? `<small>📍 ${esc(e.location)}</small>` : ""}</span>
+          </button>`).join("")}</div></div>`).join("")}</div>`;
+  }
+
+  renderChores() {
+    const day = this.ui.choreDay;
+    const isToday = sameDay(day, new Date());
+    if (!this.members.length) return `<div class="empty"><h2>No family members yet</h2><button class="primary" data-action="tab" data-tab="settings">Add family in Settings</button></div>`;
+    const cols = this.members.map((m) => {
+      const chores = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, day));
+      const done = chores.filter((c) => choreDone(c, day)).length;
+      const pct = chores.length ? done / chores.length : 0;
+      return `<div class="ccol" style="--c:${m.color}">
+        <div class="chead">
+          <div class="ring" style="--p:${pct * 360}deg"><span class="av" style="background:${m.color}">${m.avatar}</span></div>
+          <div><div class="cname">${esc(m.name)}</div><div class="cstars">⭐ ${this.data.stars?.[m.id] || 0} · ${done}/${chores.length}</div></div>
+        </div>
+        <div class="clist">${chores.map((c) => {
+          const dn = choreDone(c, day);
+          return `<div class="chore ${dn ? "done" : ""}">
+            <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}">
+              <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}</span>
+              <span class="cs">${c.stars ? `+${c.stars}⭐` : ""}</span><span class="box">${dn ? "✓" : ""}</span></button>
+            <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`;
+        }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? "No chores" : ""}</p>`}
+        ${chores.length && done === chores.length ? `<div class="alldone">All done! 🎉</div>` : ""}
+        </div>
+        <button class="add wide" data-action="new-chore" data-member="${m.id}">+ Add chore</button>
+      </div>`;
+    }).join("");
+    return `<div class="toolbar"><div class="nav">
+        <button class="icon" data-action="chore-day" data-dir="-1">‹</button>
+        <button data-action="chore-day" data-dir="0">Today</button>
+        <button class="icon" data-action="chore-day" data-dir="1">›</button>
+        <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div></div>
+      <div class="chores">${cols}</div>`;
+  }
+
+  renderRewards() {
+    if (!this.members.length) return `<div class="empty"><h2>No family members yet</h2><button class="primary" data-action="tab" data-tab="settings">Add family in Settings</button></div>`;
+    const rewards = this.data.rewards || [];
+    return `<div class="toolbar"><div class="nav"><h1>Rewards</h1></div><button class="primary" data-action="new-reward">+ Reward</button></div>
+      <div class="rewards">${this.members.map((m) => {
+        const stars = this.data.stars?.[m.id] || 0;
+        const mine = rewards.filter((r) => !r.member_id || r.member_id === m.id);
+        return `<div class="rcard" style="--c:${m.color}">
+          <div class="rhead"><span class="av big" style="background:${m.color}">${m.avatar}</span>
+            <div class="rname">${esc(m.name)}</div>
+            <div class="rstars"><button class="icon sm" data-action="stars" data-member="${m.id}" data-delta="-1">−</button>
+              <span>⭐ ${stars}</span><button class="icon sm" data-action="stars" data-member="${m.id}" data-delta="1">+</button></div></div>
+          ${mine.map((r) => {
+            const pct = Math.min(100, (stars / r.cost) * 100);
+            return `<div class="reward">
+              <span class="ri">${esc(r.icon)}</span>
+              <div class="rb"><div class="rt" data-action="edit-reward" data-reward="${r.id}">${esc(r.title)}</div>
+                <div class="prog"><div style="width:${pct}%"></div></div><small>${Math.min(stars, r.cost)} / ${r.cost} ⭐</small></div>
+              <button class="${stars >= r.cost ? "primary" : ""}" ${stars >= r.cost ? "" : "disabled"} data-action="redeem" data-reward="${r.id}" data-member="${m.id}">Redeem</button>
+            </div>`;
+          }).join("") || `<p class="hint">No rewards yet — add one!</p>`}
+        </div>`;
+      }).join("")}</div>`;
+  }
+
+  renderMeals() {
+    const [s] = [this.weekStart(this.ui.anchor)];
+    const days = [...Array(7)].map((_, i) => addDays(s, i));
+    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
+      <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div></div>
+      <div class="meals">
+        <div class="mrow head"><div></div>${days.map((d) => `<div class="${sameDay(d, new Date()) ? "today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} <b>${d.getDate()}</b></div>`).join("")}</div>
+        ${MEAL_SLOTS.map(([slot, label, icon]) => `<div class="mrow">
+          <div class="slot">${icon}<span>${label}</span></div>
+          ${days.map((d) => { const t = this.data.meals?.[ymd(d)]?.[slot]; return `<button class="meal ${t ? "" : "emptymeal"} ${sameDay(d, new Date()) ? "today" : ""}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">${t ? esc(t) : "+"}</button>`; }).join("")}
+        </div>`).join("")}
+      </div>`;
+  }
+
+  renderLists() {
+    const lists = this.data.lists || [];
+    if (!this.ui.list || !lists.find((l) => l.id === this.ui.list)) this.ui.list = lists[0]?.id || null;
+    const cur = lists.find((l) => l.id === this.ui.list);
+    return `<div class="lists">
+      <aside>${lists.map((l) => `<button class="lname ${l.id === this.ui.list ? "on" : ""}" style="--c:${l.color}" data-action="pick-list" data-list="${l.id}">
+        <span class="dot"></span>${esc(l.name)}<span class="count">${l.items.filter((i) => !i.done).length}</span></button>`).join("")}
+        <button class="add wide" data-action="new-list">+ New list</button></aside>
+      <section>${cur ? `
+        <div class="toolbar"><div class="nav"><h1 style="color:${cur.color}">${esc(cur.name)}</h1></div>
+          <div><button data-action="clear-done">Clear completed</button> <button data-action="edit-list" data-list="${cur.id}">Edit</button></div></div>
+        <div class="additem"><input id="newitem" data-fresh="1" placeholder="Add an item…" data-enter="add-item"><button class="primary" data-action="add-item">Add</button></div>
+        <div class="items">${[...cur.items.filter((i) => !i.done), ...cur.items.filter((i) => i.done)].map((i) => `
+          <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}">
+            <button class="box" data-action="toggle-item" data-item="${i.id}">${i.done ? "✓" : ""}</button>
+            <span data-action="toggle-item" data-item="${i.id}">${esc(i.text)}</span>
+            <button class="x" data-action="delete-item" data-item="${i.id}">✕</button></div>`).join("") || `<p class="hint">Empty list</p>`}
+        </div>` : `<div class="empty"><h2>No lists</h2></div>`}</section></div>`;
+  }
+
+  renderPhotos() {
+    const photos = this.data.photos || [];
+    return `<div class="toolbar"><div class="nav"><h1>Photos</h1></div>
+      <div><input type="file" id="photo-input" accept="image/*" multiple hidden data-change="upload-photos">
+        <button data-action="upload-photos">⬆ Upload</button>
+        <button class="primary" data-action="start-saver" ${photos.length ? "" : "disabled"}>▶ Slideshow</button></div></div>
+      ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph"><img loading="lazy" src="/skylight_photos/${esc(p)}"><button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
+        : `<div class="empty"><h2>No photos yet</h2><p>Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app). They play as a screensaver when nobody is using the display.</p></div>`}`;
+  }
+
+  renderSettings() {
+    const s = this.settings;
+    const cals = this.allCalendars();
+    const weathers = Object.keys(this._hass.states).filter((e) => e.startsWith("weather.")).sort();
+    const fam = new Set(this.data.family_calendars || []);
+    return `<div class="settings">
+      <section class="card">
+        <div class="toolbar"><h2>Family members</h2><button class="primary" data-action="new-member">+ Add member</button></div>
+        ${this.members.map((m, i) => `<div class="mrow2">
+          <span class="av big" style="background:${m.color}">${m.avatar}</span>
+          <div class="grow"><b>${esc(m.name)}</b><small>${(m.calendars || []).map((c) => esc(this.entityName(c))).join(", ") || "No calendars"}</small></div>
+          <button class="icon sm" data-action="member-up" data-member="${m.id}" ${i === 0 ? "disabled" : ""}>↑</button>
+          <button class="icon sm" data-action="member-down" data-member="${m.id}" ${i === this.members.length - 1 ? "disabled" : ""}>↓</button>
+          <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar, chores and rewards.</p>`}
+      </section>
+
+      <section class="card">
+        <h2>Calendars</h2>
+        <p class="hint">Create a new calendar stored in Home Assistant:</p>
+        <div class="additem"><input id="newcal" data-fresh="1" placeholder="e.g. Soccer, School, Family" data-enter="create-calendar"><button class="primary" data-action="create-calendar">Create calendar</button></div>
+        <p class="hint">To show Google, iCloud (CalDAV) or Outlook calendars, an admin adds that integration once in Home Assistant (Settings → Devices &amp; Services → Add Integration). They then appear below and in each member's calendar list.</p>
+        <div class="label">Shared family calendars (shown in the family color)</div>
+        <div class="checklist">${cals.map((e) => {
+          const o = this.calendarOwner(e);
+          return `<label class="check"><input type="checkbox" data-change="family-cal" data-entity="${e}" ${fam.has(e) ? "checked" : ""}> ${esc(this.entityName(e))} ${o ? `<small class="tag" style="background:${o.color}">${o.avatar} ${esc(o.name)}</small>` : ""}</label>`;
+        }).join("") || `<p class="hint">No calendars in Home Assistant yet.</p>`}</div>
+        <label class="inline">Family color <input type="color" value="${s.family_color}" data-change="setting" data-key="family_color"></label>
+      </section>
+
+      <section class="card">
+        <h2>Display</h2>
+        <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
+        <label class="inline">Week starts on <select data-change="setting" data-key="week_start" data-num="1"><option value="0" ${Number(s.week_start) === 0 ? "selected" : ""}>Sunday</option><option value="1" ${Number(s.week_start) === 1 ? "selected" : ""}>Monday</option></select></label>
+        <label class="inline">Default calendar view <select data-change="setting" data-key="default_view">${["day", "week", "month", "schedule"].map((v) => `<option ${v === s.default_view ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="inline">24-hour clock <input type="checkbox" ${s.clock_24h ? "checked" : ""} data-change="setting" data-key="clock_24h"></label>
+        <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
+        <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
+      </section>
+    </div>`;
+  }
+}
+
+const STYLES = `
+:host { display:block; height:100%; --bg:#f7f4ef; --card:#fff; --ink:#2d2a26; --muted:#8a8378; --line:rgba(0,0,0,.07);
+  --accent:#4a7dff; --radius:18px; font-family: Nunito, "Segoe UI", Roboto, system-ui, sans-serif; color:var(--ink); }
+@media (prefers-color-scheme: dark) { :host { --bg:#1b1a18; --card:#282724; --ink:#f1ede6; --muted:#a59f94; --line:rgba(255,255,255,.08); } }
+* { box-sizing:border-box; }
+button { font:inherit; color:inherit; border:0; background:var(--card); border-radius:12px; padding:8px 14px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+button:disabled { opacity:.45; cursor:default; }
+button.primary { background:var(--accent); color:#fff; font-weight:700; }
+button.danger { background:#ffe3e3; color:#c0392b; }
+button.icon { width:40px; height:40px; padding:0; font-size:22px; border-radius:50%; }
+button.icon.sm { width:32px; height:32px; font-size:18px; }
+input, select, textarea { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 12px; width:100%; }
+.app { display:flex; height:100vh; background:var(--bg); overflow:hidden; }
+.rail { width:92px; flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 6px; background:var(--card); border-right:1px solid var(--line); overflow-y:auto; }
+.logo { font-size:30px; color:#ff9f43; margin-bottom:8px; }
+.tab { width:78px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px; background:none; box-shadow:none; font-size:12px; color:var(--muted); }
+.tab.active { background:var(--bg); color:var(--accent); font-weight:700; }
+.tab ha-icon { --mdc-icon-size:28px; }
+main { flex:1; display:flex; flex-direction:column; min-width:0; }
+header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
+.when { min-width:190px; }
+.clock { font-size:44px; font-weight:800; line-height:1; letter-spacing:-1px; }
+.date { color:var(--muted); font-weight:600; margin-top:2px; }
+.members { flex:1; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+.mchip { display:flex; align-items:center; gap:8px; padding:4px 14px 4px 4px; border-radius:999px; font-weight:700; border:2px solid transparent; }
+.mchip.on { border-color:var(--c); }
+.mchip.dim { opacity:.45; }
+.av { display:inline-grid; place-items:center; width:32px; height:32px; border-radius:50%; font-size:18px; flex:none; }
+.av.big { width:48px; height:48px; font-size:26px; }
+.weather { font-size:30px; display:flex; align-items:center; gap:6px; }
+.weather b { font-size:32px; }
+.content { flex:1; overflow-y:auto; padding:6px 22px 22px; }
+.toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:6px 0 12px; flex-wrap:wrap; }
+.toolbar h1 { font-size:24px; margin:0 0 0 8px; }
+.toolbar h2 { margin:0; }
+.nav { display:flex; align-items:center; gap:8px; }
+.seg { display:flex; background:var(--card); border-radius:14px; padding:4px; gap:2px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+.seg button { box-shadow:none; background:none; }
+.seg button.on { background:var(--accent); color:#fff; font-weight:700; }
+.empty { text-align:center; padding:60px 20px; color:var(--muted); }
+.empty h2 { color:var(--ink); }
+.hint { color:var(--muted); font-size:14px; }
+.center { text-align:center; }
+/* week */
+.week { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:10px; min-height:calc(100vh - 190px); }
+.col { background:var(--card); border-radius:var(--radius); padding:10px 8px; display:flex; flex-direction:column; gap:6px; box-shadow:0 2px 10px rgba(60,50,30,.06); }
+.col.today { outline:3px solid var(--accent); }
+.dh { display:flex; align-items:baseline; gap:6px; padding:0 4px 6px; border-bottom:1px solid var(--line); cursor:pointer; flex-wrap:wrap; }
+.dh .dn { color:var(--muted); font-weight:700; text-transform:uppercase; font-size:13px; }
+.dh .dd { font-size:26px; font-weight:800; }
+.dh.today .dd { color:var(--accent); }
+.dh .wx { margin-left:auto; font-size:13px; color:var(--muted); }
+.evs { display:flex; flex-direction:column; gap:6px; flex:1; }
+.ev { display:flex; align-items:center; gap:6px; text-align:left; padding:6px 8px; border-radius:12px; background:color-mix(in srgb, var(--c) 18%, var(--card)); border-left:5px solid var(--c); box-shadow:none; font-size:14px; width:100%; }
+.ev.allday { background:var(--c); color:#fff; font-weight:700; border-left:0; }
+.ev .av { width:22px; height:22px; font-size:13px; background:none; }
+.ev { flex-wrap:wrap; }
+.ev .s { flex:1; min-width:0; overflow-wrap:anywhere; font-weight:600; line-height:1.2; }
+.ev .t { font-size:12px; opacity:.75; white-space:nowrap; flex-basis:100%; padding-left:28px; }
+.ev.compact { flex-wrap:nowrap; }
+.ev.compact .s { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ev.compact .t { flex-basis:auto; padding-left:0; }
+.ev.compact { padding:2px 6px; font-size:12px; border-left-width:4px; border-radius:6px; }
+.add { background:none; box-shadow:none; color:var(--muted); font-size:22px; padding:4px; }
+.add.wide { width:100%; border:2px dashed var(--line); font-size:15px; }
+/* month */
+.month { display:flex; flex-direction:column; height:calc(100vh - 190px); min-height:520px; }
+.mh { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; color:var(--muted); font-weight:700; font-size:13px; text-transform:uppercase; padding-bottom:6px; }
+.mg { flex:1; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); grid-auto-rows:1fr; gap:6px; }
+.cell { position:relative; background:var(--card); border-radius:12px; padding:4px 5px; display:flex; flex-direction:column; gap:3px; overflow:hidden; }
+.cell.other { opacity:.45; }
+.cell.today { outline:3px solid var(--accent); }
+.cn { font-weight:800; cursor:pointer; position:relative; z-index:1; width:fit-content; }
+.cell .ev, .cell .more { position:relative; z-index:1; }
+.more { background:none; box-shadow:none; font-size:12px; color:var(--muted); padding:0 4px; text-align:left; }
+.celladd { position:absolute; inset:0; background:none; box-shadow:none; z-index:0; border-radius:0; }
+/* day */
+.alldays { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.alldays .ev { width:auto; }
+.timeline { position:relative; background:var(--card); border-radius:var(--radius); margin-left:0; }
+.hr { position:absolute; left:0; right:0; height:64px; border-top:1px solid var(--line); cursor:pointer; }
+.hr span { position:absolute; left:10px; top:4px; font-size:12px; color:var(--muted); }
+.block { position:absolute; left:90px; right:14px; display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; background:color-mix(in srgb, var(--c) 22%, var(--card)); border-left:6px solid var(--c); border-radius:12px; overflow:hidden; font-size:14px; }
+.block span { font-size:13px; opacity:.8; }
+.now { position:absolute; left:80px; right:0; border-top:2px solid #ff4757; z-index:2; }
+/* schedule */
+.schedule { display:flex; flex-direction:column; gap:14px; }
+.sday { background:var(--card); border-radius:var(--radius); padding:10px 14px; }
+.slist { display:flex; flex-direction:column; gap:4px; padding-top:6px; }
+.srow { display:flex; align-items:center; gap:12px; background:none; box-shadow:none; text-align:left; padding:8px 4px; }
+.srow .st { width:80px; font-weight:700; font-size:14px; }
+.srow .bar { width:5px; align-self:stretch; background:var(--c); border-radius:4px; }
+.srow .sm { display:flex; flex-direction:column; }
+/* chores */
+.chores { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; align-items:start; }
+.ccol { background:var(--card); border-radius:var(--radius); padding:14px; border-top:6px solid var(--c); display:flex; flex-direction:column; gap:10px; }
+.chead { display:flex; align-items:center; gap:12px; }
+.ring { width:60px; height:60px; border-radius:50%; display:grid; place-items:center; background:conic-gradient(var(--c) var(--p), var(--line) 0); }
+.ring .av { width:50px; height:50px; font-size:28px; border:3px solid var(--card); }
+.cname { font-size:20px; font-weight:800; }
+.cstars { color:var(--muted); font-weight:700; }
+.clist { display:flex; flex-direction:column; gap:8px; }
+.chore { display:flex; gap:4px; }
+.ctoggle { flex:1; display:flex; align-items:center; gap:10px; text-align:left; padding:12px; border-radius:14px; background:var(--bg); box-shadow:none; transition:transform .15s; }
+.ctoggle.pop { transform:scale(.96); }
+.ci { font-size:22px; }
+.ct { flex:1; font-weight:700; }
+.cs { font-size:12px; color:var(--muted); }
+.box { width:28px; height:28px; border-radius:50%; border:3px solid var(--c, var(--accent)); display:grid; place-items:center; color:#fff; font-weight:900; flex:none; background:none; padding:0; box-shadow:none; }
+.chore.done .box { background:var(--c); }
+.chore.done .ct { text-decoration:line-through; opacity:.55; }
+.cedit { background:none; box-shadow:none; color:var(--muted); padding:4px 8px; }
+.alldone { text-align:center; font-weight:800; color:var(--c); padding:6px; }
+.burst { position:fixed; pointer-events:none; font-size:26px; z-index:1000; animation:burst .9s ease-out forwards; }
+@keyframes burst { to { transform:translate(var(--dx),var(--dy)) scale(.4); opacity:0; } }
+/* rewards */
+.rewards { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:14px; align-items:start; }
+.rcard { background:var(--card); border-radius:var(--radius); padding:14px; border-top:6px solid var(--c); display:flex; flex-direction:column; gap:10px; }
+.rhead { display:flex; align-items:center; gap:10px; }
+.rname { flex:1; font-size:20px; font-weight:800; }
+.rstars { display:flex; align-items:center; gap:6px; font-weight:800; font-size:18px; }
+.reward { display:flex; align-items:center; gap:10px; background:var(--bg); padding:10px; border-radius:14px; }
+.ri { font-size:28px; }
+.rb { flex:1; min-width:0; }
+.rt { font-weight:700; cursor:pointer; }
+.prog { height:8px; border-radius:6px; background:var(--line); overflow:hidden; margin:4px 0 2px; }
+.prog div { height:100%; background:var(--c); border-radius:6px; }
+/* meals */
+.meals { display:flex; flex-direction:column; gap:8px; }
+.mrow { display:grid; grid-template-columns:110px repeat(7, minmax(0,1fr)); gap:8px; }
+.mrow.head div { text-align:center; color:var(--muted); font-weight:700; }
+.mrow.head .today { color:var(--accent); }
+.slot { display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:26px; }
+.slot span { font-size:13px; font-weight:700; color:var(--muted); }
+.meal { min-height:84px; border-radius:14px; font-weight:700; font-size:15px; padding:8px; }
+.meal.today { outline:2px solid var(--accent); }
+.meal.emptymeal { color:var(--muted); font-size:22px; background:color-mix(in srgb, var(--card) 60%, transparent); }
+/* lists */
+.lists { display:flex; gap:16px; min-height:calc(100vh - 150px); }
+.lists aside { width:230px; display:flex; flex-direction:column; gap:6px; }
+.lname { display:flex; align-items:center; gap:10px; text-align:left; padding:12px; font-weight:700; }
+.lname.on { outline:3px solid var(--c); }
+.lname .dot { width:14px; height:14px; border-radius:50%; background:var(--c); }
+.lname .count { margin-left:auto; color:var(--muted); }
+.lists section { flex:1; background:var(--card); border-radius:var(--radius); padding:14px 18px; }
+.additem { display:flex; gap:8px; margin-bottom:12px; }
+.additem button { white-space:nowrap; }
+.items { display:flex; flex-direction:column; }
+.item { display:flex; align-items:center; gap:12px; padding:10px 4px; border-bottom:1px solid var(--line); font-size:18px; }
+.item span { flex:1; cursor:pointer; }
+.item.done span { text-decoration:line-through; opacity:.5; }
+.item.done .box { background:var(--c); }
+.x { background:none; box-shadow:none; color:var(--muted); }
+/* photos */
+.pgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:10px; }
+.ph { position:relative; aspect-ratio:1; border-radius:14px; overflow:hidden; background:var(--card); }
+.ph img { width:100%; height:100%; object-fit:cover; }
+.ph .x { position:absolute; top:6px; right:6px; background:rgba(0,0,0,.5); color:#fff; border-radius:50%; width:32px; height:32px; padding:0; }
+.saver { position:fixed; inset:0; background:#000; z-index:900; cursor:none; }
+.saver img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; opacity:0; transition:opacity 1.5s; }
+.saver img.bg { object-fit:cover; filter:blur(30px) brightness(.45); transform:scale(1.1); opacity:1; }
+.saver img.show { opacity:1; }
+.saver-clock { position:absolute; left:36px; bottom:28px; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.6); }
+#sv-time { font-size:72px; font-weight:800; }
+#sv-date { font-size:24px; font-weight:600; }
+/* settings */
+.settings { display:flex; flex-direction:column; gap:16px; max-width:900px; }
+.card { background:var(--card); border-radius:var(--radius); padding:16px 20px; }
+.card h2 { margin:0 0 10px; }
+.mrow2 { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); }
+.grow { flex:1; display:flex; flex-direction:column; }
+.grow small { color:var(--muted); }
+.tag { color:#fff; border-radius:999px; padding:1px 8px; font-size:12px; }
+label { display:flex; flex-direction:column; gap:4px; font-weight:700; font-size:14px; margin:8px 0; flex:1; }
+label.inline { flex-direction:row; align-items:center; justify-content:space-between; gap:12px; }
+label.inline select, label.inline input:not([type=checkbox]) { width:auto; min-width:160px; }
+label.check { flex-direction:row; align-items:center; gap:10px; font-weight:600; margin:4px 0; }
+label.check input { width:22px; height:22px; }
+.label { font-weight:700; font-size:14px; margin:12px 0 6px; }
+.checklist { display:flex; flex-direction:column; max-height:260px; overflow-y:auto; }
+/* dialogs */
+.backdrop { position:fixed; inset:0; background:rgba(20,15,5,.45); display:grid; place-items:center; z-index:500; padding:16px; }
+.dialog { background:var(--card); border-radius:24px; padding:22px 24px; width:min(560px, 100%); max-height:92vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.dialog h2 { margin:0 0 8px; }
+.row { display:flex; gap:10px; }
+.actions { display:flex; gap:8px; margin-top:16px; }
+.spacer { flex:1; }
+.swatches { display:flex; flex-wrap:wrap; gap:8px; }
+.swatch { width:38px; height:38px; border-radius:50%; padding:0; border:3px solid transparent; }
+.swatch.sel { border-color:var(--ink); }
+.emoji { font-size:24px; padding:4px 8px; background:var(--bg); box-shadow:none; }
+.emoji.sel { outline:3px solid var(--accent); }
+.avatar-preview { width:80px; height:80px; border-radius:50%; display:grid; place-items:center; font-size:44px; margin:4px auto 0; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { border-radius:999px; background:var(--bg); padding:6px 12px; }
+.daypick { display:flex; gap:6px; flex-wrap:wrap; }
+.daychip { flex:0; margin:0; }
+.daychip input { display:none; }
+.daychip span { display:block; padding:8px 12px; border-radius:999px; background:var(--bg); font-weight:700; cursor:pointer; }
+.daychip input:checked + span { background:var(--accent); color:#fff; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#2d2a26; color:#fff; padding:12px 20px; border-radius:14px; z-index:1000; max-width:90vw; }
+@media (max-width: 900px) {
+  .app { flex-direction:column-reverse; }
+  .rail { width:100%; flex-direction:row; justify-content:space-around; padding:4px; border-right:0; border-top:1px solid var(--line); overflow-x:auto; }
+  .logo { display:none; }
+  .tab { width:auto; flex:1; font-size:10px; padding:6px 2px; }
+  header { flex-wrap:wrap; padding:10px 14px 4px; }
+  .clock { font-size:32px; }
+  .content { padding:6px 12px 16px; }
+  .week { grid-template-columns:1fr; min-height:0; }
+  .mrow { grid-template-columns:70px repeat(7, minmax(90px,1fr)); overflow-x:auto; }
+  .meals { overflow-x:auto; }
+  .lists { flex-direction:column; }
+  .lists aside { width:100%; }
+}
+`;
+
+if (!customElements.get("skylight-panel")) customElements.define("skylight-panel", SkylightPanel);
+window.customCards = window.customCards || [];
+if (!window.customCards.find((c) => c.type === "skylight-panel")) {
+  window.customCards.push({ type: "skylight-panel", name: "Skylight Family Display", description: "Full Skylight-style family calendar, chores, meals, lists and photos." });
+}
