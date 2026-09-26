@@ -32,6 +32,25 @@ class SkylightStore:
             stored["settings"] = {**DEFAULT_DATA["settings"], **stored["settings"]}
             self.data = stored
 
+    def public(self) -> dict[str, Any]:
+        """Data safe to send to any logged-in user (no Immich API key)."""
+        data = dict(self.data)
+        immich = dict(data["immich"])
+        immich["has_key"] = bool(immich.pop("api_key", ""))
+        data["immich"] = immich
+        return data
+
+    async def async_set_immich(self, url: str, api_key: str | None, albums: list, favorites: bool) -> None:
+        async with self._lock:
+            current = self.data["immich"]
+            self.data["immich"] = {
+                "url": url.rstrip("/"),
+                "api_key": current.get("api_key", "") if api_key is None else api_key,
+                "albums": albums,
+                "favorites": favorites,
+            }
+            self._changed()
+
     @callback
     def _changed(self) -> None:
         self._store.async_delay_save(lambda: self.data, 1)

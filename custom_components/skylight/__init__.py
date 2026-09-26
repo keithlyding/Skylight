@@ -18,6 +18,7 @@ from .const import (
     URL_PHOTOS,
     VERSION,
 )
+from .immich import SkylightImmichView
 from .photos import SkylightPhotoUploadView, photo_dir
 from .store import SkylightStore
 
@@ -39,6 +40,7 @@ async def _async_register_once(hass: HomeAssistant) -> None:
         ]
     )
     hass.http.register_view(SkylightPhotoUploadView())
+    hass.http.register_view(SkylightImmichView())
     websocket_api.async_register(hass)
     # Also load the element on every dashboard so it can be used as a card.
     frontend.add_extra_js_url(hass, MODULE_URL)

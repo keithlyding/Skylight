@@ -68,6 +68,7 @@ class SkylightPanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this.data = null;
     this.events = [];
+    this.mealEvents = [];
     this.forecast = {};
     this.ui = {
       tab: "calendar", view: null, anchor: startOfDay(new Date()), filter: null,
@@ -291,6 +292,7 @@ class SkylightPanel extends HTMLElement {
       case "open-event": this.openEventDialog(this.visibleEvents()[Number(d.idx)]); break;
       case "save-event": await this.saveEvent(); break;
       case "delete-event": await this.deleteEvent(); break;
+      case "scope": this._resolveScope(d.scope === "cancel" ? null : d.scope); break;
       case "event-allday": this.shadowRoot.querySelectorAll(".timefield").forEach((x) => { x.hidden = el.checked; }); break;
 
       // members
@@ -406,7 +408,46 @@ class SkylightPanel extends HTMLElement {
       // photos
       case "upload-photos": await this.uploadPhotos(el); break;
       case "delete-photo": if (confirm("Delete this photo?")) await this._ws({ type: "skylight/photo/delete", name: d.name }); break;
-      case "start-saver": this.startSaver(); break;
+      case "start-saver": await this.startSaver(); break;
+      case "subscribe-calendar": {
+        const name = this.shadowRoot.getElementById("feed-name").value.trim();
+        const url = this.shadowRoot.getElementById("feed-url").value.trim();
+        if (!name || !url) { this._toast("Enter a name and the calendar link"); return; }
+        el.disabled = true;
+        try {
+          await this._ws({ type: "skylight/calendar/subscribe", name, url });
+          this._toast(`Subscribed to "${name}". Tick it below as a family or meal calendar.`);
+          setTimeout(() => this.render(), 1500);
+        } finally { el.disabled = false; }
+        break;
+      }
+      case "meal-cal": {
+        const set = new Set(D.meal_calendars || []);
+        el.checked ? set.add(d.entity) : set.delete(d.entity);
+        this._mealKey = "";
+        await this._set("meal_calendars", [...set]); break;
+      }
+      case "immich-load": {
+        const url = this.shadowRoot.getElementById("im-url").value.trim();
+        const key = this.shadowRoot.getElementById("im-key").value.trim();
+        this.ui.immichDraft = { url, key };
+        el.disabled = true;
+        try {
+          this.ui.immichAlbums = await this._ws({ type: "skylight/immich/albums", url, ...(key ? { api_key: key } : {}) });
+          this.render();
+        } finally { el.disabled = false; }
+        break;
+      }
+      case "immich-save": {
+        const url = this.shadowRoot.getElementById("im-url").value.trim();
+        const key = this.shadowRoot.getElementById("im-key").value.trim();
+        const albums = [...this.shadowRoot.querySelectorAll(".im-album:checked")].map((i) => i.value);
+        const favorites = this.shadowRoot.getElementById("im-fav").checked;
+        await this._ws({ type: "skylight/immich/configure", url, albums, favorites, ...(key ? { api_key: key } : {}) });
+        this.ui.immichDraft = null;
+        this._toast("Immich photos saved");
+        break;
+      }
       case "stop-saver": this.stopSaver(); break;
       default: console.warn("Skylight: unknown action", action);
     }
@@ -465,7 +506,7 @@ class SkylightPanel extends HTMLElement {
         <h2>${ev ? "Edit event" : "New event"}</h2>
         ${!writable.length ? `<p class="hint">No calendars yet. Add one in Settings first.</p>` : ""}
         <label>Title<input id="ev-title" value="${esc(ev?.summary)}" autofocus placeholder="Soccer practice"></label>
-        <label>Calendar<select id="ev-cal">${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
+        <label>Calendar<select id="ev-cal" ${this._isRecurring(ev) ? "disabled" : ""}>${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
         <div class="row">
           <label>Starts<input type="date" id="ev-date" value="${dateStr}"></label>
@@ -479,7 +520,7 @@ class SkylightPanel extends HTMLElement {
           <option value="">Never</option><option value="FREQ=DAILY">Every day</option>
           <option value="FREQ=WEEKLY">Every week</option><option value="FREQ=MONTHLY">Every month</option>
           <option value="FREQ=YEARLY">Every year</option></select></label>`}
-        ${ev?.rrule ? `<p class="hint">Repeating event — changes apply to this occurrence only.</p>` : ""}
+        ${this._isRecurring(ev) ? `<p class="hint">🔁 Repeating event (${esc(this._rruleText(ev.rrule))}). When you save or delete, you'll choose which events to change.</p>` : ""}
         <label>Location<input id="ev-loc" value="${esc(ev?.location)}"></label>
         <label>Notes<textarea id="ev-desc" rows="2">${esc(ev?.description)}</textarea></label>
         <div class="actions">
@@ -491,48 +532,116 @@ class SkylightPanel extends HTMLElement {
     });
   }
 
+  _isRecurring(ev) { return !!(ev && (ev.rrule || ev.recurrence_id)); }
+  _rruleText(rr) {
+    const f = /FREQ=(\w+)/.exec(rr || "")?.[1];
+    return { DAILY: "every day", WEEKLY: "every week", MONTHLY: "every month", YEARLY: "every year" }[f] || "custom";
+  }
+
   _readEventForm() {
     const $ = (id) => this.shadowRoot.getElementById(id);
     const allDay = $("ev-allday").checked;
-    const date = $("ev-date").value, endDate = $("ev-enddate").value || date;
-    const event = { summary: $("ev-title").value.trim() || "(No title)" };
-    if ($("ev-desc").value.trim()) event.description = $("ev-desc").value.trim();
-    if ($("ev-loc").value.trim()) event.location = $("ev-loc").value.trim();
+    const date = $("ev-date").value;
+    let endDate = $("ev-enddate").value || date;
+    if (endDate < date) endDate = date;
+    const fields = { summary: $("ev-title").value.trim() || "(No title)" };
+    if ($("ev-desc").value.trim()) fields.description = $("ev-desc").value.trim();
+    if ($("ev-loc").value.trim()) fields.location = $("ev-loc").value.trim();
+    let start, end;
     if (allDay) {
-      event.dtstart = date;
-      event.dtend = ymd(addDays(parseYmd(endDate < date ? date : endDate), 1));
+      start = parseYmd(date); end = addDays(parseYmd(endDate), 1);
     } else {
       const [sh, sm] = $("ev-start").value.split(":").map(Number);
       const [eh, em] = $("ev-end").value.split(":").map(Number);
-      const s = parseYmd(date); s.setHours(sh, sm);
-      let e = parseYmd(endDate < date ? date : endDate); e.setHours(eh, em);
-      if (e <= s) e = new Date(s.getTime() + 3600000);
-      event.dtstart = localIso(s); event.dtend = localIso(e);
+      start = parseYmd(date); start.setHours(sh, sm);
+      end = parseYmd(endDate); end.setHours(eh, em);
+      if (end <= start) end = new Date(start.getTime() + 3600000);
     }
-    const rr = $("ev-repeat")?.value;
-    if (rr) event.rrule = rr;
-    return { entity: $("ev-cal").value, event };
+    return { entity: $("ev-cal").value, fields, allDay, start, end, rrule: $("ev-repeat")?.value || "" };
+  }
+
+  // Build a calendar/event payload, optionally shifted by whole days.
+  _eventPayload(form, { shiftDays = 0, rrule = form.rrule } = {}) {
+    const s = addDays(form.start, shiftDays), e = addDays(form.end, shiftDays);
+    const event = { ...form.fields };
+    if (form.allDay) { event.dtstart = ymd(s); event.dtend = ymd(e); }
+    else { event.dtstart = localIso(s); event.dtend = localIso(e); }
+    if (rrule) event.rrule = rrule;
+    return event;
+  }
+
+  // Ask "this / this and following / all" for a repeating event. Resolves to the scope or null.
+  _askScope(verb) {
+    return new Promise((resolve) => {
+      this._scopeResolver = resolve;
+      const layer = document.createElement("div");
+      layer.id = "scope-layer";
+      layer.innerHTML = `<div class="backdrop" data-action="scope" data-scope="cancel"><div class="dialog small">
+        <h2>${verb === "delete" ? "Delete" : "Save"} repeating event</h2>
+        <div class="scopes">
+          <button data-action="scope" data-scope="this">This event</button>
+          <button data-action="scope" data-scope="future">This and following events</button>
+          <button data-action="scope" data-scope="all">All events</button>
+        </div>
+        <div class="actions"><span class="spacer"></span><button data-action="scope" data-scope="cancel">Cancel</button></div>
+      </div></div>`;
+      this.$dialog.appendChild(layer);
+    });
+  }
+  _resolveScope(scope) {
+    this.shadowRoot.getElementById("scope-layer")?.remove();
+    const r = this._scopeResolver; this._scopeResolver = null;
+    if (r) r(scope);
+  }
+
+  // Start of the series containing `ev` (earliest occurrence with the same uid).
+  async _seriesStart(ev) {
+    const from = addDays(ev.start, -3 * 366), to = addDays(ev.start, 1);
+    const evs = await this._hass.callApi("GET", `calendars/${ev.entity}?start=${encodeURIComponent(from.toISOString())}&end=${encodeURIComponent(to.toISOString())}`);
+    const starts = evs.filter((x) => x.uid === ev.uid)
+      .map((x) => (x.start.date ? parseYmd(x.start.date) : new Date(x.start.dateTime)));
+    return starts.length ? new Date(Math.min(...starts)) : ev.start;
   }
 
   async saveEvent() {
-    const { entity, event } = this._readEventForm();
+    const form = this._readEventForm();
     const ev = this.ui.dialog.event;
-    if (ev && ev.entity !== entity) {
+    if (!ev) {
+      await this._ws({ type: "calendar/event/create", entity_id: form.entity, event: this._eventPayload(form) });
+    } else if (this._isRecurring(ev)) {
+      const scope = await this._askScope("save");
+      if (!scope) return;
+      const base = { type: "calendar/event/update", entity_id: ev.entity, uid: ev.uid };
+      if (scope === "this") {
+        await this._ws({ ...base, recurrence_id: ev.recurrence_id, event: this._eventPayload(form, { rrule: "" }) });
+      } else if (scope === "future") {
+        await this._ws({ ...base, recurrence_id: ev.recurrence_id, recurrence_range: "THISANDFUTURE", event: this._eventPayload(form, { rrule: ev.rrule }) });
+      } else {
+        // Keep the series' original first date; apply any day move relative to it.
+        const first = await this._seriesStart(ev);
+        const shiftDays = Math.round((startOfDay(first) - startOfDay(ev.start)) / 86400000);
+        await this._ws({ ...base, event: this._eventPayload(form, { shiftDays, rrule: ev.rrule }) });
+      }
+    } else if (ev.entity !== form.entity) {
       // moving between calendars: create in new, delete from old
-      await this._ws({ type: "calendar/event/create", entity_id: entity, event });
-      await this._ws({ type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid, ...(ev.recurrence_id ? { recurrence_id: ev.recurrence_id } : {}) });
-    } else if (ev) {
-      await this._ws({ type: "calendar/event/update", entity_id: entity, uid: ev.uid, ...(ev.recurrence_id ? { recurrence_id: ev.recurrence_id } : {}), event });
+      await this._ws({ type: "calendar/event/create", entity_id: form.entity, event: this._eventPayload(form) });
+      await this._ws({ type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid });
     } else {
-      await this._ws({ type: "calendar/event/create", entity_id: entity, event });
+      await this._ws({ type: "calendar/event/update", entity_id: ev.entity, uid: ev.uid, event: this._eventPayload(form, { rrule: "" }) });
     }
-    this.closeDialog(); this._eventsKey = ""; this._loadEvents();
+    this.closeDialog(); this._eventsKey = ""; this._mealKey = ""; this._loadEvents();
   }
 
   async deleteEvent() {
     const ev = this.ui.dialog.event;
-    if (!confirm(`Delete "${ev.summary}"?`)) return;
-    await this._ws({ type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid, ...(ev.recurrence_id ? { recurrence_id: ev.recurrence_id } : {}) });
+    const msg = { type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid };
+    if (this._isRecurring(ev)) {
+      const scope = await this._askScope("delete");
+      if (!scope) return;
+      if (scope === "this") msg.recurrence_id = ev.recurrence_id;
+      if (scope === "future") { msg.recurrence_id = ev.recurrence_id; msg.recurrence_range = "THISANDFUTURE"; }
+    } else if (!confirm(`Delete "${ev.summary}"?`)) return;
+    await this._ws(msg);
     this.closeDialog(); this._eventsKey = ""; this._loadEvents();
   }
 
@@ -656,10 +765,13 @@ class SkylightPanel extends HTMLElement {
     const current = this.data.meals?.[date]?.[slot] || "";
     const label = MEAL_SLOTS.find((s) => s[0] === slot);
     const recent = [...new Set(Object.values(this.data.meals || {}).map((m) => m[slot]).filter(Boolean))].slice(-8);
+    const synced = this.syncedMeals(parseYmd(date), slot);
     this._openDialog({
       type: "meal", date, slot,
       html: () => `
         <h2>${label[2]} ${label[1]} · ${parseYmd(date).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h2>
+        ${synced.map((e) => `<div class="syncedrow">📅 <b>${esc(this.mealTitle(e))}</b> <small>from ${esc(this.entityName(e.entity))}</small>${e.description ? `<p class="hint">${esc(e.description).slice(0, 300)}</p>` : ""}</div>`).join("")}
+        ${synced.length ? `<p class="hint">Synced meals are edited in their own app (e.g. Plan to Eat). You can add an extra note below.</p>` : ""}
         <label>What's on the menu?<input id="mealtext" value="${esc(current)}" autofocus data-enter="save-meal" placeholder="Tacos"></label>
         ${recent.length ? `<div class="label">Recent</div><div class="chips">${recent.map((r) => `<button class="chip" onclick="this.getRootNode().getElementById('mealtext').value=this.textContent">${esc(r)}</button>`).join("")}</div>` : ""}
         <div class="actions"><span class="spacer"></span>
@@ -717,13 +829,31 @@ class SkylightPanel extends HTMLElement {
   // ---------- screensaver ----------
   _checkIdle() {
     const mins = Number(this.settings.screensaver_minutes || 0);
-    if (!mins || this.ui.saver || this.ui.dialog || !this.data?.photos?.length) return;
+    if (!mins || this.ui.saver || this.ui.dialog || !this._hasPhotoSource()) return;
     if (Date.now() - this._lastActivity > mins * 60000) this.startSaver();
   }
-  startSaver() {
-    const photos = this.data.photos;
-    if (!photos.length) { this._toast("Upload photos in the Photos tab first"); return; }
-    this.ui.saver = true;
+  _hasPhotoSource() {
+    const im = this.data?.immich || {};
+    return !!(this.data?.photos?.length || (im.url && im.has_key && (im.albums?.length || im.favorites)));
+  }
+  async _photoUrls() {
+    // Signed Immich URLs expire after 24h; refresh the list hourly.
+    if (this._urlCache && Date.now() - this._urlCache.at < 3600000 && this._urlCache.n === (this.data.photos || []).length) return this._urlCache.urls;
+    const res = await this._hass.callWS({ type: "skylight/photos/urls" });
+    if (res.error) console.warn("Skylight: Immich", res.error);
+    this._urlCache = { at: Date.now(), urls: res.urls, n: (this.data.photos || []).length, error: res.error };
+    return res.urls;
+  }
+  async startSaver() {
+    if (this.ui.saver) return;
+    this.ui.saver = true; // guard against double start while loading
+    let photos = [];
+    try { photos = await this._photoUrls(); } catch (e) { console.warn(e); }
+    if (!photos.length) {
+      this.ui.saver = false;
+      this._toast(this._urlCache?.error || "Add photos in the Photos tab first");
+      return;
+    }
     this._slideOrder = [...photos].sort(() => Math.random() - 0.5);
     this._slideIdx = 0;
     this.$saver.innerHTML = `<div class="saver" data-action="stop-saver">
@@ -740,7 +870,7 @@ class SkylightPanel extends HTMLElement {
     const a = this.shadowRoot.getElementById("sv-a"), b = this.shadowRoot.getElementById("sv-b"), bg = this.shadowRoot.getElementById("sv-bg");
     if (!a) return;
     const [front, back] = a.classList.contains("show") ? [a, b] : [b, a];
-    const src = `/skylight_photos/${this._slideOrder[this._slideIdx++ % this._slideOrder.length]}`;
+    const src = this._slideOrder[this._slideIdx++ % this._slideOrder.length];
     back.onload = () => { back.classList.add("show"); front.classList.remove("show"); bg.src = src; };
     back.src = src;
   }
@@ -953,7 +1083,41 @@ class SkylightPanel extends HTMLElement {
       }).join("")}</div>`;
   }
 
+  mealSlot(ev) {
+    const entityText = `${ev.entity} ${this.entityName(ev.entity)}`.toLowerCase();
+    const summary = ev.summary.toLowerCase();
+    for (const text of [entityText, summary]) {
+      for (const [slot] of MEAL_SLOTS) if (text.includes(slot)) return slot;
+      if (text.includes("supper")) return "dinner";
+    }
+    if (ev.allDay) return "dinner";
+    const h = ev.start.getHours() + ev.start.getMinutes() / 60;
+    return h < 10.5 ? "breakfast" : h < 15 ? "lunch" : h < 17 ? "snack" : "dinner";
+  }
+  mealTitle(ev) { return ev.summary.replace(/^\s*(breakfast|lunch|dinner|supper|snacks?)\s*[:\-–]\s*/i, ""); }
+
+  async _loadMealEvents() {
+    const cals = (this.data.meal_calendars || []).filter((e) => this._hass.states[e]);
+    const s = this.weekStart(this.ui.anchor), e = addDays(s, 7);
+    const key = `${ymd(s)}|${cals.join(",")}`;
+    if (key === this._mealKey) return;
+    this._mealKey = key;
+    const res = await Promise.all(cals.map(async (entity) => {
+      try {
+        const evs = await this._hass.callApi("GET", `calendars/${entity}?start=${encodeURIComponent(s.toISOString())}&end=${encodeURIComponent(e.toISOString())}`);
+        return evs.map((x) => this._normalizeEvent(x, entity));
+      } catch (err) { console.warn("Skylight: meal calendar failed", entity, err); return []; }
+    }));
+    if (key !== this._mealKey) return;
+    this.mealEvents = res.flat();
+    if (this.ui.tab === "meals") this.render();
+  }
+  syncedMeals(day, slot) {
+    return this.mealEvents.filter((e) => sameDay(e.start, day) && this.mealSlot(e) === slot);
+  }
+
   renderMeals() {
+    this._loadMealEvents();
     const [s] = [this.weekStart(this.ui.anchor)];
     const days = [...Array(7)].map((_, i) => addDays(s, i));
     return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
@@ -962,7 +1126,13 @@ class SkylightPanel extends HTMLElement {
         <div class="mrow head"><div></div>${days.map((d) => `<div class="${sameDay(d, new Date()) ? "today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} <b>${d.getDate()}</b></div>`).join("")}</div>
         ${MEAL_SLOTS.map(([slot, label, icon]) => `<div class="mrow">
           <div class="slot">${icon}<span>${label}</span></div>
-          ${days.map((d) => { const t = this.data.meals?.[ymd(d)]?.[slot]; return `<button class="meal ${t ? "" : "emptymeal"} ${sameDay(d, new Date()) ? "today" : ""}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">${t ? esc(t) : "+"}</button>`; }).join("")}
+          ${days.map((d) => {
+            const t = this.data.meals?.[ymd(d)]?.[slot];
+            const synced = this.syncedMeals(d, slot);
+            const has = t || synced.length;
+            return `<button class="meal ${has ? "" : "emptymeal"} ${sameDay(d, new Date()) ? "today" : ""}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">
+              ${synced.map((e) => `<span class="synced">${esc(this.mealTitle(e))}</span>`).join("")}${t ? `<span>${esc(t)}</span>` : ""}${has ? "" : "+"}</button>`;
+          }).join("")}
         </div>`).join("")}
       </div>`;
   }
@@ -992,9 +1162,36 @@ class SkylightPanel extends HTMLElement {
     return `<div class="toolbar"><div class="nav"><h1>Photos</h1></div>
       <div><input type="file" id="photo-input" accept="image/*" multiple hidden data-change="upload-photos">
         <button data-action="upload-photos">⬆ Upload</button>
-        <button class="primary" data-action="start-saver" ${photos.length ? "" : "disabled"}>▶ Slideshow</button></div></div>
+        <button class="primary" data-action="start-saver" ${this._hasPhotoSource() ? "" : "disabled"}>▶ Slideshow</button></div></div>
+      ${this.data.immich?.url && this.data.immich?.has_key ? `<p class="hint">📷 Also showing ${[
+        this.data.immich.albums?.length ? `${this.data.immich.albums.length} Immich album${this.data.immich.albums.length > 1 ? "s" : ""}` : "",
+        this.data.immich.favorites ? "Immich favorites" : "",
+      ].filter(Boolean).join(" + ") || "no Immich albums yet"}. Change in Settings → Photos from Immich.</p>` : ""}
       ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph"><img loading="lazy" src="/skylight_photos/${esc(p)}"><button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
-        : `<div class="empty"><h2>No photos yet</h2><p>Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app). They play as a screensaver when nobody is using the display.</p></div>`}`;
+        : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app). They play as a screensaver when nobody is using the display. Or connect Immich in Settings.</p></div>`}`;
+  }
+
+  renderImmichSettings() {
+    const im = this.data.immich || {};
+    const draft = this.ui.immichDraft || {};
+    if (!this.ui.immichAlbums && im.url && im.has_key && !this._immichTried) {
+      this._immichTried = true;
+      this._hass.callWS({ type: "skylight/immich/albums" })
+        .then((a) => { this.ui.immichAlbums = a; if (this.ui.tab === "settings") this.render(); })
+        .catch((e) => { this.ui.immichError = e.message; if (this.ui.tab === "settings") this.render(); });
+    }
+    const albums = this.ui.immichAlbums || [];
+    const chosen = new Set(im.albums || []);
+    return `<section class="card">
+      <h2>Photos from Immich</h2>
+      <label>Immich server URL<input id="im-url" value="${esc(draft.url ?? im.url ?? "")}" placeholder="http://192.168.1.20:2283"></label>
+      <label>API key<input id="im-key" type="password" autocomplete="off" value="${esc(draft.key ?? "")}" placeholder="${im.has_key ? "•••••• saved (leave blank to keep)" : "Immich → Account Settings → API Keys"}"></label>
+      <div class="actions" style="margin-top:4px"><button data-action="immich-load">Load albums</button></div>
+      ${this.ui.immichError && !albums.length ? `<p class="hint">⚠️ ${esc(this.ui.immichError)}</p>` : ""}
+      ${albums.length ? `<div class="label">Albums to show</div><div class="checklist">${albums.map((a) => `<label class="check"><input type="checkbox" class="im-album" value="${esc(a.id)}" ${chosen.has(a.id) ? "checked" : ""}> ${esc(a.name)} <small class="hint">${a.count} items</small></label>`).join("")}</div>` : ""}
+      <label class="check"><input type="checkbox" id="im-fav" ${im.favorites ? "checked" : ""}> Include my Immich favorites</label>
+      <div class="actions"><span class="spacer"></span><button class="primary" data-action="immich-save">Save Immich settings</button></div>
+    </section>`;
   }
 
   renderSettings() {
@@ -1017,6 +1214,8 @@ class SkylightPanel extends HTMLElement {
         <h2>Calendars</h2>
         <p class="hint">Create a new calendar stored in Home Assistant:</p>
         <div class="additem"><input id="newcal" data-fresh="1" placeholder="e.g. Soccer, School, Family" data-enter="create-calendar"><button class="primary" data-action="create-calendar">Create calendar</button></div>
+        <p class="hint">Subscribe to a calendar link (iCal / webcal: school, sports team, Plan to Eat…):</p>
+        <div class="additem"><input id="feed-name" data-fresh="1" placeholder="Name"><input id="feed-url" data-fresh="1" placeholder="https://… or webcal://…" style="flex:2"><button class="primary" data-action="subscribe-calendar">Subscribe</button></div>
         <p class="hint">To show Google, iCloud (CalDAV) or Outlook calendars, an admin adds that integration once in Home Assistant (Settings → Devices &amp; Services → Add Integration). They then appear below and in each member's calendar list.</p>
         <div class="label">Shared family calendars (shown in the family color)</div>
         <div class="checklist">${cals.map((e) => {
@@ -1025,6 +1224,16 @@ class SkylightPanel extends HTMLElement {
         }).join("") || `<p class="hint">No calendars in Home Assistant yet.</p>`}</div>
         <label class="inline">Family color <input type="color" value="${s.family_color}" data-change="setting" data-key="family_color"></label>
       </section>
+
+      <section class="card">
+        <h2>Meal plan sync</h2>
+        <p class="hint">Meals from these calendars fill the Meals tab, sorted into breakfast / lunch / dinner / snack by the calendar name, the meal name, or the time of day.
+          <b>Plan to Eat:</b> copy your planner's iCal link from Plan to Eat's planner settings and subscribe to it in Calendars above.
+          <b>Mealie:</b> add the Mealie integration in Home Assistant; its meal calendars appear here.</p>
+        <div class="checklist">${cals.map((e) => `<label class="check"><input type="checkbox" data-change="meal-cal" data-entity="${e}" ${(this.data.meal_calendars || []).includes(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("") || `<p class="hint">No calendars yet.</p>`}</div>
+      </section>
+
+      ${this.renderImmichSettings()}
 
       <section class="card">
         <h2>Display</h2>
@@ -1239,6 +1448,12 @@ label.check input { width:22px; height:22px; }
 .daychip input { display:none; }
 .daychip span { display:block; padding:8px 12px; border-radius:999px; background:var(--bg); font-weight:700; cursor:pointer; }
 .daychip input:checked + span { background:var(--accent); color:#fff; }
+.dialog.small { width:min(420px,100%); }
+.scopes { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+.scopes button { padding:14px; font-weight:700; text-align:left; background:var(--bg); }
+.meal { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+.meal .synced { background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:8px; padding:2px 6px; font-size:13px; }
+.syncedrow { background:var(--bg); border-radius:12px; padding:8px 12px; margin:6px 0; }
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#2d2a26; color:#fff; padding:12px 20px; border-radius:14px; z-index:1000; max-width:90vw; }
 @media (max-width: 900px) {
   .app { flex-direction:column-reverse; }

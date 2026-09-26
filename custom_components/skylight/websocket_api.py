@@ -12,6 +12,7 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED
+from . import immich
 from .photos import async_delete_photo
 
 
@@ -30,6 +31,10 @@ def async_register(hass: HomeAssistant) -> None:
         ws_redeem,
         ws_delete_photo,
         ws_create_calendar,
+        ws_subscribe_calendar,
+        ws_photo_urls,
+        ws_immich_albums,
+        ws_immich_configure,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -37,7 +42,7 @@ def async_register(hass: HomeAssistant) -> None:
 @websocket_api.websocket_command({vol.Required("type"): "skylight/get"})
 @callback
 def ws_get(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    connection.send_result(msg["id"], _store(hass).data)
+    connection.send_result(msg["id"], _store(hass).public())
 
 
 @websocket_api.websocket_command({vol.Required("type"): "skylight/subscribe"})
@@ -47,7 +52,7 @@ def ws_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 
     @callback
     def forward(_event=None) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], _store(hass).data))
+        connection.send_message(websocket_api.event_message(msg["id"], _store(hass).public()))
 
     connection.subscriptions[msg["id"]] = hass.bus.async_listen(EVENT_UPDATED, forward)
     connection.send_result(msg["id"])
@@ -148,3 +153,83 @@ async def ws_create_calendar(hass: HomeAssistant, connection, msg: dict[str, Any
         )
         return
     connection.send_result(msg["id"], {"entry_id": result["result"].entry_id})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/calendar/subscribe",
+        vol.Required("name"): str,
+        vol.Required("url"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_subscribe_calendar(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Subscribe to an iCal feed (Plan to Eat, school, sports...) via Remote Calendar."""
+    name, url = msg["name"].strip(), msg["url"].strip()
+    if not name or not url:
+        connection.send_error(msg["id"], "invalid", "Name and URL required")
+        return
+    flow = await hass.config_entries.flow.async_init(
+        "remote_calendar", context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], {"calendar_name": name, "url": url, "verify_ssl": True}
+    )
+    if result.get("type") != "create_entry":
+        if "flow_id" in result:
+            hass.config_entries.flow.async_abort(result["flow_id"])
+        reason = result.get("errors") or result.get("reason")
+        connection.send_error(msg["id"], "flow_failed", f"Could not subscribe: {reason}")
+        return
+    connection.send_result(msg["id"], {"entry_id": result["result"].entry_id})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/photos/urls"})
+@websocket_api.async_response
+async def ws_photo_urls(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """All slideshow URLs: uploaded photos plus signed Immich proxy URLs."""
+    store = _store(hass)
+    urls = [f"/skylight_photos/{p}" for p in store.data["photos"]]
+    error = None
+    try:
+        urls += await immich.async_signed_urls(hass, store, connection.refresh_token_id)
+    except immich.ImmichError as err:
+        error = str(err)
+    connection.send_result(msg["id"], {"urls": urls, "error": error})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/immich/albums",
+        vol.Optional("url"): str,
+        vol.Optional("api_key"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_immich_albums(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    cfg = _store(hass).data["immich"]
+    url = (msg.get("url") or cfg["url"]).rstrip("/")
+    key = msg.get("api_key") or cfg["api_key"]
+    try:
+        albums = await immich.async_list_albums(hass, url, key)
+    except immich.ImmichError as err:
+        connection.send_error(msg["id"], "immich_error", str(err))
+        return
+    connection.send_result(msg["id"], albums)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/immich/configure",
+        vol.Required("url"): str,
+        vol.Optional("api_key"): str,
+        vol.Required("albums"): [str],
+        vol.Required("favorites"): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_immich_configure(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = _store(hass)
+    await store.async_set_immich(msg["url"], msg.get("api_key") or None, msg["albums"], msg["favorites"])
+    immich.invalidate(hass)
+    connection.send_result(msg["id"])

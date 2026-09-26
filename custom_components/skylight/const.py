@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -15,7 +15,9 @@ PANEL_PATH = "skylight"
 PANEL_ELEMENT = "skylight-panel"
 
 # Top-level keys the frontend may replace wholesale via skylight/set.
-EDITABLE_KEYS = ("members", "chores", "rewards", "meals", "lists", "settings", "family_calendars")
+EDITABLE_KEYS = (
+    "members", "chores", "rewards", "meals", "lists", "settings", "family_calendars", "meal_calendars",
+)
 
 DEFAULT_DATA = {
     "members": [],
@@ -29,6 +31,10 @@ DEFAULT_DATA = {
         {"id": "todo", "name": "To Do", "color": "#4a7dff", "items": []},
     ],
     "photos": [],
+    # Calendars whose events fill the Meals grid (Plan to Eat feed, Mealie, ...).
+    "meal_calendars": [],
+    # api_key is never sent to the browser (see SkylightStore.public).
+    "immich": {"url": "", "api_key": "", "albums": [], "favorites": False},
     "settings": {
         "weather_entity": None,
         "week_start": 0,
