@@ -1,0 +1,39 @@
+# Skylight-style theme: warm off-white background, soft rounded white cards.
+# Enable in configuration.yaml:
+#   frontend:
+#     themes: !include_dir_merge_named themes
+Skylight:
+  primary-font-family: "Nunito, 'Segoe UI', Roboto, sans-serif"
+  paper-font-common-base_-_font-family: "var(--primary-font-family)"
+  primary-color: "#4a7dff"
+  accent-color: "#ff9f43"
+  primary-background-color: "#f6f3ee"
+  secondary-background-color: "#efebe4"
+  lovelace-background: "#f6f3ee"
+  card-background-color: "#ffffff"
+  ha-card-background: "#ffffff"
+  ha-card-border-radius: "22px"
+  ha-card-border-width: "0px"
+  ha-card-box-shadow: "0 2px 10px rgba(60, 50, 30, 0.08)"
+  primary-text-color: "#2d2a26"
+  secondary-text-color: "#7b756c"
+  divider-color: "rgba(0,0,0,0.06)"
+  app-header-background-color: "#f6f3ee"
+  app-header-text-color: "#2d2a26"
+  # Family member colors (used in the dashboard)
+  skylight-alex: "#ff6b6b"
+  skylight-jordan: "#4a7dff"
+  skylight-sam: "#2ecc71"
+  skylight-riley: "#a66bff"
+  skylight-family: "#ff9f43"
+  modes:
+    dark:
+      primary-background-color: "#1c1b19"
+      secondary-background-color: "#252420"
+      lovelace-background: "#1c1b19"
+      card-background-color: "#2a2926"
+      ha-card-background: "#2a2926"
+      primary-text-color: "#f1ede6"
+      secondary-text-color: "#aaa398"
+      app-header-background-color: "#1c1b19"
+      app-header-text-color: "#f1ede6"
