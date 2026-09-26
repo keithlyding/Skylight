@@ -69,6 +69,10 @@ class SkylightPanel extends HTMLElement {
     this.data = null;
     this.events = [];
     this.mealEvents = [];
+    this.mealieMeals = [];
+    this.mealie = null; // {entries, selected}
+    this.todoItems = {}; // entity_id -> items
+    this._todoSubs = {};
     this.forecast = {};
     this.ui = {
       tab: "calendar", view: null, anchor: startOfDay(new Date()), filter: null,
@@ -95,6 +99,8 @@ class SkylightPanel extends HTMLElement {
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
     clearInterval(this._refreshTimer);
+    for (const u of Object.values(this._todoSubs)) u.then((f) => f && f()).catch(() => {});
+    this._todoSubs = {};
   }
 
   _start() {
@@ -120,8 +126,16 @@ class SkylightPanel extends HTMLElement {
     if (this.ui.filter && !data.members.find((m) => m.id === this.ui.filter)) this.ui.filter = null;
     this.render();
     this._loadEvents();
-    if (firstLoad) this._loadForecast();
+    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); }
   }
+
+  async _loadMealieInfo() {
+    try { this.mealie = await this._hass.callWS({ type: "skylight/mealie/info" }); }
+    catch (e) { this.mealie = { entries: [], selected: null }; }
+    this._mealieKey = "";
+    this.render();
+  }
+  get mealieOn() { return !!this.mealie?.selected; }
 
   // ---------- shadow & events ----------
   _buildShadow() {
@@ -375,7 +389,46 @@ class SkylightPanel extends HTMLElement {
       }
 
       // meals
-      case "edit-meal": this.openMealDialog(d.date, d.slot); break;
+      case "edit-meal": this.mealieOn ? this.openMealieDialog(d.date, d.slot) : this.openMealDialog(d.date, d.slot); break;
+      case "mealie-search": await this._mealieSearch(); break;
+      case "mealie-add": await this._mealieSet({ recipe_id: d.recipe }); break;
+      case "mealie-random": await this._mealieSet({ random: true }); break;
+      case "mealie-note": {
+        const t = this.shadowRoot.getElementById("mealie-note").value.trim();
+        if (!t) { this._toast("Type a note first"); return; }
+        await this._mealieSet({ note_title: t }); break;
+      }
+      case "mealie-remove": {
+        if (!confirm("Remove this meal from the plan?")) return;
+        await this._ws({ type: "skylight/mealie/remove", mealplan_id: Number(d.meal) });
+        await this._reloadMealie(); if (this.ui.dialog?.type === "mealie") this.renderDialog(); break;
+      }
+      case "mealie-import": {
+        const url = this.shadowRoot.getElementById("mealie-url").value.trim();
+        if (!url) return;
+        el.disabled = true;
+        try {
+          const r = await this._ws({ type: "skylight/mealie/import", url });
+          this._toast(`Imported "${r?.name || "recipe"}"`);
+          if (r?.id && this.ui.dialog?.type === "mealie") await this._mealieSet({ recipe_id: r.id });
+        } finally { el.disabled = false; }
+        break;
+      }
+      case "view-recipe": await this.openRecipe(d.recipe); break;
+      case "recipe-to-list": {
+        const ent = this.shadowRoot.getElementById("recipe-list").value;
+        const items = [...this.shadowRoot.querySelectorAll(".ing-check:checked")].map((i) => i.value);
+        if (!ent || !items.length) return;
+        for (const item of items) await this._hass.callService("todo", "add_item", { item }, { entity_id: ent });
+        this._toast(`Added ${items.length} item${items.length > 1 ? "s" : ""} to ${this.entityName(ent)}`);
+        break;
+      }
+      case "mealie-entry": await this._set("settings", { mealie_entry: el.value }); await this._loadMealieInfo(); break;
+      case "linked-todo": {
+        const set = new Set(D.linked_todos || []);
+        el.checked ? set.add(d.entity) : set.delete(d.entity);
+        await this._set("linked_todos", [...set]); break;
+      }
       case "save-meal": {
         const { date, slot } = this.ui.dialog;
         const text = this.shadowRoot.getElementById("mealtext").value.trim();
@@ -387,15 +440,15 @@ class SkylightPanel extends HTMLElement {
 
       // lists
       case "pick-list": this.ui.list = d.list; this.render(); break;
-      case "add-item": {
+      case "add-item": if (this._isTodo()) { await this._todoAction("add"); break; } {
         const input = this.shadowRoot.getElementById("newitem");
         const text = input.value.trim(); if (!text) return;
         await this._updateList(this.ui.list, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
         this.shadowRoot.getElementById("newitem")?.focus(); break;
       }
-      case "toggle-item": await this._updateList(this.ui.list, (l) => { l.items = l.items.map((i) => i.id === d.item ? { ...i, done: !i.done } : i); }); break;
-      case "delete-item": await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => i.id !== d.item); }); break;
-      case "clear-done": await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => !i.done); }); break;
+      case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.map((i) => i.id === d.item ? { ...i, done: !i.done } : i); }); break;
+      case "delete-item": if (this._isTodo()) { await this._todoAction("delete", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => i.id !== d.item); }); break;
+      case "clear-done": if (this._isTodo()) { await this._todoAction("clear"); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => !i.done); }); break;
       case "new-list": this.openListDialog(); break;
       case "edit-list": this.openListDialog(D.lists.find((l) => l.id === d.list)); break;
       case "save-list": await this.saveList(); break;
@@ -761,6 +814,133 @@ class SkylightPanel extends HTMLElement {
     await this._set("rewards", rewards); this.closeDialog();
   }
 
+  // ---------- Mealie ----------
+  async _reloadMealie() { this._mealieKey = ""; await this._loadMealie(); }
+  async _loadMealie() {
+    if (!this.mealieOn) return;
+    const s = this.weekStart(this.ui.anchor);
+    const key = `${ymd(s)}|${this.mealie.selected}`;
+    if (key === this._mealieKey) return;
+    this._mealieKey = key;
+    try {
+      const meals = await this._hass.callWS({ type: "skylight/mealie/week", start: ymd(s), end: ymd(addDays(s, 6)) });
+      if (key !== this._mealieKey) return;
+      this.mealieMeals = meals; this.ui.mealieError = null;
+    } catch (e) { this.mealieMeals = []; this.ui.mealieError = e.message; }
+    if (this.ui.tab === "meals") this.render();
+  }
+  mealieFor(date, slot) { return this.mealieMeals.filter((m) => m.date === date && m.slot === slot); }
+  mealieName(m) { return m.recipe?.name || m.title || "Meal"; }
+
+  openMealieDialog(date, slot) {
+    const label = MEAL_SLOTS.find((x) => x[0] === slot);
+    const dlg = {
+      type: "mealie", date, slot, results: null, loading: false,
+      html: () => {
+        const current = this.mealieFor(date, slot);
+        const synced = this.syncedMeals(parseYmd(date), slot);
+        return `
+        <h2>${label[2]} ${label[1]} · ${parseYmd(date).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h2>
+        ${current.map((m) => `<div class="mplan">
+            ${m.recipe?.image ? `<img src="${m.recipe.image}" alt="">` : `<span class="noimg">📝</span>`}
+            <div class="grow" ${m.recipe ? `data-action="view-recipe" data-recipe="${esc(m.recipe.id)}"` : ""}><b>${esc(this.mealieName(m))}</b>${m.recipe ? `<small>View recipe ›</small>` : m.text ? `<small>${esc(m.text)}</small>` : ""}</div>
+            <button class="x" data-action="mealie-remove" data-meal="${m.id}">✕</button></div>`).join("")}
+        ${synced.map((e) => `<div class="syncedrow">📅 <b>${esc(this.mealTitle(e))}</b> <small>from ${esc(this.entityName(e.entity))}</small></div>`).join("")}
+        <div class="additem" style="margin-top:12px"><input id="mealie-q" placeholder="Search recipes…" data-enter="mealie-search" autofocus><button data-action="mealie-search">Search</button><button data-action="mealie-random" title="Random recipe">🎲</button></div>
+        <div class="rgrid">${dlg.loading ? `<p class="hint">Searching…</p>` : (dlg.results || []).map((r) => `
+          <button class="rcardmini" data-action="mealie-add" data-recipe="${esc(r.id)}">
+            ${r.image ? `<img src="${r.image}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}<span>${esc(r.name)}</span></button>`).join("") || (dlg.results ? `<p class="hint">No recipes found.</p>` : "")}</div>
+        <details><summary>More options</summary>
+          <div class="additem"><input id="mealie-note" placeholder="Just a note, e.g. Leftovers / Eat out" data-enter="mealie-note"><button data-action="mealie-note">Add note</button></div>
+          <div class="additem"><input id="mealie-url" placeholder="Import recipe from a website URL"><button data-action="mealie-import">Import &amp; add</button></div>
+        </details>
+        <div class="actions"><span class="spacer"></span><button data-action="close">Done</button></div>`;
+      },
+    };
+    this._openDialog(dlg);
+    this._mealieSearch();
+  }
+
+  async _mealieSearch() {
+    const dlg = this.ui.dialog;
+    if (dlg?.type !== "mealie") return;
+    const q = this.shadowRoot.getElementById("mealie-q")?.value || "";
+    dlg.loading = true; this.renderDialog();
+    try { dlg.results = await this._ws({ type: "skylight/mealie/recipes", query: q }); }
+    catch (e) { dlg.results = []; }
+    dlg.loading = false;
+    if (this.ui.dialog === dlg) this.renderDialog();
+  }
+
+  async _mealieSet(extra) {
+    const dlg = this.ui.dialog;
+    await this._ws({ type: "skylight/mealie/set", date: dlg.date, slot: dlg.slot, ...extra });
+    await this._reloadMealie();
+    this.closeDialog();
+  }
+
+  async openRecipe(id) {
+    let r;
+    try { r = await this._ws({ type: "skylight/mealie/recipe", recipe_id: id }); } catch (e) { return; }
+    const lists = [...(this.data.linked_todos || [])].filter((e) => this._hass.states[e]);
+    this._openDialog({
+      type: "recipe",
+      html: () => `
+        ${r.image ? `<img class="hero" src="${r.image}" alt="" onerror="this.remove()">` : ""}
+        <h2>${esc(r.name)}</h2>
+        ${r.total_time ? `<p class="hint">⏱ ${esc(r.total_time)}</p>` : ""}
+        ${r.description ? `<p>${esc(r.description)}</p>` : ""}
+        <h3>Ingredients</h3>
+        <div class="checklist ings">${r.ingredients.map((i) => `<label class="check"><input type="checkbox" class="ing-check" value="${esc(i)}"> ${esc(i)}</label>`).join("") || `<p class="hint">None listed</p>`}</div>
+        ${lists.length ? `<div class="additem"><select id="recipe-list">${lists.map((e) => `<option value="${e}">${esc(this.entityName(e))}</option>`).join("")}</select><button data-action="recipe-to-list">Add checked to list</button></div>`
+          : `<p class="hint">Link a shopping list in Settings to send ingredients to it.</p>`}
+        <h3>Steps</h3>
+        <ol class="steps">${r.instructions.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
+        <div class="actions"><span class="spacer"></span><button class="primary" data-action="close">Close</button></div>`,
+    });
+  }
+
+  // ---------- linked HA to-do lists ----------
+  _isTodo() { return String(this.ui.list || "").startsWith("todo:"); }
+  _todoEntity() { return this.ui.list.slice(5); }
+  _subscribeTodo(entity) {
+    if (this._todoSubs[entity]) return;
+    this._todoSubs[entity] = this._hass.connection.subscribeMessage((msg) => {
+      this.todoItems[entity] = msg.items || [];
+      if (this.ui.tab === "lists") this.render();
+    }, { type: "todo/item/subscribe", entity_id: entity });
+    this._todoSubs[entity].catch((e) => { console.warn("Skylight: todo subscribe failed", entity, e); delete this._todoSubs[entity]; });
+  }
+  linkedLists() {
+    return (this.data.linked_todos || []).filter((e) => this._hass.states[e]).map((e, i) => {
+      this._subscribeTodo(e);
+      return {
+        id: `todo:${e}`, linked: true, name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
+        items: (this.todoItems[e] || []).map((t) => ({ id: t.uid, text: t.summary, done: t.status === "completed" })),
+      };
+    });
+  }
+  async _todoAction(kind, itemId) {
+    const entity_id = this._todoEntity();
+    const target = { entity_id };
+    try {
+      if (kind === "add") {
+        const input = this.shadowRoot.getElementById("newitem");
+        const text = input.value.trim(); if (!text) return;
+        input.value = "";
+        await this._hass.callService("todo", "add_item", { item: text }, target);
+        this.shadowRoot.getElementById("newitem")?.focus();
+      } else if (kind === "toggle") {
+        const it = (this.todoItems[entity_id] || []).find((t) => t.uid === itemId);
+        await this._hass.callService("todo", "update_item", { item: itemId, status: it?.status === "completed" ? "needs_action" : "completed" }, target);
+      } else if (kind === "delete") {
+        await this._hass.callService("todo", "remove_item", { item: itemId }, target);
+      } else if (kind === "clear") {
+        await this._hass.callService("todo", "remove_completed_items", {}, target);
+      }
+    } catch (e) { this._toast(e?.message || String(e)); }
+  }
+
   openMealDialog(date, slot) {
     const current = this.data.meals?.[date]?.[slot] || "";
     const label = MEAL_SLOTS.find((s) => s[0] === slot);
@@ -1118,19 +1298,26 @@ class SkylightPanel extends HTMLElement {
 
   renderMeals() {
     this._loadMealEvents();
+    this._loadMealie();
     const [s] = [this.weekStart(this.ui.anchor)];
     const days = [...Array(7)].map((_, i) => addDays(s, i));
     return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
-      <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div></div>
+      <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div>
+      ${this.mealieOn ? `<span class="hint">🍲 Synced with Mealie</span>` : ""}</div>
+      ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
       <div class="meals">
         <div class="mrow head"><div></div>${days.map((d) => `<div class="${sameDay(d, new Date()) ? "today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} <b>${d.getDate()}</b></div>`).join("")}</div>
         ${MEAL_SLOTS.map(([slot, label, icon]) => `<div class="mrow">
           <div class="slot">${icon}<span>${label}</span></div>
           ${days.map((d) => {
-            const t = this.data.meals?.[ymd(d)]?.[slot];
+            const t = this.mealieOn ? "" : this.data.meals?.[ymd(d)]?.[slot];
             const synced = this.syncedMeals(d, slot);
-            const has = t || synced.length;
-            return `<button class="meal ${has ? "" : "emptymeal"} ${sameDay(d, new Date()) ? "today" : ""}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">
+            const mm = this.mealieOn ? this.mealieFor(ymd(d), slot) : [];
+            const has = t || synced.length || mm.length;
+            const img = mm.find((m) => m.recipe?.image)?.recipe.image;
+            return `<button class="meal ${has ? "" : "emptymeal"} ${img ? "withimg" : ""} ${sameDay(d, new Date()) ? "today" : ""}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}" >
+              ${img ? `<img class="mbg" src="${esc(img)}" alt="" onerror="this.parentNode.classList.remove('withimg');this.remove()">` : ""}
+              ${mm.map((m) => `<span class="mname">${esc(this.mealieName(m))}</span>`).join("")}
               ${synced.map((e) => `<span class="synced">${esc(this.mealTitle(e))}</span>`).join("")}${t ? `<span>${esc(t)}</span>` : ""}${has ? "" : "+"}</button>`;
           }).join("")}
         </div>`).join("")}
@@ -1138,16 +1325,16 @@ class SkylightPanel extends HTMLElement {
   }
 
   renderLists() {
-    const lists = this.data.lists || [];
+    const lists = [...(this.data.lists || []), ...this.linkedLists()];
     if (!this.ui.list || !lists.find((l) => l.id === this.ui.list)) this.ui.list = lists[0]?.id || null;
     const cur = lists.find((l) => l.id === this.ui.list);
     return `<div class="lists">
       <aside>${lists.map((l) => `<button class="lname ${l.id === this.ui.list ? "on" : ""}" style="--c:${l.color}" data-action="pick-list" data-list="${l.id}">
-        <span class="dot"></span>${esc(l.name)}<span class="count">${l.items.filter((i) => !i.done).length}</span></button>`).join("")}
+        <span class="dot"></span>${l.linked ? "🔗 " : ""}${esc(l.name)}<span class="count">${l.items.filter((i) => !i.done).length}</span></button>`).join("")}
         <button class="add wide" data-action="new-list">+ New list</button></aside>
       <section>${cur ? `
         <div class="toolbar"><div class="nav"><h1 style="color:${cur.color}">${esc(cur.name)}</h1></div>
-          <div><button data-action="clear-done">Clear completed</button> <button data-action="edit-list" data-list="${cur.id}">Edit</button></div></div>
+          <div><button data-action="clear-done">Clear completed</button> ${cur.linked ? "" : `<button data-action="edit-list" data-list="${cur.id}">Edit</button>`}</div></div>
         <div class="additem"><input id="newitem" data-fresh="1" placeholder="Add an item…" data-enter="add-item"><button class="primary" data-action="add-item">Add</button></div>
         <div class="items">${[...cur.items.filter((i) => !i.done), ...cur.items.filter((i) => i.done)].map((i) => `
           <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}">
@@ -1169,6 +1356,21 @@ class SkylightPanel extends HTMLElement {
       ].filter(Boolean).join(" + ") || "no Immich albums yet"}. Change in Settings → Photos from Immich.</p>` : ""}
       ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph"><img loading="lazy" src="/skylight_photos/${esc(p)}"><button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
         : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app). They play as a screensaver when nobody is using the display. Or connect Immich in Settings.</p></div>`}`;
+  }
+
+  renderMealieSettings() {
+    const m = this.mealie || { entries: [] };
+    const todos = Object.keys(this._hass.states).filter((e) => e.startsWith("todo.")).sort();
+    const linked = new Set(this.data.linked_todos || []);
+    return `<section class="card">
+      <h2>Mealie</h2>
+      ${m.entries.length ? `
+        <p class="hint">✅ Connected. The Meals tab reads and writes your Mealie meal plan: tap a meal slot to search recipes, pick a random one, or add a note.</p>
+        ${m.entries.length > 1 ? `<label class="inline">Mealie server <select data-change="mealie-entry">${m.entries.map((e) => `<option value="${e.entry_id}" ${e.entry_id === m.selected ? "selected" : ""}>${esc(e.title)}</option>`).join("")}</select></label>` : ""}`
+        : `<p class="hint">Not connected. An admin adds it once: Home Assistant → Settings → Devices &amp; Services → Add Integration → <b>Mealie</b> (needs your Mealie URL and an API token from Mealie → User profile → API Tokens). Then reload this page.</p>`}
+      <div class="label">Shopping &amp; to-do lists to show in the Lists tab</div>
+      <div class="checklist">${todos.map((e) => `<label class="check"><input type="checkbox" data-change="linked-todo" data-entity="${e}" ${linked.has(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("") || `<p class="hint">No to-do lists in Home Assistant.</p>`}</div>
+    </section>`;
   }
 
   renderImmichSettings() {
@@ -1232,6 +1434,8 @@ class SkylightPanel extends HTMLElement {
           <b>Mealie:</b> add the Mealie integration in Home Assistant; its meal calendars appear here.</p>
         <div class="checklist">${cals.map((e) => `<label class="check"><input type="checkbox" data-change="meal-cal" data-entity="${e}" ${(this.data.meal_calendars || []).includes(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("") || `<p class="hint">No calendars yet.</p>`}</div>
       </section>
+
+      ${this.renderMealieSettings()}
 
       ${this.renderImmichSettings()}
 
@@ -1454,6 +1658,23 @@ label.check input { width:22px; height:22px; }
 .meal { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
 .meal .synced { background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:8px; padding:2px 6px; font-size:13px; }
 .syncedrow { background:var(--bg); border-radius:12px; padding:8px 12px; margin:6px 0; }
+.meal { position:relative; overflow:hidden; }
+.meal > span { position:relative; z-index:1; }
+.meal .mbg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; }
+.meal.withimg::after { content:""; position:absolute; inset:0; background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.6)); z-index:0; }
+.meal.withimg { color:#fff; justify-content:flex-end; text-shadow:0 1px 4px rgba(0,0,0,.6); }
+.mname { font-weight:800; }
+.mplan { display:flex; align-items:center; gap:12px; background:var(--bg); border-radius:14px; padding:8px; margin:6px 0; }
+.mplan img, .mplan .noimg { width:56px; height:56px; border-radius:10px; object-fit:cover; display:grid; place-items:center; font-size:26px; }
+.mplan .grow { cursor:pointer; }
+.rgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; max-height:300px; overflow-y:auto; margin:8px 0; }
+.rcardmini { display:flex; flex-direction:column; padding:0; overflow:hidden; text-align:left; background:var(--bg); }
+.rcardmini img { width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--line); }
+.rcardmini span { padding:6px 8px; font-weight:700; font-size:13px; }
+details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--muted); }
+.hero { width:calc(100% + 48px); margin:-22px -24px 10px; height:220px; object-fit:cover; border-radius:24px 24px 0 0; }
+.steps li { margin-bottom:8px; line-height:1.4; }
+.ings { max-height:none; }
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#2d2a26; color:#fff; padding:12px 20px; border-radius:14px; z-index:1000; max-width:90vw; }
 @media (max-width: 900px) {
   .app { flex-direction:column-reverse; }

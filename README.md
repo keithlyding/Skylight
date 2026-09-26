@@ -13,8 +13,8 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 | **Calendar** | Day / Week / Month / Schedule views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per person with a progress ring. Tap a chore to check it off and earn stars. Chores repeat daily, on certain weekdays, weekly or once. You can page back and forth by day. |
 | **Rewards** | Star balances with manual +/−, and rewards with progress bars. **Redeem** spends the stars. |
-| **Meals** | A weekly grid for breakfast, lunch, dinner and snack. Meals sync from **Plan to Eat** (via its calendar feed) or **Mealie**, and you can add extra notes by hand. |
-| **Lists** | Groceries, to-dos, or any list you create, each with its own color. |
+| **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, view ingredients and steps, and send ingredients to a shopping list. Other meal apps can be shown read-only through their calendar feed. |
+| **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
 | **Settings** | Add, edit and reorder family members (name, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, and set the weather source, week start, 24-hour clock and screensaver timing. |
 
@@ -41,16 +41,27 @@ Requires Home Assistant **2024.7 or newer**. The automated tests run against 202
 - **Subscribe to a calendar link** (iCal / webcal) from Skylight Settings for school, sports or Plan to Eat. This uses HA's *Remote Calendar* integration (HA 2025.4+), and the calendar is read-only.
 - A calendar assigned to a person uses that person's color. Calendars ticked as **Shared family calendars** use the family color.
 
-## Meal planning
+## Meal planning with Mealie (recommended)
 
-**Plan to Eat**
-1. In Plan to Eat, open the Planner's settings and copy its **iCal / calendar feed link**. (I couldn't confirm this menu's exact name; it's the same link people use to show their meal plan in Google Calendar.)
-2. In Skylight → Settings → Calendars, paste the link under *Subscribe to a calendar link* and name it "Plan to Eat".
-3. In Settings → **Meal plan sync**, tick "Plan to Eat".
+Skylight uses Home Assistant's built-in **Mealie** integration, so the tablet reads and writes your Mealie meal plan.
 
-Each meal is placed in a row using, in order: the calendar name, a word in the meal name ("Dinner: Tacos"), then the time of day (before 10:30 breakfast, before 15:00 lunch, before 17:00 snack, otherwise dinner). All-day items go to dinner. Meals are edited in Plan to Eat, not on the tablet. Remote Calendar refreshes the feed periodically, so changes can take a while to show.
+**One-time setup (admin):**
+1. In Mealie: click your avatar, then **API Tokens**, create a token and copy it.
+2. In Home Assistant: **Settings → Devices & Services → Add Integration → Mealie**. Enter the Mealie URL as *Home Assistant* reaches it; with Docker that's usually `http://<server-ip>:9000`, not `localhost`. Paste the token.
+3. Reload the Skylight page. Settings → **Mealie** should show ✅ Connected.
+4. Optional: in the same section, tick the **Mealie shopping list** (and HA's own Shopping list) to show them in the Lists tab.
 
-**Mealie** (free, self-hosted alternative): add HA's Mealie integration. Its breakfast/lunch/dinner/side calendars appear under Meal plan sync, and the calendar names sort meals automatically.
+**On the tablet:**
+- The **Meals** tab shows the week from Mealie, with recipe photos.
+- Tap a slot to search your recipes and tap one to add it. You can also use 🎲 for a random recipe, add a note ("Leftovers"), or import a recipe from a website.
+- Tap a planned recipe to see its **ingredients and steps**, then tick ingredients and send them to a shopping list.
+- Tap ✕ to remove a meal from the plan.
+
+Rows map to Mealie types: Breakfast, Lunch, Dinner, and **Snack**, which shows Mealie's snack, side, dessert and drink entries. Adding to Snack uses "snack" on Mealie 3.7+ and "side" on older versions.
+
+Recipe images are passed through Home Assistant, so the tablet never needs to reach Mealie directly.
+
+**Other meal apps (Plan to Eat, etc.):** subscribe to the app's calendar (iCal) link in Settings → Calendars, then tick it under **Meal plan sync**. These meals are read-only on the tablet. They're sorted into rows by the calendar name, a word in the meal name ("Dinner: Tacos"), or the time of day.
 
 ## Photos from Immich
 
@@ -91,8 +102,8 @@ You can also place Skylight on any dashboard as a card (`type: custom:skylight-p
 ## Development
 
 ```bash
-pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx
-pytest            # 22 tests: chore rules, integration, Immich, feeds, recurring edits (real HA core)
+pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
+pytest            # 26 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
