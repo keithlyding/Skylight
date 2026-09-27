@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.6.0";
+const PANEL_VERSION = "1.6.1";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -1087,14 +1087,14 @@ class SkylightPanel extends HTMLElement {
     if (!narrow) tg.style.height = `${Math.max(360, window.innerHeight - tg.getBoundingClientRect().top - 26)}px`;
     else tg.style.height = `${Math.max(420, window.innerHeight * 0.75)}px`;
     const scroll = tg.querySelector(".tg-scroll");
-    const [a, b] = this._tgWindow || [6, 21];
+    const [a, b] = this._tgWindow || [7, 20];
     this._tgH = Math.max(24, scroll.clientHeight / (b - a));
     tg.style.setProperty("--h", `${this._tgH}px`);
   }
   // Default position: the day window at the top; late at night, show the current time instead.
   _scrollGridHome(grid = this.$app?.querySelector(".tg-scroll")) {
     if (!grid) return;
-    const H = this._tgH || 40, now = new Date(), [a, b] = this._tgWindow || [6, 21];
+    const H = this._tgH || 40, now = new Date(), [a, b] = this._tgWindow || [7, 20];
     const hr = now.getHours() + now.getMinutes() / 60;
     const showsToday = !!grid.querySelector(".tg-now");
     grid.scrollTop = showsToday && (hr < a || hr > b) ? Math.max(0, hr * H - grid.clientHeight / 2) : a * H;
@@ -1260,7 +1260,7 @@ class SkylightPanel extends HTMLElement {
 
   // Google/Outlook-style time grid: all-day row on top, hourly blocks below.
   renderTimeGrid(days, { labels } = {}) {
-    const DAY_START = 6, DAY_END = 21; // window that fits on screen without scrolling
+    const DAY_START = 7, DAY_END = 20; // window that fits on screen without scrolling (7am-8pm)
     const at = (hours) => `calc(var(--h) * ${hours.toFixed(3)})`;
     const isAllDay = (e, d) => e.allDay || (e.start <= startOfDay(d) && e.end >= addDays(startOfDay(d), 1));
     const now = new Date();
