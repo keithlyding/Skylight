@@ -25,3 +25,13 @@ def test_panel_version_matches_manifest():
     import json
     manifest = json.loads((pathlib.Path(__file__).parents[1] / "custom_components/skylight/manifest.json").read_text())
     assert f'const PANEL_VERSION = "{manifest["version"]}"' in JS
+
+
+def test_emoji_data_is_valid_module():
+    import json
+    data_js = (pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/emoji-data.js").read_text()
+    body = data_js.split("export default ", 1)[1].rstrip().rstrip(";")
+    rows = json.loads(body)
+    assert len(rows) > 1800
+    words = {e: w for e, w, _ in rows}
+    assert "bear" in words["🐻"] and "mow" in words["🚜"] and "trash" in words["🗑️"]

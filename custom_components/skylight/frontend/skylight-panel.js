@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.13.2";
+const PANEL_VERSION = "1.14.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -251,7 +251,10 @@ class SkylightPanel extends HTMLElement {
     this.$saver = this.shadowRoot.getElementById("saver");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
-    this.shadowRoot.addEventListener("input", (e) => { if (e.target.id === "ev-loc") this._locSearch(e.target.value); });
+    this.shadowRoot.addEventListener("input", (e) => {
+      if (e.target.id === "ev-loc") this._locSearch(e.target.value);
+      if (e.target.dataset.emojiSearch) this._emojiSearch(e.target);
+    });
     this.shadowRoot.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.target.dataset.enter) { e.preventDefault(); this._action(e.target.dataset.enter, e.target); }
     });
@@ -1149,7 +1152,8 @@ class SkylightPanel extends HTMLElement {
         <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
         <div class="label">Avatar</div>
         <div class="tones">Skin tone: ${SKIN_TONES.map(([t, name]) => `<button class="tone ${t === dlg.tone ? "sel" : ""}" title="${name}" data-action="pick-tone" data-tone="${t}">👋${t}</button>`).join("")}</div>
-        <div class="swatches">${AVATARS.map((a0) => { const a = withTone(a0, dlg.tone); return `<button class="emoji ${a === dlg.avatar ? "sel" : ""}" data-action="pick-avatar" data-avatar="${a}">${a}</button>`; }).join("")}</div>
+        <input class="emojisearch" id="avatar-q" data-fresh="1" autocomplete="off" placeholder="🔍 Search all emoji (bear, guitar, dad…)" data-emoji-search="avatar">
+        <div class="swatches" id="avatar-grid">${this._emojiButtons(AVATARS.map((a0) => withTone(a0, dlg.tone)), "avatar")}</div>
         <div class="label">Calendars</div>
         <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
         <div class="actions">
@@ -1175,11 +1179,61 @@ class SkylightPanel extends HTMLElement {
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
   }
 
+  // ---------- emoji search ----------
+  _emojiButtons(list, kind) {
+    const dlg = this.ui.dialog || {};
+    const current = kind === "avatar" ? dlg.avatar : dlg.icon;
+    const attr = kind === "avatar" ? 'data-action="pick-avatar" data-avatar' : 'data-action="icon-pick" data-icon';
+    return list.map((e) => `<button type="button" class="emoji ${e === current ? "sel" : ""}" ${attr}="${e}">${e}</button>`).join("");
+  }
+  async _loadEmojiData() {
+    if (!this._emojiData) {
+      this._emojiData = import(new URL(`emoji-data.js?v=${PANEL_VERSION}`, import.meta.url).href).then((m) => {
+        // Every emoji that accepts a skin tone becomes toneable in the avatar picker.
+        for (const [e, , tone] of m.default) if (tone) TONEABLE.add(e.codePointAt(0));
+        return m.default;
+      });
+    }
+    return this._emojiData;
+  }
+  // Every typed word must start a word in the emoji's keywords ("bea" finds bear; "lawn mow" finds 🚜).
+  async _emojiSearch(input) {
+    const kind = input.dataset.emojiSearch;
+    const grid = this.shadowRoot.getElementById(kind === "avatar" ? "avatar-grid" : "icon-grid");
+    const dlg = this.ui.dialog;
+    if (!grid || !dlg) return;
+    const q = input.value.trim().toLowerCase();
+    const base = kind === "avatar" ? AVATARS : dlg.type === "reward" ? REWARD_ICONS : CHORE_ICONS;
+    const tone = (e) => (kind === "avatar" ? withTone(e, dlg.tone) : e);
+    if (!q) { grid.innerHTML = this._emojiButtons(base.map(tone), kind); return; }
+    let data;
+    try { data = await this._loadEmojiData(); } catch (e) { grid.innerHTML = `<p class="hint">Emoji search unavailable (${esc(e.message)})</p>`; return; }
+    if (input.value.trim().toLowerCase() !== q) return; // user kept typing
+    const terms = q.split(/\s+/);
+    const scored = [];
+    for (const [e, words] of data) {
+      const w = " " + words + " ";
+      if (!terms.every((t) => w.includes(" " + t))) continue;
+      // Whole-word matches ("bear") rank above word-start matches ("beard").
+      scored.push([e, terms.filter((t) => w.includes(" " + t + " ")).length]);
+    }
+    // Curated picks first within each level, then everything else in Unicode order.
+    const key = (e) => e.replace(/\uFE0F/g, "");
+    const baseKeys = new Set(base.map(key));
+    const ranked = scored
+      .map(([e, exact], i) => ({ e, i, exact, curated: baseKeys.has(key(e)) }))
+      .sort((a, b) => b.exact - a.exact || b.curated - a.curated || a.i - b.i)
+      .map((x) => x.e).slice(0, 120);
+    grid.innerHTML = ranked.length ? this._emojiButtons(ranked.map(tone), kind) : `<p class="hint">No emoji match “${esc(q)}”.</p>`;
+  }
+
   // Big icon button + expandable grid of choices (used by chores and rewards).
   iconPicker(dlg, icons) {
     return `<div class="iconpick">
       <button type="button" class="iconbtn" data-action="icon-open" title="Choose an icon">${dlg.icon}<small>▾</small></button>
-      ${dlg.iconOpen ? `<div class="icongrid">${icons.map((i) => `<button type="button" class="emoji ${i === dlg.icon ? "sel" : ""}" data-action="icon-pick" data-icon="${i}">${i}</button>`).join("")}</div>` : ""}
+      ${dlg.iconOpen ? `<div class="icongrid">
+        <input class="emojisearch" id="icon-q" data-fresh="1" autocomplete="off" placeholder="🔍 Search (mow, trash, dishes…)" data-emoji-search="icon">
+        <div class="iconitems" id="icon-grid">${this._emojiButtons(icons, "icon")}</div></div>` : ""}
     </div>`;
   }
 
@@ -2245,6 +2299,10 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .sugg small { color:var(--muted); font-size:12px; }
 .sugg .hint { padding:8px 12px; }
 .sugg .attrib { font-size:10px; color:var(--muted); padding:4px 12px; text-align:right; }
+.emojisearch { margin:0 0 8px; }
+.iconitems { display:flex; flex-wrap:wrap; gap:4px; }
+.icongrid .emojisearch { width:100%; }
+#avatar-grid { max-height:190px; overflow-y:auto; }
 .iconpick { position:relative; }
 .iconbtn { font-size:30px; line-height:1; padding:6px 10px; background:var(--bg); box-shadow:none; border:1px solid var(--line); display:flex; align-items:center; gap:4px; }
 .iconbtn small { font-size:12px; color:var(--muted); }
