@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.7.3";
+const PANEL_VERSION = "1.8.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -263,6 +263,27 @@ class SkylightPanel extends HTMLElement {
   calendarOwner(entity) {
     return this.members.find((m) => (m.calendars || []).includes(entity));
   }
+  calendarOwners(entity) {
+    return this.members.filter((m) => (m.calendars || []).includes(entity));
+  }
+  // Apply a list of owners to an event: colors, avatars and Skylight-style diagonal stripes.
+  _applyOwners(ev, owners) {
+    const fam = this.settings.family_color || "#ff9f43";
+    ev.members = owners.map((m) => m.id);
+    ev.member = owners[0]?.id || null;
+    ev.color = owners[0]?.color || fam;
+    ev.avatar = owners.length ? owners.map((m) => m.avatar).join("") : "🏠";
+    ev.stripes = "";
+    if (owners.length > 1) {
+      const W = 9; // px per stripe
+      const stops = (tint) => owners.map((m, i) => {
+        const c = tint ? `color-mix(in srgb, ${m.color} 32%, var(--card))` : m.color;
+        return `${c} ${i * W}px ${(i + 1) * W}px`;
+      }).join(", ");
+      ev.stripes = `--stripes-soft:repeating-linear-gradient(135deg, ${stops(true)});--stripes-solid:repeating-linear-gradient(135deg, ${stops(false)});--bar:linear-gradient(${owners.map((m) => m.color).join(", ")});`;
+    }
+    return ev;
+  }
   allCalendars() {
     return Object.keys(this._hass.states).filter((e) => e.startsWith("calendar.")).sort();
   }
@@ -325,8 +346,23 @@ class SkylightPanel extends HTMLElement {
       } catch (e) { console.warn("Skylight: failed to load", entity, e); return []; }
     }));
     if (key !== this._eventsKey) return; // a newer request superseded this one
-    this.events = results.flat().sort((a, b) => a.start - b.start);
+    this.events = this._mergeShared(results.flat()).sort((a, b) => a.start - b.start);
     if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render();
+  }
+
+  // The same event on several people's calendars (e.g. a shared invite) shows once with everyone's colors.
+  _mergeShared(events) {
+    const byKey = new Map();
+    const out = [];
+    for (const e of events) {
+      const key = e.uid ? `${e.uid}|${e.recurrence_id || ""}|${+e.start}` : null;
+      const first = key && byKey.get(key);
+      if (!first) { if (key) byKey.set(key, e); out.push(e); continue; }
+      if (first.raw !== e.raw) { out.push(e); continue; } // different title: keep both
+      const ids = [...new Set([...first.members, ...e.members])];
+      this._applyOwners(first, ids.map((id) => this.member(id)).filter(Boolean));
+    }
+    return out;
   }
 
   _normalizeEvent(ev, entity) {
@@ -335,14 +371,11 @@ class SkylightPanel extends HTMLElement {
     const end = allDay ? parseYmd(ev.end.date) : new Date(ev.end.dateTime);
     const raw = ev.summary || "(No title)";
     const byPrefix = this.prefixOwner(raw);
-    const owner = byPrefix?.member || this.calendarOwner(entity);
-    return {
+    const owners = byPrefix ? byPrefix.members : this.calendarOwners(entity);
+    return this._applyOwners({
       entity, allDay, start, end, raw, summary: byPrefix ? byPrefix.rest : raw, description: ev.description || "",
       location: ev.location || "", uid: ev.uid, recurrence_id: ev.recurrence_id, rrule: ev.rrule,
-      member: owner?.id || null,
-      color: owner?.color || this.settings.family_color || "#ff9f43",
-      avatar: owner?.avatar || "🏠",
-    };
+    }, owners);
   }
 
   eventsOn(day) {
@@ -352,26 +385,46 @@ class SkylightPanel extends HTMLElement {
   }
   visibleEvents() {
     if (!this.ui.filter) return this.events;
-    return this.events.filter((e) => e.member === this.ui.filter);
+    return this.events.filter((e) => (e.members || []).includes(this.ui.filter));
   }
 
   // "Z- Soccer" -> {member: Sam, rest: "Soccer"} when Sam has prefix "Z".
   // A prefix matches only when followed by a separator (-, :, –, space), so "Z" never matches "Zoo trip".
-  prefixOwner(title) {
-    const t = title.trim(), lower = t.toLowerCase();
+  // Longest member prefix at position i of the title, or null.
+  _prefixAt(t, i) {
+    const lower = t.toLowerCase();
     let best = null;
     for (const m of this.members) {
       for (let p of m.prefixes || []) {
         p = p.trim().toLowerCase();
-        if (!p || !lower.startsWith(p) || (best && p.length <= best.len)) continue;
-        const next = t.charAt(p.length);
-        const endsWithSep = /[-:–—]$/.test(p);
-        if (!endsWithSep && next && !/[\s\-:–—]/.test(next)) continue;
-        const rest = t.slice(p.length).replace(/^[\s\-:–—]+/, "").trim();
-        best = { member: m, rest: rest || t, len: p.length };
+        if (!p || !lower.startsWith(p, i) || (best && p.length <= best.len)) continue;
+        const next = t.charAt(i + p.length);
+        // must be followed by a separator, a joiner (& / + ,), or the end
+        if (!/[-:–—]$/.test(p) && next && !/[\s\-:–—&\/+,]/.test(next)) continue;
+        best = { member: m, len: p.length };
       }
     }
     return best;
+  }
+  // "Z- Soccer" -> Sam; "Z&K- Soccer" / "Z/K: Soccer" / "Z + K - Soccer" -> Sam and Leo.
+  // A prefix matches only when followed by a separator, so "Z" never matches "Zoo trip".
+  prefixOwner(title) {
+    const t = title.trim();
+    const members = [];
+    let i = 0;
+    for (;;) {
+      const hit = this._prefixAt(t, i);
+      if (!hit) break;
+      if (!members.includes(hit.member)) members.push(hit.member);
+      i += hit.len;
+      const joiner = /^\s*[&\/+,]\s*/.exec(t.slice(i));
+      if (!joiner) break;
+      i += joiner[0].length;
+    }
+    if (!members.length) return null;
+    // Title must continue with a separator/space after the last prefix (or the prefix ended with one).
+    const rest = t.slice(i).replace(/^[\s\-:–—]+/, "").trim();
+    return { member: members[0], members, rest: rest || t };
   }
 
   async _loadForecast() {
@@ -1325,7 +1378,7 @@ class SkylightPanel extends HTMLElement {
     const time = ev.allDay ? "" : `<span class="t">${this.fmtTime(ev.start)}</span>`;
     const multi = ev.allDay && (ev.end - ev.start) > 86400000;
     const cont = day && ev.start < startOfDay(day);
-    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""}" style="--c:${ev.color}" data-action="open-event" data-idx="${this.evIndex(ev)}">
+    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""}" style="--c:${ev.color};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
       ${compact ? "" : `<span class="av">${ev.avatar}</span>`}<span class="s">${cont ? "↳ " : ""}${esc(ev.summary)}</span>${multi || compact ? "" : time}${compact && !ev.allDay ? `<span class="t">${this.fmtTime(ev.start)}</span>` : ""}</button>`;
   }
   dayHead(d) {
@@ -1415,7 +1468,7 @@ class SkylightPanel extends HTMLElement {
         const startH = (s - ds) / 3600000, dur = (en - s) / 3600000;
         const w = 100 / lanes;
         const short = dur < 0.8;
-        return `<button class="tg-ev ${short ? "short" : dur >= 1.5 ? "tall" : ""}" style="--c:${e.color};top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
+        return `<button class="tg-ev ${short ? "short" : dur >= 1.5 ? "tall" : ""} ${e.stripes ? "multi" : ""}" style="--c:${e.color};${e.stripes}top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
           <b>${esc(e.summary)}</b><span>${e.avatar} ${this.fmtTime(e.start)}${short ? "" : ` – ${this.fmtTime(e.end)}`}</span>${dur >= 1.5 && e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
       }).join("");
       const slots = [...Array(24)].map((_, hr) => `<div class="tg-slot" style="top:${at(hr)};height:var(--h)" data-action="new-event" data-date="${ymd(d)}" data-hour="${hr}"></div>`).join("");
@@ -1441,7 +1494,7 @@ class SkylightPanel extends HTMLElement {
     return `<div class="schedule">${days.map((d) => `
       <div class="sday">${this.dayHead(d)}
         <div class="slist">${this.eventsOn(d).map((e) => `
-          <button class="srow" style="--c:${e.color}" data-action="open-event" data-idx="${this.evIndex(e)}">
+          <button class="srow ${e.stripes ? "multi" : ""}" style="--c:${e.color};${e.stripes}" data-action="open-event" data-idx="${this.evIndex(e)}">
             <span class="st">${e.allDay ? "All day" : `${this.fmtTime(e.start)}<br><small>${this.fmtTime(e.end)}</small>`}</span>
             <span class="bar"></span><span class="av">${e.avatar}</span>
             <span class="sm"><b>${esc(e.summary)}</b>${e.location ? `<small>📍 ${esc(e.location)}</small>` : ""}</span>
@@ -1865,6 +1918,12 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .srow { display:flex; align-items:center; gap:12px; background:none; box-shadow:none; text-align:left; padding:8px 4px; }
 .srow .st { width:80px; font-weight:700; font-size:14px; }
 .srow .bar { width:5px; align-self:stretch; background:var(--c); border-radius:4px; }
+/* Events shared by several people: diagonal stripes in each person's color (like Skylight) */
+.ev.multi, .tg-ev.multi { background:var(--stripes-soft); }
+.ev.multi.allday { background:var(--stripes-solid); text-shadow:0 1px 2px rgba(0,0,0,.55); }
+.ev.multi .s, .tg-ev.multi b { text-shadow:0 0 3px var(--card), 0 0 6px var(--card); }
+.ev.multi.allday .s { text-shadow:0 1px 2px rgba(0,0,0,.6); }
+.srow.multi .bar { background:var(--bar); }
 .srow .sm { display:flex; flex-direction:column; }
 /* chores */
 .chores { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; align-items:start; }
