@@ -219,3 +219,14 @@ async def test_calendar_accounts(hass, setup, hass_ws_client):
     res = await _cmd(ws, {"type": "skylight/calendars"})
     cal = next(c for c in res["result"] if c["entity_id"] == "calendar.birthdays")
     assert cal["account"] == "Birthdays" and cal["integration"] == "local_calendar"
+
+
+async def test_every_two_weeks_event(hass, setup, hass_ws_client, hass_client):
+    ws, http = await hass_ws_client(hass), await hass_client()
+    await _cmd(ws, {"type": "skylight/calendar/create", "name": "Family"})
+    await hass.async_block_till_done()
+    res = await _cmd(ws, {"type": "calendar/event/create", "entity_id": "calendar.family", "event": {
+        "summary": "Recycling", "dtstart": "2026-10-02", "dtend": "2026-10-03", "rrule": "FREQ=WEEKLY;INTERVAL=2"}})
+    assert res["success"], res
+    evs = await (await http.get("/api/calendars/calendar.family?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z")).json()
+    assert [e["start"]["date"] for e in evs] == ["2026-10-02", "2026-10-16", "2026-10-30"]

@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.12.1";
+const PANEL_VERSION = "1.13.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -131,8 +131,17 @@ const choreMatches = (c, day) => {
   return comps.filter((x) => x === ymd(day));
 };
 const choreDone = (c, day) => choreMatches(c, day).length > 0;
+// Every-N-weeks for "days" chores (mirror of chores.py _week_ok): whole Mon-Sun weeks since the start date.
+const mondayOf = (d) => addDays(startOfDay(d), -pyWeekday(d));
+const choreWeekOk = (c, day) => {
+  const every = Number(c.every_weeks) || 1;
+  if (every <= 1 && !c.start) return true;
+  const anchor = c.start ? parseYmd(c.start) : day;
+  const weeks = Math.round((mondayOf(day) - mondayOf(anchor)) / (7 * 86400000));
+  return weeks >= 0 && weeks % every === 0;
+};
 const choreDue = (c, day) => {
-  if (c.repeat === "days") return (c.days || []).includes(pyWeekday(day));
+  if (c.repeat === "days") return (c.days || []).includes(pyWeekday(day)) && choreWeekOk(c, day);
   if (c.repeat === "once") { const comps = c.completions || []; return !comps.length || comps.includes(ymd(day)); }
   return true;
 };
@@ -841,7 +850,8 @@ class SkylightPanel extends HTMLElement {
         </div>
         ${ev ? "" : `<label>Repeats<select id="ev-repeat">
           <option value="">Never</option><option value="FREQ=DAILY">Every day</option>
-          <option value="FREQ=WEEKLY">Every week</option><option value="FREQ=MONTHLY">Every month</option>
+          <option value="FREQ=WEEKLY">Every week</option><option value="FREQ=WEEKLY;INTERVAL=2">Every 2 weeks</option>
+          <option value="FREQ=MONTHLY">Every month</option>
           <option value="FREQ=YEARLY">Every year</option></select></label>`}
         ${this._isRecurring(ev) ? `<p class="hint">🔁 Repeating event (${esc(this._rruleText(ev.rrule))}). When you save or delete, you'll choose which events to change.</p>` : ""}
         <label class="locfield">Location<input id="ev-loc" value="${esc(ev?.location)}" autocomplete="off" placeholder="Type a place or business name">
@@ -928,7 +938,10 @@ class SkylightPanel extends HTMLElement {
   _isRecurring(ev) { return !!(ev && (ev.rrule || ev.recurrence_id)); }
   _rruleText(rr) {
     const f = /FREQ=(\w+)/.exec(rr || "")?.[1];
-    return { DAILY: "every day", WEEKLY: "every week", MONTHLY: "every month", YEARLY: "every year" }[f] || "custom";
+    const n = Number(/INTERVAL=(\d+)/.exec(rr || "")?.[1] || 1);
+    const unit = { DAILY: "day", WEEKLY: "week", MONTHLY: "month", YEARLY: "year" }[f];
+    if (!unit) return "custom";
+    return n > 1 ? `every ${n} ${unit}s` : `every ${unit}`;
   }
 
   _readEventForm() {
@@ -1187,7 +1200,14 @@ class SkylightPanel extends HTMLElement {
           <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days</option>
           <option value="weekly" ${dlg.repeat === "weekly" ? "selected" : ""}>Once a week (any day)</option>
           <option value="once" ${dlg.repeat === "once" ? "selected" : ""}>Just once</option></select></label>
-        <div class="daypick" ${dlg.repeat === "days" ? "" : "hidden"}>${WEEKDAYS.map((w, i) => `<label class="daychip"><input type="checkbox" class="c-day" id="cd-${i}" value="${i}" ${(c?.days || [0, 1, 2, 3, 4]).includes(i) ? "checked" : ""}><span>${w}</span></label>`).join("")}</div>
+        <div class="dayopts" ${dlg.repeat === "days" ? "" : "hidden"}>
+          <div class="daypick">${WEEKDAYS.map((w, i) => `<label class="daychip"><input type="checkbox" class="c-day" id="cd-${i}" value="${i}" ${(c?.days || [0, 1, 2, 3, 4]).includes(i) ? "checked" : ""}><span>${w}</span></label>`).join("")}</div>
+          <div class="row">
+            <label>Every<select id="c-every">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === (Number(c?.every_weeks) || 1) ? "selected" : ""}>${n === 1 ? "week" : `${n} weeks`}</option>`).join("")}</select></label>
+            <label>Starting<input type="date" id="c-start" value="${c?.start || ymd(new Date())}"></label>
+          </div>
+          <p class="hint">For every other week, pick "2 weeks" and a start date in a week the chore happens (e.g. this Friday's recycling week).</p>
+        </div>
         <div class="actions">
           ${c ? `<button class="danger" data-action="delete-chore">Delete</button>` : ""}
           <span class="spacer"></span>
@@ -1198,7 +1218,7 @@ class SkylightPanel extends HTMLElement {
     this._openDialog(dlg);
   }
   _syncChoreDialog() {
-    const dp = this.shadowRoot.querySelector(".daypick");
+    const dp = this.shadowRoot.querySelector(".dayopts");
     if (dp) dp.hidden = this.ui.dialog.repeat !== "days";
   }
   async saveChore() {
@@ -1211,6 +1231,8 @@ class SkylightPanel extends HTMLElement {
       title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value,
       stars: Math.max(0, Number($("c-stars").value) || 0), repeat: $("c-repeat").value,
       days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
+      every_weeks: Number($("c-every").value) || 1,
+      start: $("c-start").value || ymd(new Date()),
     };
     const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
     await this._set("chores", chores); this.closeDialog();
