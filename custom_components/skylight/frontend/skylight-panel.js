@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.20.0";
+const PANEL_VERSION = "1.21.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -725,6 +725,18 @@ class SkylightPanel extends HTMLElement {
         await this._set("settings", { weather_sensors: [...set] }); break;
       }
       case "wx-day": this.ui.wxOpen = this.ui.wxOpen === d.day ? null : d.day; this.render(); break;
+      case "rp": {
+        const r = this.ui.dialog.rep, f = d.field;
+        r[f] = f === "interval" || f === "count" ? Math.max(1, Number(el.value) || 1) : el.value;
+        if (f === "end" && r.end === "until" && !r.until) r.until = ymd(addDays(new Date(), 90));
+        this.renderDialog(); break;
+      }
+      case "rp-day": {
+        const days = this.ui.dialog.rep.days, i = Number(d.day);
+        el.checked ? days.add(i) : days.delete(i);
+        if (!days.size) days.add(i); // keep at least one day
+        this.renderDialog(); break;
+      }
       case "who": {
         const w = this.ui.dialog.who;
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
@@ -1013,6 +1025,7 @@ class SkylightPanel extends HTMLElement {
     const allDayNow = () => this.shadowRoot.getElementById("ev-allday")?.checked ?? !!ev?.allDay;
     const dlg = {
       type: "event", event: ev,
+      rep: { freq: "", interval: 1, days: new Set([parseYmd(dateStr).getDay()]), end: "never", until: "", count: 10 },
       who: new Set(ev ? (ev.members || []) : this.ui.filter && this.targetCalendar(this.member(this.ui.filter)) ? [this.ui.filter] : []),
       html: () => `
         <h2>${ev ? "Edit event" : "New event"}</h2>
@@ -1036,11 +1049,7 @@ class SkylightPanel extends HTMLElement {
           <label>Ends<input type="date" id="ev-enddate" value="${endDate}"></label>
           <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-end" value="${endT}"></label>
         </div>
-        ${ev ? "" : `<label>Repeats<select id="ev-repeat">
-          <option value="">Never</option><option value="FREQ=DAILY">Every day</option>
-          <option value="FREQ=WEEKLY">Every week</option><option value="FREQ=WEEKLY;INTERVAL=2">Every 2 weeks</option>
-          <option value="FREQ=MONTHLY">Every month</option>
-          <option value="FREQ=YEARLY">Every year</option></select></label>`}
+        ${ev ? "" : this.renderRepeatBuilder(dlg)}
         ${this._isRecurring(ev) ? `<p class="hint">🔁 Repeating event (${esc(this._rruleText(ev.rrule))}). When you save or delete, you'll choose which events to change.</p>` : ""}
         <label class="locfield">Location<input id="ev-loc" value="${esc(ev?.location)}" autocomplete="off" placeholder="Type a place or business name">
           <div id="loc-sugg" class="sugg" hidden></div></label>
@@ -1128,12 +1137,65 @@ class SkylightPanel extends HTMLElement {
   }
 
   _isRecurring(ev) { return !!(ev && (ev.rrule || ev.recurrence_id)); }
+  // Plain-English description of an RRULE, e.g. "every 2 weeks on Tue, Thu, until Dec 18".
   _rruleText(rr) {
-    const f = /FREQ=(\w+)/.exec(rr || "")?.[1];
-    const n = Number(/INTERVAL=(\d+)/.exec(rr || "")?.[1] || 1);
+    const get = (k) => new RegExp(`${k}=([^;]+)`).exec(rr || "")?.[1];
+    const f = get("FREQ"), n = Number(get("INTERVAL") || 1);
     const unit = { DAILY: "day", WEEKLY: "week", MONTHLY: "month", YEARLY: "year" }[f];
     if (!unit) return "custom";
-    return n > 1 ? `every ${n} ${unit}s` : `every ${unit}`;
+    let text = n > 1 ? `every ${n} ${unit}s` : `every ${unit}`;
+    const byday = get("BYDAY");
+    if (byday) {
+      const names = { SU: "Sun", MO: "Mon", TU: "Tue", WE: "Wed", TH: "Thu", FR: "Fri", SA: "Sat" };
+      text += ` on ${byday.split(",").map((d) => names[d] || d).join(", ")}`;
+    }
+    const until = get("UNTIL"), count = get("COUNT");
+    if (until) {
+      const m = /^(\d{4})(\d{2})(\d{2})/.exec(until);
+      if (m) text += `, until ${new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+    } else if (count) text += `, ${count} times`;
+    return text;
+  }
+
+  // ---------- repeat builder (new events) ----------
+  renderRepeatBuilder(dlg) {
+    const r = dlg.rep;
+    const DAYS = [["SU", "Sun"], ["MO", "Mon"], ["TU", "Tue"], ["WE", "Wed"], ["TH", "Thu"], ["FR", "Fri"], ["SA", "Sat"]];
+    const unit = { DAILY: "day", WEEKLY: "week", MONTHLY: "month", YEARLY: "year" }[r.freq];
+    const rr = this._buildRrule(r);
+    return `<div class="repeat">
+      <div class="row">
+        <label>Repeats<select id="rp-freq" data-change="rp" data-field="freq">
+          ${[["", "Never"], ["DAILY", "Daily"], ["WEEKLY", "Weekly"], ["MONTHLY", "Monthly"], ["YEARLY", "Yearly"]].map(([v, l]) => `<option value="${v}" ${r.freq === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        ${r.freq ? `<label>Every<select id="rp-int" data-change="rp" data-field="interval">
+          ${[1, 2, 3, 4].map((k) => `<option value="${k}" ${r.interval === k ? "selected" : ""}>${k === 1 ? unit : `${k} ${unit}s`}</option>`).join("")}</select></label>` : ""}
+      </div>
+      ${r.freq === "WEEKLY" ? `<div class="daypick rpdays">${DAYS.map(([code, name], i) => `<label class="daychip"><input type="checkbox" data-change="rp-day" data-day="${i}" ${r.days.has(i) ? "checked" : ""}><span>${name}</span></label>`).join("")}</div>` : ""}
+      ${r.freq ? `<div class="row">
+        <label>Ends<select id="rp-end" data-change="rp" data-field="end">
+          <option value="never" ${r.end === "never" ? "selected" : ""}>Never</option>
+          <option value="until" ${r.end === "until" ? "selected" : ""}>On a date</option>
+          <option value="count" ${r.end === "count" ? "selected" : ""}>After a number of times</option></select></label>
+        ${r.end === "until" ? `<label>Last date<input type="date" id="rp-until" data-change="rp" data-field="until" value="${r.until}"></label>` : ""}
+        ${r.end === "count" ? `<label>Times<input type="number" id="rp-count" min="1" max="365" data-change="rp" data-field="count" value="${r.count}"></label>` : ""}
+      </div>
+      <p class="hint rpsum">🔁 ${esc(this._rruleText(rr).replace(/^./, (c) => c.toUpperCase()))}</p>` : ""}
+    </div>`;
+  }
+  // RRULE from the builder state (RFC 5545), e.g. FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;UNTIL=20261218
+  _buildRrule(r, allDay = true) {
+    if (!r.freq) return "";
+    const parts = [`FREQ=${r.freq}`];
+    if (r.interval > 1) parts.push(`INTERVAL=${r.interval}`);
+    if (r.freq === "WEEKLY" && r.days.size) {
+      parts.push(`BYDAY=${[...r.days].sort().map((i) => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][i]).join(",")}`);
+    }
+    if (r.end === "until" && r.until) {
+      if (allDay) parts.push(`UNTIL=${r.until.replace(/-/g, "")}`);
+      // Timed events: end of that local day. (Home Assistant rejects the UTC "...Z" form here.)
+      else parts.push(`UNTIL=${r.until.replace(/-/g, "")}T235959`);
+    } else if (r.end === "count" && r.count > 0) parts.push(`COUNT=${r.count}`);
+    return parts.join(";");
   }
 
   _readEventForm() {
@@ -1155,7 +1217,18 @@ class SkylightPanel extends HTMLElement {
       end = parseYmd(endDate); end.setHours(eh, em);
       if (end <= start) end = new Date(start.getTime() + 3600000);
     }
-    return { entity: $("ev-cal").value, fields, allDay, start, end, rrule: $("ev-repeat")?.value || "" };
+    const r = this.ui.dialog?.rep;
+    let rrule = "";
+    if (r && r.freq && !this.ui.dialog.event) {
+      rrule = this._buildRrule(r, allDay);
+      // Weekly on chosen days: start on the first chosen day so the first event matches the pattern.
+      if (r.freq === "WEEKLY" && r.days.size && !r.days.has(start.getDay())) {
+        let shift = 1;
+        while (!r.days.has((start.getDay() + shift) % 7)) shift++;
+        start = addDays(start, shift); end = addDays(end, shift);
+      }
+    }
+    return { entity: $("ev-cal").value, fields, allDay, start, end, rrule };
   }
 
   // Build a calendar/event payload, optionally shifted by whole days.
@@ -2893,6 +2966,9 @@ label.check input { width:22px; height:22px; }
 .content.swipe-l { animation:swl .22s ease-out; }
 .content.swipe-r { animation:swr .22s ease-out; }
 .content { touch-action:pan-y; }
+.repeat { background:var(--bg); border-radius:14px; padding:4px 12px 8px; margin:8px 0; }
+.rpdays { margin:6px 0; }
+.rpsum { margin:6px 0 2px; font-weight:700; color:var(--ink); }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }

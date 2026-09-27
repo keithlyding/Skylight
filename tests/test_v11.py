@@ -230,3 +230,28 @@ async def test_every_two_weeks_event(hass, setup, hass_ws_client, hass_client):
     assert res["success"], res
     evs = await (await http.get("/api/calendars/calendar.family?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z")).json()
     assert [e["start"]["date"] for e in evs] == ["2026-10-02", "2026-10-16", "2026-10-30"]
+
+
+@pytest.mark.parametrize(
+    ("event", "expected"),
+    [
+        # Tue+Thu every 2 weeks, all-day, until Oct 29 (Sep 29 is a Tuesday)
+        ({"dtstart": "2026-09-29", "dtend": "2026-09-30", "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;UNTIL=20261029"},
+         ["2026-09-29", "2026-10-01", "2026-10-13", "2026-10-15", "2026-10-27", "2026-10-29"]),
+        # Mon/Wed/Fri every 3 weeks, timed, 5 times
+        ({"dtstart": "2026-09-28T16:00:00-04:00", "dtend": "2026-09-28T17:00:00-04:00", "rrule": "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,WE,FR;COUNT=5"},
+         ["2026-09-28", "2026-09-30", "2026-10-02", "2026-10-19", "2026-10-21"]),
+        # Weekly on Sat, timed, UNTIL as end of that local day (the form the panel sends)
+        ({"dtstart": "2026-10-03T09:00:00-04:00", "dtend": "2026-10-03T10:00:00-04:00", "rrule": "FREQ=WEEKLY;BYDAY=SA;UNTIL=20261017T235959"},
+         ["2026-10-03", "2026-10-10", "2026-10-17"]),
+    ],
+)
+async def test_repeat_builder_rules(hass, setup, hass_ws_client, hass_client, event, expected):
+    ws, http = await hass_ws_client(hass), await hass_client()
+    await _cmd(ws, {"type": "skylight/calendar/create", "name": "Family"})
+    await hass.async_block_till_done()
+    res = await _cmd(ws, {"type": "calendar/event/create", "entity_id": "calendar.family", "event": {"summary": "Lesson", **event}})
+    assert res["success"], res
+    evs = await (await http.get("/api/calendars/calendar.family?start=2026-09-20T00:00:00Z&end=2026-12-31T00:00:00Z")).json()
+    got = [(e["start"].get("date") or e["start"]["dateTime"])[:10] for e in evs]
+    assert got == expected
