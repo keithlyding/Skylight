@@ -80,6 +80,8 @@ Recipe images are passed through Home Assistant, so the tablet never needs to re
 1. In Immich: **Account Settings → API Keys → New API Key**. If Immich asks for permissions, give it album and asset read access.
 2. In Skylight → Settings → **Photos from Immich**: enter your server URL (e.g. `http://192.168.1.20:2283`) and the key. Tap **Load albums**, tick albums and/or *Include my favorites*, then tap **Save**.
 
+The slideshow shows each photo's **date taken and place** in the bottom-right corner (turn off under Settings → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
+
 The API key stays on your HA server and is never sent to the tablet. Images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
 
 ## Android tablet setup
@@ -115,7 +117,7 @@ You can also place Skylight on any dashboard as a card (`type: custom:skylight-p
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 51 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 52 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

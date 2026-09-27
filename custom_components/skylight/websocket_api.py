@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED
-from . import immich
+from . import immich, photos
 from .photos import async_delete_photo
 
 
@@ -191,13 +191,14 @@ async def ws_subscribe_calendar(hass: HomeAssistant, connection, msg: dict[str, 
 async def ws_photo_urls(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """All slideshow URLs: uploaded photos plus signed Immich proxy URLs."""
     store = _store(hass)
-    urls = [f"/skylight_photos/{p}" for p in store.data["photos"]]
+    items = [{"url": f"/skylight_photos/{p}", **await photos.async_photo_meta(hass, p)} for p in store.data["photos"]]
     error = None
     try:
-        urls += await immich.async_signed_urls(hass, store, connection.refresh_token_id)
+        items += await immich.async_signed_items(hass, store, connection.refresh_token_id)
     except immich.ImmichError as err:
         error = str(err)
-    connection.send_result(msg["id"], {"urls": urls, "error": error})
+    # "urls" kept for older cached frontends; "items" add date taken and place.
+    connection.send_result(msg["id"], {"urls": [i["url"] for i in items], "items": items, "error": error})
 
 
 @websocket_api.websocket_command(

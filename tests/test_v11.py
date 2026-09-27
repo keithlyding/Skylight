@@ -255,3 +255,49 @@ async def test_repeat_builder_rules(hass, setup, hass_ws_client, hass_client, ev
     evs = await (await http.get("/api/calendars/calendar.family?start=2026-09-20T00:00:00Z&end=2026-12-31T00:00:00Z")).json()
     got = [(e["start"].get("date") or e["start"]["dateTime"])[:10] for e in evs]
     assert got == expected
+
+
+# ---------------------------------------------------------------- slideshow captions
+async def test_photo_captions_immich_and_upload(hass, setup, hass_ws_client, aioclient_mock):
+    import io
+    from PIL import Image
+
+    aioclient_mock.post(f"{IMMICH}/api/search/metadata", json={"assets": {"nextPage": None, "items": [
+        {"id": A1, "localDateTime": "2024-06-14T19:30:00.000Z",
+         "exifInfo": {"city": "Estes Park", "state": "Colorado", "country": "United States of America"}},
+        {"id": A2, "fileCreatedAt": "2023-12-25T08:00:00.000Z",
+         "exifInfo": {"city": "Paris", "state": "Île-de-France", "country": "France"}}]}})
+    aioclient_mock.get("https://photon.komoot.io/reverse", json={"features": [
+        {"properties": {"city": "Boulder", "state": "Colorado", "country": "United States"}}]})
+
+    # An uploaded JPEG with EXIF date taken and GPS (40.02 N, 105.27 W)
+    img = Image.new("RGB", (8, 8), "red")
+    exif = Image.Exif()
+    exif.get_ifd(0x8769)[36867] = "2025:07:04 21:15:00"
+    exif[0x8825] = {1: "N", 2: (40.0, 1.0, 12.0), 3: "W", 4: (105.0, 16.0, 12.0)}
+    buf = io.BytesIO(); img.save(buf, "JPEG", exif=exif.tobytes())
+    photo_dir = hass.config.path("skylight_photos")
+    import os
+    os.makedirs(photo_dir, exist_ok=True)
+    with open(os.path.join(photo_dir, "aaaaaaaaaaaaaaaaaaaaaaaa.jpg"), "wb") as f:
+        f.write(buf.getvalue())
+    img.save(os.path.join(photo_dir, "bbbbbbbbbbbbbbbbbbbbbbbb.jpg"), "JPEG")  # no EXIF at all
+    store = hass.data[DOMAIN]["store"]
+    await store.async_add_photo("aaaaaaaaaaaaaaaaaaaaaaaa.jpg")
+    await store.async_add_photo("bbbbbbbbbbbbbbbbbbbbbbbb.jpg")
+
+    ws = await hass_ws_client(hass)
+    await _cmd(ws, {"type": "skylight/immich/configure", "url": IMMICH, "api_key": "k", "albums": ["alb1"], "favorites": False})
+    res = await _cmd(ws, {"type": "skylight/photos/urls"})
+    assert res["success"], res
+    items = {i["url"].split("?")[0].rsplit("/", 1)[-1]: i for i in res["result"]["items"]}
+    assert items["aaaaaaaaaaaaaaaaaaaaaaaa.jpg"]["taken"] == "2025-07-04"
+    assert items["aaaaaaaaaaaaaaaaaaaaaaaa.jpg"]["place"] == "Boulder, Colorado"
+    assert items["bbbbbbbbbbbbbbbbbbbbbbbb.jpg"] == {**items["bbbbbbbbbbbbbbbbbbbbbbbb.jpg"], "taken": None, "place": None}
+    assert items[A1]["taken"] == "2024-06-14" and items[A1]["place"] == "Estes Park, Colorado"
+    assert items[A2]["taken"] == "2023-12-25" and items[A2]["place"] == "Paris, France"
+    assert len(res["result"]["urls"]) == 4  # old field still there
+    body = next(c[2] for c in aioclient_mock.mock_calls if "search/metadata" in str(c[1]))
+    assert body["withExif"] is True
+    lat = next(str(c[1]) for c in aioclient_mock.mock_calls if "photon" in str(c[1]))
+    assert "lat=40.020" in lat and "lon=-105.270" in lat

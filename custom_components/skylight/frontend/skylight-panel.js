@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.26.0";
+const PANEL_VERSION = "1.26.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -2511,8 +2511,9 @@ class SkylightPanel extends HTMLElement {
     if (this._urlCache && Date.now() - this._urlCache.at < 3600000 && this._urlCache.n === (this.data.photos || []).length) return this._urlCache.urls;
     const res = await this._hass.callWS({ type: "skylight/photos/urls" });
     if (res.error) console.warn("Skylight: Immich", res.error);
-    this._urlCache = { at: Date.now(), urls: res.urls, n: (this.data.photos || []).length, error: res.error };
-    return res.urls;
+    const items = res.items || res.urls.map((url) => ({ url })); // server not restarted yet: no captions
+    this._urlCache = { at: Date.now(), urls: items, n: (this.data.photos || []).length, error: res.error };
+    return items;
   }
   async startSaver() {
     if (this.ui.saver) return;
@@ -2528,7 +2529,8 @@ class SkylightPanel extends HTMLElement {
     this._slideIdx = 0;
     this.$saver.innerHTML = `<div class="saver" data-action="stop-saver">
       <img class="bg" id="sv-bg"><img id="sv-a" class="show"><img id="sv-b">
-      <div class="saver-clock"><div id="sv-time"></div><div id="sv-date"></div></div></div>`;
+      <div class="saver-clock"><div id="sv-time"></div><div id="sv-date"></div></div>
+      <div class="saver-cap" id="sv-cap"></div></div>`;
     this._nextSlide(); this._tickClock();
     clearInterval(this._slideTimer);
     this._slideTimer = setInterval(() => this._nextSlide(), Math.max(5, Number(this.settings.photo_seconds || 15)) * 1000);
@@ -2540,9 +2542,25 @@ class SkylightPanel extends HTMLElement {
     const a = this.shadowRoot.getElementById("sv-a"), b = this.shadowRoot.getElementById("sv-b"), bg = this.shadowRoot.getElementById("sv-bg");
     if (!a) return;
     const [front, back] = a.classList.contains("show") ? [a, b] : [b, a];
-    const src = this._slideOrder[this._slideIdx++ % this._slideOrder.length];
-    back.onload = () => { back.classList.add("show"); front.classList.remove("show"); bg.src = src; };
+    const item = this._slideOrder[this._slideIdx++ % this._slideOrder.length];
+    const src = item.url;
+    back.onload = () => {
+      back.classList.add("show"); front.classList.remove("show"); bg.src = src;
+      const cap = this.shadowRoot.getElementById("sv-cap");
+      if (cap) cap.innerHTML = this.settings.photo_captions === false ? "" : this._photoCaption(item);
+    };
     back.src = src;
+  }
+
+  // "June 14, 2024 · Estes Park, Colorado" (either part may be missing).
+  _photoCaption(item) {
+    const parts = [];
+    if (item.taken && /^\d{4}-\d{2}-\d{2}$/.test(item.taken)) {
+      const d = parseYmd(item.taken);
+      parts.push(`<span>📅 ${esc(d.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }))}</span>`);
+    }
+    if (item.place) parts.push(`<span>📍 ${esc(item.place)}</span>`);
+    return parts.join("");
   }
 
   _tickClock() {
@@ -3422,6 +3440,7 @@ class SkylightPanel extends HTMLElement {
         <label class="inline">24-hour clock <input type="checkbox" ${s.clock_24h ? "checked" : ""} data-change="setting" data-key="clock_24h"></label>
         <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
         <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
+        <label class="inline">Show date &amp; place on photos <input type="checkbox" ${s.photo_captions !== false ? "checked" : ""} data-change="setting" data-key="photo_captions"></label>
       </section>
       <p class="hint center">Skylight v${PANEL_VERSION}</p>
     </div>`;
@@ -3675,6 +3694,8 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .saver img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; opacity:0; transition:opacity 1.5s; }
 .saver img.bg { object-fit:cover; filter:blur(30px) brightness(.45); transform:scale(1.1); opacity:1; }
 .saver img.show { opacity:1; }
+.saver-cap { position:absolute; right:32px; bottom:30px; max-width:45%; display:flex; flex-direction:column; align-items:flex-end; gap:2px; color:#fff; font-size:18px; font-weight:600; text-align:right; text-shadow:0 2px 10px rgba(0,0,0,.7); opacity:.9; }
+.saver-cap:empty { display:none; }
 .saver-clock { position:absolute; left:36px; bottom:28px; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.6); }
 #sv-time { font-size:72px; font-weight:800; }
 #sv-date { font-size:24px; font-weight:600; }

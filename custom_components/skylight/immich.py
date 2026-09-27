@@ -60,60 +60,99 @@ async def async_list_albums(hass: HomeAssistant, url: str, key: str) -> list[dic
     )
 
 
-async def _search(hass: HomeAssistant, url: str, key: str, criteria: dict[str, Any]) -> list[str]:
-    """Image asset ids matching Immich metadata search criteria."""
-    ids: list[str] = []
+US_NAMES = {"united states", "united states of america", "usa", "us"}
+
+
+def place_name(city: str | None, state: str | None, country: str | None) -> str | None:
+    """'Estes Park, Colorado' in the US, 'Paris, France' elsewhere."""
+    region = state if (country or "").strip().lower() in US_NAMES else (country or state)
+    parts = [p for p in (city, region) if p]
+    return ", ".join(dict.fromkeys(parts)) or None
+
+
+def _meta(asset: dict[str, Any]) -> dict[str, Any]:
+    """Date taken (local wall-clock, YYYY-MM-DD) and place for one Immich asset."""
+    exif = asset.get("exifInfo") or {}
+    taken = asset.get("localDateTime") or exif.get("dateTimeOriginal") or asset.get("fileCreatedAt")
+    return {
+        "id": asset["id"],
+        "taken": str(taken)[:10] if taken else None,
+        "place": place_name(exif.get("city"), exif.get("state"), exif.get("country")),
+    }
+
+
+async def _search(hass: HomeAssistant, url: str, key: str, criteria: dict[str, Any]) -> list[dict[str, Any]]:
+    """Image assets (id, date taken, place) matching Immich metadata search criteria."""
+    found: list[dict[str, Any]] = []
     page: int | None = 1
-    while page and len(ids) < MAX_ASSETS:
+    with_exif = True
+    while page and len(found) < MAX_ASSETS:
         body = {**criteria, "type": "IMAGE", "size": PAGE_SIZE, "page": page}
-        res = await _request(hass, "POST", url, key, "/search/metadata", json=body)
+        if with_exif:
+            body["withExif"] = True
+        try:
+            res = await _request(hass, "POST", url, key, "/search/metadata", json=body)
+        except ImmichError:
+            if not with_exif:
+                raise
+            with_exif = False  # older Immich rejects unknown fields: retry without place names
+            continue
         assets = res.get("assets", {})
-        ids += [a["id"] for a in assets.get("items", [])]
+        found += [_meta(a) for a in assets.get("items", [])]
         nxt = assets.get("nextPage")
         page = int(nxt) if nxt else None
-    return ids
+    return found
 
 
-async def _album_assets(hass: HomeAssistant, url: str, key: str, album_id: str) -> list[str]:
+async def _album_assets(hass: HomeAssistant, url: str, key: str, album_id: str) -> list[dict[str, Any]]:
     try:
         return await _search(hass, url, key, {"albumIds": [album_id]})
     except ImmichError:
         # Older Immich without albumIds search: assets are embedded in the album.
         album = await _request(hass, "GET", url, key, f"/albums/{album_id}")
-        return [a["id"] for a in album.get("assets", []) if a.get("type") == "IMAGE"]
+        return [_meta(a) for a in album.get("assets", []) if a.get("type") == "IMAGE"]
+
+
+async def async_assets(hass: HomeAssistant, cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    cache = hass.data.get(CACHE_KEY)
+    if cache and time.monotonic() - cache["at"] < CACHE_SECONDS:
+        return cache["assets"]
+    found: list[dict[str, Any]] = []
+    for album_id in cfg.get("albums", []):
+        found += await _album_assets(hass, cfg["url"], cfg["api_key"], album_id)
+    if cfg.get("favorites"):
+        found += await _search(hass, cfg["url"], cfg["api_key"], {"isFavorite": True})
+    assets = list({a["id"]: a for a in found}.values())  # de-duplicate
+    random.shuffle(assets)
+    assets = assets[:MAX_ASSETS]
+    hass.data[CACHE_KEY] = {"at": time.monotonic(), "assets": assets, "allowed": {a["id"] for a in assets}}
+    return assets
 
 
 async def async_asset_ids(hass: HomeAssistant, cfg: dict[str, Any]) -> list[str]:
-    cache = hass.data.get(CACHE_KEY)
-    if cache and time.monotonic() - cache["at"] < CACHE_SECONDS:
-        return cache["ids"]
-    ids: list[str] = []
-    for album_id in cfg.get("albums", []):
-        ids += await _album_assets(hass, cfg["url"], cfg["api_key"], album_id)
-    if cfg.get("favorites"):
-        ids += await _search(hass, cfg["url"], cfg["api_key"], {"isFavorite": True})
-    ids = list(dict.fromkeys(ids))  # de-duplicate, keep order
-    random.shuffle(ids)
-    ids = ids[:MAX_ASSETS]
-    hass.data[CACHE_KEY] = {"at": time.monotonic(), "ids": ids, "allowed": set(ids)}
-    return ids
+    return [a["id"] for a in await async_assets(hass, cfg)]
 
 
 def invalidate(hass: HomeAssistant) -> None:
     hass.data.pop(CACHE_KEY, None)
 
 
-async def async_signed_urls(hass: HomeAssistant, store, refresh_token_id: str | None) -> list[str]:
+async def async_signed_items(hass: HomeAssistant, store, refresh_token_id: str | None) -> list[dict[str, Any]]:
+    """Slideshow items: signed proxy URL plus date taken and place."""
     cfg = store.data["immich"]
     if not cfg.get("url") or not (cfg.get("albums") or cfg.get("favorites")):
         return []
-    ids = await async_asset_ids(hass, cfg)
     return [
-        async_sign_path(
-            hass, f"/api/skylight/immich/{asset_id}", timedelta(hours=24), refresh_token_id=refresh_token_id
-        )
-        for asset_id in ids
+        {
+            "url": async_sign_path(hass, f"/api/skylight/immich/{a['id']}", timedelta(hours=24), refresh_token_id=refresh_token_id),
+            "taken": a.get("taken"), "place": a.get("place"),
+        }
+        for a in await async_assets(hass, cfg)
     ]
+
+
+async def async_signed_urls(hass: HomeAssistant, store, refresh_token_id: str | None) -> list[str]:
+    return [i["url"] for i in await async_signed_items(hass, store, refresh_token_id)]
 
 
 class SkylightImmichView(HomeAssistantView):
