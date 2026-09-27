@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.12.0";
+const PANEL_VERSION = "1.12.1";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -47,6 +47,34 @@ const baseOf = (emoji) => {
 // Info-only calendars (birthdays, holidays, school...): icon + muted color choices.
 const INFO_ICONS = ["🎂", "🎉", "🇺🇸", "🎄", "⛪", "🏫", "🏈", "⚽", "🗓️", "🌙", "✈️", "💼", "🗑️", "🌱", "📌"];
 const INFO_COLORS = ["#9e9e9e", "#b0a58f", "#c29fa3", "#9fb3c8", "#a8c3a0", "#c9b37e", "#b39ddb", "#80cbc4"];
+
+// Icon choices for chores and rewards (tap-to-pick instead of typing).
+const CHORE_ICONS = [
+  // trash & recycling
+  "🗑️", "♻️", "🚮", "📦",
+  // pets
+  "🐶", "🐕", "🦮", "🐩", "🦴", "🥣", "💩", "🐱", "🐈", "🐟", "🐠", "🐹", "🐰", "🦜", "🐢",
+  // kitchen & dishes
+  "🍽️", "🥄", "🍴", "🧽", "🫧", "🧼", "🍳", "🥪", "🥗", "🧃",
+  // cleaning & laundry
+  "🧹", "🪣", "🧺", "👕", "👖", "🧦", "🧻", "🚽", "🛁", "🚿", "🪟", "🧴",
+  // bedroom & tidying
+  "🛏️", "🧸", "🧩", "🪀", "🎒", "👟",
+  // outdoors & garden
+  "🌱", "🪴", "🌻", "🍂", "❄️", "🚗", "🚲", "🪵", "💧",
+  // self-care & routine
+  "🪥", "🦷", "🛀", "💊", "💇", "⏰", "🌙", "☀️",
+  // school, music & activity
+  "📚", "✏️", "📝", "🧮", "💻", "🎹", "🎸", "🎻", "🥁", "🏃", "⚽", "🏀", "⚾", "🤸",
+  // general
+  "✅", "⭐", "💪", "❤️", "🙏", "📬", "🛒", "💵",
+];
+const REWARD_ICONS = [
+  "🎁", "🍦", "🍩", "🍪", "🍫", "🍭", "🧁", "🍕", "🍔", "🌮", "🍿", "🥤",
+  "🎬", "📺", "🎮", "📱", "💻", "🎧", "📚", "🎨", "🧸", "🪀", "🎲", "🧩",
+  "🏊", "⚽", "🛝", "🎢", "🎡", "🏕️", "🚲", "🛹", "🎳", "⛳", "🎟️", "🎉",
+  "💵", "🪙", "🏆", "⭐", "👑", "🛍️", "🌙", "😴", "🐶", "🦄", "❤️", "✨",
+];
 
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -512,6 +540,8 @@ class SkylightPanel extends HTMLElement {
         this._toast("Google Places key saved"); break;
       }
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
+      case "icon-open": this.ui.dialog.iconOpen = !this.ui.dialog.iconOpen; this.renderDialog(); break;
+      case "icon-pick": this.ui.dialog.icon = d.icon; this.ui.dialog.iconOpen = false; this.renderDialog(); break;
       case "who": {
         const w = this.ui.dialog.who;
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
@@ -837,7 +867,12 @@ class SkylightPanel extends HTMLElement {
       const seq = (this._locSeq = (this._locSeq || 0) + 1);
       let res;
       try { res = await this._hass.callWS({ type: "skylight/places/search", query: q }); }
-      catch (e) { this._showSugg([], e.message); return; }
+      catch (e) {
+        const msg = /unknown command/i.test(e.message || "")
+          ? "Address lookup needs a Home Assistant restart after updating Skylight."
+          : e.message;
+        this._showSugg([], msg); return;
+      }
       if (seq !== this._locSeq) return; // a newer search is running
       this._showSugg(res.results, null, res.provider);
     }, 450);
@@ -1127,14 +1162,22 @@ class SkylightPanel extends HTMLElement {
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
   }
 
+  // Big icon button + expandable grid of choices (used by chores and rewards).
+  iconPicker(dlg, icons) {
+    return `<div class="iconpick">
+      <button type="button" class="iconbtn" data-action="icon-open" title="Choose an icon">${dlg.icon}<small>▾</small></button>
+      ${dlg.iconOpen ? `<div class="icongrid">${icons.map((i) => `<button type="button" class="emoji ${i === dlg.icon ? "sel" : ""}" data-action="icon-pick" data-icon="${i}">${i}</button>`).join("")}</div>` : ""}
+    </div>`;
+  }
+
   openChoreDialog(c, memberId) {
     const dlg = {
-      type: "chore", chore: c, repeat: c?.repeat || "daily",
+      type: "chore", chore: c, repeat: c?.repeat || "daily", icon: c?.icon || "✅", iconOpen: false,
       html: () => `
         <h2>${c ? "Edit" : "New"} chore</h2>
         ${!this.members.length ? `<p class="hint">Add family members in Settings first.</p>` : ""}
         <div class="row">
-          <label style="flex:0 0 80px">Icon<input id="c-icon" value="${esc(c?.icon || "✅")}" maxlength="4"></label>
+          <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
           <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
         </div>
         <label>Who<select id="c-member">${this.members.map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
@@ -1165,7 +1208,7 @@ class SkylightPanel extends HTMLElement {
     if (!title) { this._toast("Please name the chore"); return; }
     const rec = {
       ...(c || { id: uid(), completions: [] }),
-      title, icon: $("c-icon").value.trim() || "✅", member_id: $("c-member").value,
+      title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value,
       stars: Math.max(0, Number($("c-stars").value) || 0), repeat: $("c-repeat").value,
       days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
     };
@@ -1174,12 +1217,12 @@ class SkylightPanel extends HTMLElement {
   }
 
   openRewardDialog(r) {
-    this._openDialog({
-      type: "reward", reward: r,
+    const dlg = {
+      type: "reward", reward: r, icon: r?.icon || "🎁", iconOpen: false,
       html: () => `
         <h2>${r ? "Edit" : "New"} reward</h2>
         <div class="row">
-          <label style="flex:0 0 80px">Icon<input id="r-icon" value="${esc(r?.icon || "🎁")}" maxlength="4"></label>
+          <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, REWARD_ICONS)}</label>
           <label>Reward<input id="r-title" value="${esc(r?.title)}" autofocus placeholder="Movie night pick"></label>
         </div>
         <label>Cost (stars)<input type="number" id="r-cost" min="1" value="${r?.cost ?? 20}"></label>
@@ -1190,14 +1233,15 @@ class SkylightPanel extends HTMLElement {
           <button data-action="close">Cancel</button>
           <button class="primary" data-action="save-reward">Save</button>
         </div>`,
-    });
+    };
+    this._openDialog(dlg);
   }
   async saveReward() {
     const $ = (id) => this.shadowRoot.getElementById(id);
     const r = this.ui.dialog.reward;
     const title = $("r-title").value.trim();
     if (!title) { this._toast("Please name the reward"); return; }
-    const rec = { ...(r || { id: uid() }), title, icon: $("r-icon").value.trim() || "🎁", cost: Math.max(1, Number($("r-cost").value) || 1), member_id: $("r-member").value || null };
+    const rec = { ...(r || { id: uid() }), title, icon: this.ui.dialog.icon || "🎁", cost: Math.max(1, Number($("r-cost").value) || 1), member_id: $("r-member").value || null };
     const rewards = r ? this.data.rewards.map((x) => (x.id === r.id ? rec : x)) : [...this.data.rewards, rec];
     await this._set("rewards", rewards); this.closeDialog();
   }
@@ -2179,6 +2223,11 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .sugg small { color:var(--muted); font-size:12px; }
 .sugg .hint { padding:8px 12px; }
 .sugg .attrib { font-size:10px; color:var(--muted); padding:4px 12px; text-align:right; }
+.iconpick { position:relative; }
+.iconbtn { font-size:30px; line-height:1; padding:6px 10px; background:var(--bg); box-shadow:none; border:1px solid var(--line); display:flex; align-items:center; gap:4px; }
+.iconbtn small { font-size:12px; color:var(--muted); }
+.icongrid { position:absolute; z-index:6; top:100%; left:0; width:min(470px, 80vw); max-height:260px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px; padding:8px;
+  background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.18); }
 .srow .bar { width:5px; align-self:stretch; background:var(--c); border-radius:4px; }
 /* Events shared by several people: diagonal stripes in each person's color (like Skylight) */
 .ev.multi, .tg-ev.multi { background:var(--stripes-soft); }
