@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1

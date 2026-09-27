@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.9.0";
+const PANEL_VERSION = "1.10.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -357,14 +357,26 @@ class SkylightPanel extends HTMLElement {
   }
 
   // The same event on several people's calendars (e.g. a shared invite) shows once with everyone's colors.
+  // The same event on several people's calendars shows once with everyone's colors.
+  // Matches either the same Google event (uid) or an identical copy (same title, start and end),
+  // which is how Skylight saves an event for several people. Each copy is remembered for edits.
   _mergeShared(events) {
-    const byKey = new Map();
+    const byUid = new Map(), byContent = new Map();
     const out = [];
     for (const e of events) {
-      const key = e.uid ? `${e.uid}|${e.recurrence_id || ""}|${+e.start}` : null;
-      const first = key && byKey.get(key);
-      if (!first) { if (key) byKey.set(key, e); out.push(e); continue; }
-      if (first.raw !== e.raw || first.info || e.info) { out.push(e); continue; } // different title / info: keep both
+      e.copies = [{ entity: e.entity, uid: e.uid, recurrence_id: e.recurrence_id, rrule: e.rrule }];
+      const uidKey = e.uid ? `${e.uid}|${e.recurrence_id || ""}|${+e.start}` : null;
+      const contentKey = `${e.raw}|${+e.start}|${+e.end}|${e.allDay}`;
+      const first = (uidKey && byUid.get(uidKey)) || byContent.get(contentKey);
+      const mergeable = first && !first.info && !e.info && first.raw === e.raw &&
+        !first.copies.some((c) => c.entity === e.entity);
+      if (!mergeable) {
+        if (uidKey) byUid.set(uidKey, e);
+        byContent.set(contentKey, e);
+        out.push(e);
+        continue;
+      }
+      first.copies.push(e.copies[0]);
       const ids = [...new Set([...first.members, ...e.members])];
       this._applyOwners(first, ids.map((id) => this.member(id)).filter(Boolean));
     }
@@ -487,6 +499,11 @@ class SkylightPanel extends HTMLElement {
       case "save-event": await this.saveEvent(); break;
       case "delete-event": await this.deleteEvent(); break;
       case "scope": this._resolveScope(d.scope === "cancel" ? null : d.scope); break;
+      case "who": {
+        const w = this.ui.dialog.who;
+        w.has(d.member) ? w.delete(d.member) : w.add(d.member);
+        this.renderDialog(); break;
+      }
       case "event-allday": this.shadowRoot.querySelectorAll(".timefield").forEach((x) => { x.hidden = el.checked; }); break;
 
       // members
@@ -751,21 +768,32 @@ class SkylightPanel extends HTMLElement {
     const endDate = ev ? ymd(ev.allDay ? addDays(ev.end, -1) : ev.end) : dateStr;
     const defaultCal = ev?.entity || (this.ui.filter && this.member(this.ui.filter)?.calendars?.[0]) || (this.data.family_calendars || [])[0] || writable[0];
     const calLabel = (e) => { const o = this.calendarOwner(e); return `${o ? o.avatar + " " + o.name + " – " : "🏠 "}${this.calName(e)}`; };
-    this._openDialog({
+    // Current "All day" state (survives the dialog re-rendering when people are picked).
+    const allDayNow = () => this.shadowRoot.getElementById("ev-allday")?.checked ?? !!ev?.allDay;
+    const dlg = {
       type: "event", event: ev,
+      who: new Set(ev ? (ev.members || []) : this.ui.filter && this.targetCalendar(this.member(this.ui.filter)) ? [this.ui.filter] : []),
       html: () => `
         <h2>${ev ? "Edit event" : "New event"}</h2>
         ${!writable.length ? `<p class="hint">No calendars yet. Add one in Settings first.</p>` : ""}
         <label>Title<input id="ev-title" value="${esc(ev?.raw ?? ev?.summary)}" autofocus placeholder="Soccer practice"></label>
-        <label>Calendar<select id="ev-cal" ${this._isRecurring(ev) ? "disabled" : ""}>${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
+        <div class="label">Who</div>
+        <div class="whopick">${this.members.map((m) => {
+          const can = !!this.targetCalendar(m);
+          return `<button class="whochip ${dlg.who.has(m.id) ? "on" : ""}" style="--c:${m.color}" ${can ? `data-action="who" data-member="${m.id}"` : `disabled title="${esc(m.name)} has no calendar yet"`}>
+            <span class="av" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}</button>`;
+        }).join("")}</div>
+        ${this.members.some((m) => !this.targetCalendar(m)) ? `<p class="hint">Grayed-out people have no calendar yet. Give them one in Settings → Family members, or use their title prefix.</p>` : ""}
+        <label class="calpick" ${dlg.who.size ? "hidden" : ""}>Calendar <small class="hint">(when no one is selected)</small><select id="ev-cal">${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
+        <p class="hint whohint" ${dlg.who.size ? "" : "hidden"}>Saved to each person's calendar${dlg.who.size > 1 ? " and shown once, in everyone's colors" : ""}.</p>
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
         <div class="row">
           <label>Starts<input type="date" id="ev-date" value="${dateStr}"></label>
-          <label class="timefield" ${ev?.allDay ? "hidden" : ""}>&nbsp;<input type="time" id="ev-start" value="${startT}"></label>
+          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-start" value="${startT}"></label>
         </div>
         <div class="row">
           <label>Ends<input type="date" id="ev-enddate" value="${endDate}"></label>
-          <label class="timefield" ${ev?.allDay ? "hidden" : ""}>&nbsp;<input type="time" id="ev-end" value="${endT}"></label>
+          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-end" value="${endT}"></label>
         </div>
         ${ev ? "" : `<label>Repeats<select id="ev-repeat">
           <option value="">Never</option><option value="FREQ=DAILY">Every day</option>
@@ -780,7 +808,15 @@ class SkylightPanel extends HTMLElement {
           <button data-action="close">Cancel</button>
           <button class="primary" data-action="save-event" ${writable.length ? "" : "disabled"}>Save</button>
         </div>`,
-    });
+    };
+    this._openDialog(dlg);
+  }
+
+  // Calendar where a person's copy of an event is saved: their first writable (non-info, non-feed) calendar.
+  targetCalendar(m) {
+    if (!m) return null;
+    return (m.calendars || []).find((e) => this._hass.states[e] && !this.infoCal(e) &&
+      this.calInfo?.[e]?.integration !== "remote_calendar") || null;
   }
 
   _isRecurring(ev) { return !!(ev && (ev.rrule || ev.recurrence_id)); }
@@ -854,45 +890,82 @@ class SkylightPanel extends HTMLElement {
     return starts.length ? new Date(Math.min(...starts)) : ev.start;
   }
 
+  // Which calendars an event should be on, given the selected people (keeps existing copies where possible).
+  _planCopies(ev, who, fallbackEntity) {
+    const copies = ev?.copies || [];
+    if (!who.size) {
+      // No people chosen: one copy on the chosen calendar.
+      const keep = copies.find((c) => c.entity === fallbackEntity) || null;
+      return { keep: keep ? [keep] : [], create: keep ? [] : [fallbackEntity], remove: copies.filter((c) => c !== keep), moveFrom: keep ? null : copies[0] || null };
+    }
+    const keep = [], create = new Set();
+    for (const id of who) {
+      const m = this.member(id);
+      const have = copies.find((c) => (m.calendars || []).includes(c.entity));
+      if (have) { if (!keep.includes(have)) keep.push(have); continue; }
+      const t = this.targetCalendar(m);
+      if (t && !copies.some((c) => c.entity === t)) create.add(t);
+      else if (t) keep.push(copies.find((c) => c.entity === t));
+    }
+    const remove = copies.filter((c) => !keep.includes(c));
+    return { keep, create: [...create], remove, moveFrom: null };
+  }
+
   async saveEvent() {
     const form = this._readEventForm();
     const ev = this.ui.dialog.event;
+    const who = this.ui.dialog.who || new Set();
+    const plan = this._planCopies(ev, who, form.entity);
     if (!ev) {
-      await this._ws({ type: "calendar/event/create", entity_id: form.entity, event: this._eventPayload(form) });
+      for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
     } else if (this._isRecurring(ev)) {
       const scope = await this._askScope("save");
       if (!scope) return;
-      const base = { type: "calendar/event/update", entity_id: ev.entity, uid: ev.uid };
-      if (scope === "this") {
-        await this._ws({ ...base, recurrence_id: ev.recurrence_id, event: this._eventPayload(form, { rrule: "" }) });
-      } else if (scope === "future") {
-        await this._ws({ ...base, recurrence_id: ev.recurrence_id, recurrence_range: "THISANDFUTURE", event: this._eventPayload(form, { rrule: ev.rrule }) });
-      } else {
-        // Keep the series' original first date; apply any day move relative to it.
-        const first = await this._seriesStart(ev);
-        const shiftDays = Math.round((startOfDay(first) - startOfDay(ev.start)) / 86400000);
-        await this._ws({ ...base, event: this._eventPayload(form, { shiftDays, rrule: ev.rrule }) });
+      for (const c of plan.keep) await this._updateCopy(c, ev, form, scope);
+      for (const entity of plan.create) {
+        // New person on a repeating event: "this" adds just this occurrence; otherwise the series from here.
+        const rrule = scope === "this" ? "" : ev.rrule;
+        await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form, { rrule }) });
       }
-    } else if (ev.entity !== form.entity) {
-      // moving between calendars: create in new, delete from old
-      await this._ws({ type: "calendar/event/create", entity_id: form.entity, event: this._eventPayload(form) });
-      await this._ws({ type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid });
+      for (const c of plan.remove) await this._deleteCopy(c, scope);
     } else {
-      await this._ws({ type: "calendar/event/update", entity_id: ev.entity, uid: ev.uid, event: this._eventPayload(form, { rrule: "" }) });
+      for (const c of plan.keep) await this._ws({ type: "calendar/event/update", entity_id: c.entity, uid: c.uid, event: this._eventPayload(form, { rrule: "" }) });
+      for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
+      for (const c of plan.remove) await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
     }
     this.closeDialog(); this._eventsKey = ""; this._mealKey = ""; this._loadEvents();
   }
 
+  async _updateCopy(c, ev, form, scope) {
+    const base = { type: "calendar/event/update", entity_id: c.entity, uid: c.uid };
+    if (scope === "this") {
+      await this._ws({ ...base, recurrence_id: c.recurrence_id, event: this._eventPayload(form, { rrule: "" }) });
+    } else if (scope === "future") {
+      await this._ws({ ...base, recurrence_id: c.recurrence_id, recurrence_range: "THISANDFUTURE", event: this._eventPayload(form, { rrule: c.rrule || ev.rrule }) });
+    } else {
+      // Keep the series' original first date; apply any day move relative to it.
+      const first = await this._seriesStart({ ...ev, entity: c.entity, uid: c.uid });
+      const shiftDays = Math.round((startOfDay(first) - startOfDay(ev.start)) / 86400000);
+      await this._ws({ ...base, event: this._eventPayload(form, { shiftDays, rrule: c.rrule || ev.rrule }) });
+    }
+  }
+
+  async _deleteCopy(c, scope) {
+    const msg = { type: "calendar/event/delete", entity_id: c.entity, uid: c.uid };
+    if (scope === "this") msg.recurrence_id = c.recurrence_id;
+    if (scope === "future") { msg.recurrence_id = c.recurrence_id; msg.recurrence_range = "THISANDFUTURE"; }
+    await this._ws(msg);
+  }
+
   async deleteEvent() {
     const ev = this.ui.dialog.event;
-    const msg = { type: "calendar/event/delete", entity_id: ev.entity, uid: ev.uid };
+    const copies = ev.copies || [{ entity: ev.entity, uid: ev.uid, recurrence_id: ev.recurrence_id, rrule: ev.rrule }];
+    let scope = null;
     if (this._isRecurring(ev)) {
-      const scope = await this._askScope("delete");
+      scope = await this._askScope("delete");
       if (!scope) return;
-      if (scope === "this") msg.recurrence_id = ev.recurrence_id;
-      if (scope === "future") { msg.recurrence_id = ev.recurrence_id; msg.recurrence_range = "THISANDFUTURE"; }
-    } else if (!confirm(`Delete "${ev.summary}"?`)) return;
-    await this._ws(msg);
+    } else if (!confirm(`Delete "${ev.summary}"${copies.length > 1 ? ` from ${copies.length} calendars` : ""}?`)) return;
+    for (const c of copies) await this._deleteCopy(c, scope);
     this.closeDialog(); this._eventsKey = ""; this._loadEvents();
   }
 
@@ -1836,6 +1909,7 @@ const STYLES = `
   --accent:#4a7dff; --radius:18px; font-family: Nunito, "Segoe UI", Roboto, system-ui, sans-serif; color:var(--ink); }
 @media (prefers-color-scheme: dark) { :host { --bg:#1b1a18; --card:#282724; --ink:#f1ede6; --muted:#a59f94; --line:rgba(255,255,255,.08); } }
 * { box-sizing:border-box; }
+[hidden] { display:none !important; }
 button { font:inherit; color:inherit; border:0; background:var(--card); border-radius:12px; padding:8px 14px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.06); }
 button:disabled { opacity:.45; cursor:default; }
 button.primary { background:var(--accent); color:#fff; font-weight:700; }
@@ -1972,6 +2046,11 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .emoji.mini { font-size:16px; padding:2px 5px; }
 .swatch.mini { width:22px; height:22px; border-width:2px; }
 .infostyle .sep { width:10px; }
+.whopick { display:flex; flex-wrap:wrap; gap:6px; }
+.whochip { display:flex; align-items:center; gap:6px; padding:3px 12px 3px 3px; border-radius:999px; font-weight:700; border:2px solid transparent; background:var(--bg); box-shadow:none; }
+.whochip.on { border-color:var(--c); background:color-mix(in srgb, var(--c) 18%, var(--card)); }
+.whochip .av { width:28px; height:28px; font-size:16px; }
+.whochip:disabled { opacity:.4; }
 .srow .bar { width:5px; align-self:stretch; background:var(--c); border-radius:4px; }
 /* Events shared by several people: diagonal stripes in each person's color (like Skylight) */
 .ev.multi, .tg-ev.multi { background:var(--stripes-soft); }
