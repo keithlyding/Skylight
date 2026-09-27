@@ -10,8 +10,8 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 
 | Tab | What it does |
 |---|---|
-| **Today** | Overview: the next 3 days of events with weather, each person's chores for today (tap to check off), and today's meals. Opens by default. |
-| **Calendar** | Day / Week / Month / Schedule views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
+| **Today** | Overview: a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather, each person's chores for today (tap to check off), and today's meals. Opens by default. |
+| **Calendar** | Day and Week as a Google/Outlook-style time grid (all-day row, overlapping events side by side, current-time line; tap an empty slot to add at that hour), plus Month and Schedule views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per person with a progress ring. Tap a chore to check it off and earn stars. Chores repeat daily, on certain weekdays, weekly or once. You can page back and forth by day. |
 | **Rewards** | Star balances with manual +/−, and rewards with progress bars. **Redeem** spends the stars. |
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, view ingredients and steps, and send ingredients to a shopping list. Other meal apps can be shown read-only through their calendar feed. |

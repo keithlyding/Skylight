@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.4.0";
+const PANEL_VERSION = "1.5.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -194,6 +194,18 @@ class SkylightPanel extends HTMLElement {
     setTimeout(() => t.remove(), 4000);
   }
 
+  // Days shown on the Today screen; remembered per device (tablet vs phone).
+  get homeDays() {
+    if (!this._homeDays) {
+      try { this._homeDays = Number(localStorage.getItem("skylight.homeDays")) || 3; } catch (e) { this._homeDays = 3; }
+    }
+    return this._homeDays;
+  }
+  set homeDays(n) {
+    this._homeDays = n;
+    try { localStorage.setItem("skylight.homeDays", String(n)); } catch (e) { /* private mode */ }
+  }
+
   // ---------- data helpers ----------
   get members() { return this.data?.members || []; }
   get settings() { return this.data?.settings || {}; }
@@ -236,7 +248,7 @@ class SkylightPanel extends HTMLElement {
 
   // ---------- calendar data ----------
   _range() {
-    if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, 3)]; }
+    if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, this.homeDays)]; }
     const a = this.ui.anchor;
     switch (this.ui.view) {
       case "month": {
@@ -350,7 +362,8 @@ class SkylightPanel extends HTMLElement {
       case "close": this.closeDialog(); break;
 
       // calendar events
-      case "new-event": this.openEventDialog(null, d.date); break;
+      case "new-event": this.openEventDialog(null, d.date, d.hour !== undefined ? Number(d.hour) : undefined); break;
+      case "home-days": this.homeDays = Number(d.days); this.render(); this._loadEvents(); break;
       case "open-event": this.openEventDialog(this.visibleEvents()[Number(d.idx)]); break;
       case "save-event": await this.saveEvent(); break;
       case "delete-event": await this.deleteEvent(); break;
@@ -593,12 +606,13 @@ class SkylightPanel extends HTMLElement {
   }
   _openDialog(dlg) { this.ui.dialog = dlg; this.$dialog.innerHTML = ""; this.renderDialog(); }
 
-  openEventDialog(ev, date) {
+  openEventDialog(ev, date, hour) {
     const writable = this.shownCalendars();
     const dateStr = ev ? ymd(ev.start) : date || ymd(this.ui.anchor);
     const now = new Date();
-    const startT = ev && !ev.allDay ? `${pad(ev.start.getHours())}:${pad(ev.start.getMinutes())}` : `${pad(Math.min(now.getHours() + 1, 23))}:00`;
-    const endT = ev && !ev.allDay ? `${pad(ev.end.getHours())}:${pad(ev.end.getMinutes())}` : `${pad(Math.min(now.getHours() + 2, 23))}:00`;
+    const h0 = hour ?? Math.min(now.getHours() + 1, 22);
+    const startT = ev && !ev.allDay ? `${pad(ev.start.getHours())}:${pad(ev.start.getMinutes())}` : `${pad(h0)}:00`;
+    const endT = ev && !ev.allDay ? `${pad(ev.end.getHours())}:${pad(ev.end.getMinutes())}` : `${pad(Math.min(h0 + 1, 23))}:${h0 >= 23 ? "59" : "00"}`;
     const endDate = ev ? ymd(ev.allDay ? addDays(ev.end, -1) : ev.end) : dateStr;
     const defaultCal = ev?.entity || (this.ui.filter && this.member(this.ui.filter)?.calendars?.[0]) || (this.data.family_calendars || [])[0] || writable[0];
     const calLabel = (e) => { const o = this.calendarOwner(e); return `${o ? o.avatar + " " + o.name + " – " : "🏠 "}${this.calName(e)}`; };
@@ -1126,6 +1140,8 @@ class SkylightPanel extends HTMLElement {
     const scroll = this._resetScroll ? 0 : this.$app.querySelector(".content")?.scrollTop || 0;
     this._resetScroll = false;
     const focusId = this.shadowRoot.activeElement?.id;
+    const tg = this.$app.querySelector(".tg-scroll");
+    if (tg) this._tgScroll = tg.scrollTop;
     const tab = this.ui.tab;
     const body = {
       home: () => this.renderHome(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
@@ -1142,6 +1158,8 @@ class SkylightPanel extends HTMLElement {
         <div class="content">${body}</div>
       </main>`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    const grid = this.$app.querySelector(".tg-scroll");
+    if (grid) grid.scrollTop = this._tgScroll ?? this._tgDefaultScroll ?? 0;
     if (focusId === "newitem" || focusId === "newcal") this.shadowRoot.getElementById(focusId)?.focus();
     this._tickClock();
   }
@@ -1194,53 +1212,77 @@ class SkylightPanel extends HTMLElement {
   }
 
   renderWeek() {
-    const [s] = this._range();
-    const days = [...Array(7)].map((_, i) => addDays(s, i));
-    return `<div class="week">${days.map((d) => `
-      <div class="col ${sameDay(d, new Date()) ? "today" : ""}">
-        ${this.dayHead(d)}
-        <div class="evs">${this.eventsOn(d).map((e) => this.evPill(e, d)).join("")}</div>
-        <button class="add" data-action="new-event" data-date="${ymd(d)}">+</button>
-      </div>`).join("")}</div>`;
+    const [st] = this._range();
+    return this.renderTimeGrid([...Array(7)].map((_, i) => addDays(st, i)));
   }
 
-  renderMonth() {
-    const [s] = this._range();
-    const month = this.ui.anchor.getMonth();
-    const heads = [...Array(7)].map((_, i) => addDays(s, i).toLocaleDateString([], { weekday: "short" }));
-    const cells = [...Array(42)].map((_, i) => {
-      const d = addDays(s, i);
-      const evs = this.eventsOn(d);
-      return `<div class="cell ${d.getMonth() !== month ? "other" : ""} ${sameDay(d, new Date()) ? "today" : ""}" >
-        <div class="cn" data-action="goto-day" data-date="${ymd(d)}">${d.getDate()}</div>
-        ${evs.slice(0, 3).map((e) => this.evPill(e, d, true)).join("")}
-        ${evs.length > 3 ? `<button class="more" data-action="goto-day" data-date="${ymd(d)}">+${evs.length - 3} more</button>` : ""}
-        <button class="celladd" data-action="new-event" data-date="${ymd(d)}"></button>
-      </div>`;
-    }).join("");
-    return `<div class="month"><div class="mh">${heads.map((h) => `<div>${h}</div>`).join("")}</div><div class="mg">${cells}</div></div>`;
-  }
+  renderDay() { return this.renderTimeGrid([this.ui.anchor]); }
 
-  renderDay() {
-    const d = this.ui.anchor;
-    const evs = this.eventsOn(d);
-    const all = evs.filter((e) => e.allDay || e.start < startOfDay(d));
-    const timed = evs.filter((e) => !all.includes(e));
-    const HOUR = 64, from = 6;
-    const hours = [...Array(24 - from)].map((_, i) => i + from);
-    const blocks = timed.map((e) => {
-      const st = Math.max(from, e.start.getHours() + e.start.getMinutes() / 60);
-      const en = Math.max(st + 0.5, sameDay(e.end, d) ? e.end.getHours() + e.end.getMinutes() / 60 : 24);
-      return `<button class="block" style="--c:${e.color};top:${(st - from) * HOUR}px;height:${(en - st) * HOUR - 4}px" data-action="open-event" data-idx="${this.evIndex(e)}">
-        <b>${e.avatar} ${esc(e.summary)}</b><span>${this.fmtTime(e.start)} – ${this.fmtTime(e.end)}</span>${e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
+  // Google/Outlook-style time grid: all-day row on top, hourly blocks below.
+  renderTimeGrid(days, { labels } = {}) {
+    const H = 52; // px per hour
+    const isAllDay = (e, d) => e.allDay || (e.start <= startOfDay(d) && e.end >= addDays(startOfDay(d), 1));
+    const now = new Date();
+    let earliest = 24;
+    const head = days.map((d, i) => {
+      const f = this.forecast[ymd(d)];
+      const name = labels ? labels(d, i) : d.toLocaleDateString([], { weekday: "short" });
+      return `<div class="tg-dh ${sameDay(d, now) ? "today" : ""}" data-action="goto-day" data-date="${ymd(d)}">
+        <span class="dn">${name}</span><span class="dd">${d.getDate()}</span>
+        ${f ? `<span class="wx">${WEATHER_ICONS[f.condition] || ""} ${Math.round(f.temperature)}°</span>` : ""}</div>`;
     }).join("");
-    const nowLine = sameDay(d, new Date()) ? `<div class="now" style="top:${(new Date().getHours() + new Date().getMinutes() / 60 - from) * HOUR}px"></div>` : "";
-    return `<div class="day">
-      ${all.length ? `<div class="alldays">${all.map((e) => this.evPill(e, d)).join("")}</div>` : ""}
-      <div class="timeline" style="height:${hours.length * HOUR}px">
-        ${hours.map((h) => `<div class="hr" style="top:${(h - from) * HOUR}px" data-action="new-event" data-date="${ymd(d)}"><span>${this.fmtTime(new Date(2000, 0, 1, h))}</span></div>`).join("")}
-        ${nowLine}${blocks}
-      </div></div>`;
+    const allDayCells = days.map((d) => this.eventsOn(d).filter((e) => isAllDay(e, d)));
+    const hasAllDay = allDayCells.some((c) => c.length);
+    const cols = days.map((d) => {
+      const ds = startOfDay(d), de = addDays(ds, 1);
+      const timed = this.eventsOn(d).filter((e) => !isAllDay(e, d)).map((e) => {
+        const s = Math.max(e.start, ds), en = Math.min(e.end, de);
+        return { e, s, en: Math.max(en, s + 20 * 60000) };
+      }).sort((x, y) => x.s - y.s || y.en - x.en);
+      // Lay overlapping events side by side (lanes within each overlapping cluster).
+      let cluster = [], clusterEnd = 0;
+      const flush = () => {
+        const lanes = [];
+        for (const it of cluster) {
+          let lane = lanes.findIndex((end) => end <= it.s);
+          if (lane < 0) { lane = lanes.length; lanes.push(0); }
+          lanes[lane] = it.en; it.lane = lane;
+        }
+        for (const it of cluster) {
+          it.lanes = lanes.length;
+          // Stretch right across lanes that are free during this event (like Google Calendar).
+          it.span = 1;
+          while (it.lane + it.span < it.lanes &&
+            !cluster.some((o) => o.lane === it.lane + it.span && o.s < it.en && o.en > it.s)) it.span++;
+        }
+        cluster = [];
+      };
+      for (const it of timed) {
+        if (cluster.length && it.s >= clusterEnd) flush();
+        cluster.push(it); clusterEnd = Math.max(clusterEnd, it.en);
+      }
+      flush();
+      const blocks = timed.map(({ e, s, en, lane, lanes, span }) => {
+        const top = ((s - ds) / 3600000) * H, h = Math.max(((en - s) / 3600000) * H - 2, 22);
+        earliest = Math.min(earliest, (s - ds) / 3600000);
+        const w = 100 / lanes;
+        return `<button class="tg-ev ${h < 40 ? "short" : ""}" style="--c:${e.color};top:${top}px;height:${h}px;left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
+          <b>${esc(e.summary)}</b><span>${e.avatar} ${this.fmtTime(e.start)}${h >= 40 ? ` – ${this.fmtTime(e.end)}` : ""}</span>${h >= 64 && e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
+      }).join("");
+      const slots = [...Array(24)].map((_, hr) => `<div class="tg-slot" style="top:${hr * H}px;height:${H}px" data-action="new-event" data-date="${ymd(d)}" data-hour="${hr}"></div>`).join("");
+      const nowLine = sameDay(d, now) ? `<div class="tg-now" style="top:${(now.getHours() + now.getMinutes() / 60) * H}px"></div>` : "";
+      return `<div class="tg-col ${sameDay(d, now) ? "today" : ""}">${slots}${blocks}${nowLine}</div>`;
+    }).join("");
+    const hours = [...Array(24)].map((_, hr) => `<div class="tg-hr" style="top:${hr * H}px">${hr ? new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h }) : ""}</div>`).join("");
+    // Initial scroll: an hour before the earliest event, but no later than 7am.
+    const firstHour = Math.max(0, Math.min(7, Math.floor(earliest) - 1));
+    this._tgDefaultScroll = Math.max(0, firstHour * H - 10);
+    return `<div class="tg" style="--n:${days.length};--h:${H}px">
+      <div class="tg-row tg-head"><div class="tg-gutter"></div>${head}</div>
+      ${hasAllDay ? `<div class="tg-row tg-allday"><div class="tg-gutter">all-day</div>${allDayCells.map((c, i) => `<div class="tg-adcell">${c.map((e) => this.evPill(e, days[i], true)).join("")}</div>`).join("")}</div>` : ""}
+      <div class="tg-scroll"><div class="tg-body" style="height:${24 * H}px">
+        <div class="tg-hours">${hours}</div><div class="tg-cols">${cols}</div>
+      </div></div></div>`;
   }
 
   renderSchedule() {
@@ -1259,22 +1301,14 @@ class SkylightPanel extends HTMLElement {
 
   renderHome() {
     const today = startOfDay(new Date());
-    const days = [0, 1, 2].map((i) => addDays(today, i));
+    const n = this.homeDays;
+    const days = [...Array(n)].map((_, i) => addDays(today, i));
     const noCals = !this.shownCalendars().length;
-    const label = (d, i) => (i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString([], { weekday: "long" }));
+    const label = (d, i) => (i === 0 ? "Today" : i === 1 && n <= 3 ? "Tomorrow" : d.toLocaleDateString([], { weekday: n >= 5 ? "short" : "long" }));
+    const picker = `<div class="seg daypick">${[1, 3, 5, 7].map((k) => `<button class="${k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
     const cal = noCals
       ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
-      : `<div class="three">${days.map((d, i) => {
-          const f = this.forecast[ymd(d)];
-          const evs = this.eventsOn(d);
-          return `<div class="col ${i === 0 ? "today" : ""}">
-            <div class="dh" data-action="goto-day" data-date="${ymd(d)}">
-              <span class="dn">${label(d, i)}</span><span class="dd">${d.getDate()}</span>
-              ${f ? `<span class="wx">${WEATHER_ICONS[f.condition] || ""} ${Math.round(f.temperature)}°</span>` : ""}</div>
-            <div class="evs">${evs.map((e) => this.evPill(e, d)).join("") || `<p class="hint center">Nothing planned</p>`}</div>
-            <button class="add" data-action="new-event" data-date="${ymd(d)}">+</button>
-          </div>`;
-        }).join("")}</div>`;
+      : this.renderTimeGrid(days, { labels: label });
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
     const chores = members.map((m) => {
       const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
@@ -1290,7 +1324,8 @@ class SkylightPanel extends HTMLElement {
       </div>`;
     }).join("");
     const meals = this.mealieOn ? this.mealieMeals.filter((m) => m.date === ymd(today)) : [];
-    return `<div class="home">
+    return `<div class="toolbar hometool">${picker}<button class="primary fab" data-action="new-event">+ Event</button></div>
+      <div class="home ${n >= 5 ? "wide" : ""}">
       <section class="hcal">${cal}</section>
       <aside class="hside">
         ${meals.length ? `<div class="hmeals">🍽️ ${meals.map((m) => `<b>${esc(this.mealieName(m))}</b>`).join(" · ")}</div>` : ""}
@@ -1623,7 +1658,36 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .cell .ev, .cell .more { position:relative; z-index:1; }
 .more { background:none; box-shadow:none; font-size:12px; color:var(--muted); padding:0 4px; text-align:left; }
 .celladd { position:absolute; inset:0; background:none; box-shadow:none; z-index:0; border-radius:0; }
-/* day */
+/* time grid */
+.tg { display:flex; flex-direction:column; background:var(--card); border-radius:var(--radius); overflow:hidden; box-shadow:0 2px 10px rgba(60,50,30,.06); }
+.tg-row { display:grid; grid-template-columns:56px repeat(var(--n), minmax(0,1fr)); border-bottom:1px solid var(--line); }
+.tg-gutter { font-size:11px; color:var(--muted); text-align:right; padding:6px 6px 0 0; }
+.tg-dh { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; padding:8px 8px 6px; cursor:pointer; border-left:1px solid var(--line); }
+.tg-dh .dn { color:var(--muted); font-weight:700; text-transform:uppercase; font-size:13px; }
+.tg-dh .dd { font-size:24px; font-weight:800; }
+.tg-dh.today .dd { color:#fff; background:var(--accent); border-radius:999px; min-width:36px; text-align:center; padding:0 6px; }
+.tg-dh .wx { margin-left:auto; font-size:12px; color:var(--muted); }
+.tg-adcell { display:flex; flex-direction:column; gap:3px; padding:4px; border-left:1px solid var(--line); min-width:0; max-height:96px; overflow-y:auto; }
+.tg-scroll { overflow-y:auto; max-height:calc(100vh - 250px); min-height:320px; }
+.tg-body { position:relative; display:grid; grid-template-columns:56px 1fr; }
+.tg-hours { position:relative; }
+.tg-hr { position:absolute; right:6px; transform:translateY(-50%); font-size:11px; color:var(--muted); white-space:nowrap; }
+.tg-cols { position:relative; display:grid; grid-template-columns:repeat(var(--n), minmax(0,1fr)); background:repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--h)); }
+.tg-col { position:relative; border-left:1px solid var(--line); }
+.tg-col.today { background:color-mix(in srgb, var(--accent) 5%, transparent); }
+.tg-slot { position:absolute; left:0; right:0; cursor:pointer; }
+.tg-slot:active { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+.tg-ev { position:absolute; z-index:1; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:3px 6px; text-align:left; overflow:hidden;
+  background:color-mix(in srgb, var(--c) 24%, var(--card)); border-left:4px solid var(--c); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.08); font-size:13px; line-height:1.2; }
+.tg-ev b { font-weight:700; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+.tg-ev span { font-size:11px; opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.tg-ev.short { flex-direction:row; align-items:center; gap:6px; }
+.tg-ev.short b { -webkit-line-clamp:1; white-space:nowrap; text-overflow:ellipsis; flex:0 1 auto; }
+.tg-now { position:absolute; left:0; right:0; border-top:2px solid #ff4757; z-index:2; pointer-events:none; }
+.tg-now::before { content:""; position:absolute; left:-5px; top:-6px; width:10px; height:10px; border-radius:50%; background:#ff4757; }
+.hometool { margin-top:0; }
+.home.wide { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
+/* day (legacy) */
 .alldays { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
 .alldays .ev { width:auto; }
 .timeline { position:relative; background:var(--card); border-radius:var(--radius); margin-left:0; }
@@ -1739,7 +1803,8 @@ label.check input { width:22px; height:22px; }
 .swatch.sel { border-color:var(--ink); }
 .emoji { font-size:24px; padding:4px 8px; background:var(--bg); box-shadow:none; }
 .swatches:has(.emoji) { max-height:190px; overflow-y:auto; }
-.home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; min-height:calc(100vh - 150px); }
+.home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
+.home .tg-scroll { max-height:calc(100vh - 230px); }
 .three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; height:100%; }
 .three .dn { font-size:15px; }
 .hside { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
@@ -1748,7 +1813,7 @@ label.check input { width:22px; height:22px; }
 .hhead .hint { margin-left:auto; font-weight:700; }
 .hchores .ctoggle { padding:8px 10px; }
 .hmeals { background:var(--card); border-radius:var(--radius); padding:12px 14px; }
-@media (max-width: 900px) { .home, .three { grid-template-columns:1fr; } }
+@media (max-width: 900px) { .home, .home.wide, .three { grid-template-columns:1fr; } .tg-dh .wx { display:none; } }
 .emoji.sel { outline:3px solid var(--accent); }
 .avatar-preview { width:80px; height:80px; border-radius:50%; display:grid; place-items:center; font-size:44px; margin:4px auto 0; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
