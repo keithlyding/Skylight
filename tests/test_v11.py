@@ -210,3 +210,12 @@ async def test_delete_scopes(hass, setup, hass_ws_client, hass_client):
     assert len(await _events(http)) == 2
     assert (await _cmd(ws, base))["success"]
     assert await _events(http) == []
+
+
+async def test_calendar_accounts(hass, setup, hass_ws_client):
+    ws = await hass_ws_client(hass)
+    await _cmd(ws, {"type": "skylight/calendar/create", "name": "Birthdays"})
+    await hass.async_block_till_done()
+    res = await _cmd(ws, {"type": "skylight/calendars"})
+    cal = next(c for c in res["result"] if c["entity_id"] == "calendar.birthdays")
+    assert cal["account"] == "Birthdays" and cal["integration"] == "local_calendar"

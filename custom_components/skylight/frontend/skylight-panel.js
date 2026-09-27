@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.3.1";
+const PANEL_VERSION = "1.4.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -139,7 +139,7 @@ class SkylightPanel extends HTMLElement {
     if (this.ui.filter && !data.members.find((m) => m.id === this.ui.filter)) this.ui.filter = null;
     this.render();
     this._loadEvents();
-    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); }
+    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); this._loadCalInfo(); }
   }
 
   async _loadMealieInfo() {
@@ -205,6 +205,21 @@ class SkylightPanel extends HTMLElement {
     return Object.keys(this._hass.states).filter((e) => e.startsWith("calendar.")).sort();
   }
   entityName(e) { return this._hass.states[e]?.attributes?.friendly_name || e; }
+  // Calendar name, plus the account when another calendar has the same name.
+  calName(e) {
+    const name = this.entityName(e);
+    const info = this.calInfo?.[e];
+    if (!info?.account) return name;
+    const dupes = Object.values(this.calInfo).filter((c) => c.name === info.name).length;
+    return dupes > 1 ? `${name} · ${info.account}` : name;
+  }
+  async _loadCalInfo() {
+    try {
+      const list = await this._hass.callWS({ type: "skylight/calendars" });
+      this.calInfo = Object.fromEntries(list.map((c) => [c.entity_id, c]));
+      if (this.ui.tab === "settings") this.render();
+    } catch (e) { console.warn("Skylight: calendar info", e); }
+  }
   shownCalendars() {
     const set = new Set(this.data.family_calendars || []);
     for (const m of this.members) for (const c of m.calendars || []) set.add(c);
@@ -257,9 +272,11 @@ class SkylightPanel extends HTMLElement {
     const allDay = !!ev.start.date;
     const start = allDay ? parseYmd(ev.start.date) : new Date(ev.start.dateTime);
     const end = allDay ? parseYmd(ev.end.date) : new Date(ev.end.dateTime);
-    const owner = this.calendarOwner(entity);
+    const raw = ev.summary || "(No title)";
+    const byPrefix = this.prefixOwner(raw);
+    const owner = byPrefix?.member || this.calendarOwner(entity);
     return {
-      entity, allDay, start, end, summary: ev.summary || "(No title)", description: ev.description || "",
+      entity, allDay, start, end, raw, summary: byPrefix ? byPrefix.rest : raw, description: ev.description || "",
       location: ev.location || "", uid: ev.uid, recurrence_id: ev.recurrence_id, rrule: ev.rrule,
       member: owner?.id || null,
       color: owner?.color || this.settings.family_color || "#ff9f43",
@@ -274,9 +291,26 @@ class SkylightPanel extends HTMLElement {
   }
   visibleEvents() {
     if (!this.ui.filter) return this.events;
-    const m = this.member(this.ui.filter);
-    const cals = new Set(m?.calendars || []);
-    return this.events.filter((e) => cals.has(e.entity));
+    return this.events.filter((e) => e.member === this.ui.filter);
+  }
+
+  // "Z- Soccer" -> {member: Sam, rest: "Soccer"} when Sam has prefix "Z".
+  // A prefix matches only when followed by a separator (-, :, –, space), so "Z" never matches "Zoo trip".
+  prefixOwner(title) {
+    const t = title.trim(), lower = t.toLowerCase();
+    let best = null;
+    for (const m of this.members) {
+      for (let p of m.prefixes || []) {
+        p = p.trim().toLowerCase();
+        if (!p || !lower.startsWith(p) || (best && p.length <= best.len)) continue;
+        const next = t.charAt(p.length);
+        const endsWithSep = /[-:–—]$/.test(p);
+        if (!endsWithSep && next && !/[\s\-:–—]/.test(next)) continue;
+        const rest = t.slice(p.length).replace(/^[\s\-:–—]+/, "").trim();
+        best = { member: m, rest: rest || t, len: p.length };
+      }
+    }
+    return best;
   }
 
   async _loadForecast() {
@@ -300,7 +334,7 @@ class SkylightPanel extends HTMLElement {
     const D = this.data;
     switch (action) {
       // navigation
-      case "tab": this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
+      case "tab": if (d.tab === "settings") this._loadCalInfo(); this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
       case "view": this.ui.view = d.view; this.render(); this._loadEvents(); break;
       case "filter": this.ui.filter = this.ui.filter === d.member ? null : d.member || null; this.render(); break;
       case "today": this.ui.anchor = startOfDay(new Date()); this.render(); this._loadEvents(); break;
@@ -567,13 +601,13 @@ class SkylightPanel extends HTMLElement {
     const endT = ev && !ev.allDay ? `${pad(ev.end.getHours())}:${pad(ev.end.getMinutes())}` : `${pad(Math.min(now.getHours() + 2, 23))}:00`;
     const endDate = ev ? ymd(ev.allDay ? addDays(ev.end, -1) : ev.end) : dateStr;
     const defaultCal = ev?.entity || (this.ui.filter && this.member(this.ui.filter)?.calendars?.[0]) || (this.data.family_calendars || [])[0] || writable[0];
-    const calLabel = (e) => { const o = this.calendarOwner(e); return `${o ? o.avatar + " " + o.name + " – " : "🏠 "}${this.entityName(e)}`; };
+    const calLabel = (e) => { const o = this.calendarOwner(e); return `${o ? o.avatar + " " + o.name + " – " : "🏠 "}${this.calName(e)}`; };
     this._openDialog({
       type: "event", event: ev,
       html: () => `
         <h2>${ev ? "Edit event" : "New event"}</h2>
         ${!writable.length ? `<p class="hint">No calendars yet. Add one in Settings first.</p>` : ""}
-        <label>Title<input id="ev-title" value="${esc(ev?.summary)}" autofocus placeholder="Soccer practice"></label>
+        <label>Title<input id="ev-title" value="${esc(ev?.raw ?? ev?.summary)}" autofocus placeholder="Soccer practice"></label>
         <label>Calendar<select id="ev-cal" ${this._isRecurring(ev) ? "disabled" : ""}>${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
         <div class="row">
@@ -726,12 +760,15 @@ class SkylightPanel extends HTMLElement {
         <h2>${m ? "Edit" : "Add"} family member</h2>
         <div class="avatar-preview" style="background:${dlg.color}">${dlg.avatar}</div>
         <label>Name<input id="m-name" value="${esc(m?.name)}" autofocus placeholder="Name"></label>
+        <label>Event title prefixes <small class="hint">(optional, comma-separated)</small>
+          <input id="m-prefix" value="${esc((m?.prefixes || []).join(", "))}" placeholder="e.g. Z, Sam"></label>
+        <p class="hint" style="margin-top:-4px">Events whose title starts with one of these, followed by "-", ":" or a space (like “Z- Soccer”), show in this person's color on any calendar.</p>
         <div class="label">Color</div>
         <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
         <div class="label">Avatar</div>
         <div class="swatches">${AVATARS.map((a) => `<button class="emoji ${a === dlg.avatar ? "sel" : ""}" data-action="pick-avatar" data-avatar="${a}">${a}</button>`).join("")}</div>
         <div class="label">Calendars</div>
-        <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
+        <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
         <div class="actions">
           ${m ? `<button class="danger" data-action="delete-member">Remove</button>` : ""}
           <span class="spacer"></span>
@@ -748,10 +785,11 @@ class SkylightPanel extends HTMLElement {
     const name = this.shadowRoot.getElementById("m-name").value.trim();
     if (!name) { this._toast("Please enter a name"); return; }
     const calendars = [...this.shadowRoot.querySelectorAll(".m-cal:checked")].map((i) => i.value);
-    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars };
+    const prefixes = this.shadowRoot.getElementById("m-prefix").value.split(",").map((x) => x.trim()).filter(Boolean);
+    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes };
     const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
     await this._set("members", members);
-    this._eventsKey = ""; this.closeDialog();
+    this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
   }
 
   openChoreDialog(c, memberId) {
@@ -1462,7 +1500,7 @@ class SkylightPanel extends HTMLElement {
         <div class="toolbar"><h2>Family members</h2><button class="primary" data-action="new-member">+ Add member</button></div>
         ${this.members.map((m, i) => `<div class="mrow2">
           <span class="av big" style="background:${m.color}">${m.avatar}</span>
-          <div class="grow"><b>${esc(m.name)}</b><small>${(m.calendars || []).map((c) => esc(this.entityName(c))).join(", ") || "No calendars"}</small></div>
+          <div class="grow"><b>${esc(m.name)}</b><small>${[...(m.prefixes || []).map((p) => `“${esc(p)}…”`), ...(m.calendars || []).map((c) => esc(this.calName(c)))].join(", ") || "No calendars"}</small></div>
           <button class="icon sm" data-action="member-up" data-member="${m.id}" ${i === 0 ? "disabled" : ""}>↑</button>
           <button class="icon sm" data-action="member-down" data-member="${m.id}" ${i === this.members.length - 1 ? "disabled" : ""}>↓</button>
           <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar, chores and rewards.</p>`}
@@ -1478,7 +1516,7 @@ class SkylightPanel extends HTMLElement {
         <div class="label">Shared family calendars (shown in the family color)</div>
         <div class="checklist">${cals.map((e) => {
           const o = this.calendarOwner(e);
-          return `<label class="check"><input type="checkbox" data-change="family-cal" data-entity="${e}" ${fam.has(e) ? "checked" : ""}> ${esc(this.entityName(e))} ${o ? `<small class="tag" style="background:${o.color}">${o.avatar} ${esc(o.name)}</small>` : ""}</label>`;
+          return `<label class="check"><input type="checkbox" data-change="family-cal" data-entity="${e}" ${fam.has(e) ? "checked" : ""}> ${esc(this.calName(e))} ${o ? `<small class="tag" style="background:${o.color}">${o.avatar} ${esc(o.name)}</small>` : ""}</label>`;
         }).join("") || `<p class="hint">No calendars in Home Assistant yet.</p>`}</div>
         <label class="inline">Family color <input type="color" value="${s.family_color}" data-change="setting" data-key="family_color"></label>
       </section>
@@ -1488,7 +1526,7 @@ class SkylightPanel extends HTMLElement {
         <p class="hint">Meals from these calendars fill the Meals tab, sorted into breakfast / lunch / dinner / snack by the calendar name, the meal name, or the time of day.
           <b>Plan to Eat:</b> copy your planner's iCal link from Plan to Eat's planner settings and subscribe to it in Calendars above.
           <b>Mealie:</b> add the Mealie integration in Home Assistant; its meal calendars appear here.</p>
-        <div class="checklist">${cals.map((e) => `<label class="check"><input type="checkbox" data-change="meal-cal" data-entity="${e}" ${(this.data.meal_calendars || []).includes(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("") || `<p class="hint">No calendars yet.</p>`}</div>
+        <div class="checklist">${cals.map((e) => `<label class="check"><input type="checkbox" data-change="meal-cal" data-entity="${e}" ${(this.data.meal_calendars || []).includes(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") || `<p class="hint">No calendars yet.</p>`}</div>
       </section>
 
       ${this.renderMealieSettings()}

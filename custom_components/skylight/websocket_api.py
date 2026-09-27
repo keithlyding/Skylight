@@ -10,6 +10,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED
 from . import immich
@@ -35,6 +36,7 @@ def async_register(hass: HomeAssistant) -> None:
         ws_photo_urls,
         ws_immich_albums,
         ws_immich_configure,
+        ws_calendars,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -233,3 +235,25 @@ async def ws_immich_configure(hass: HomeAssistant, connection, msg: dict[str, An
     await store.async_set_immich(msg["url"], msg.get("api_key") or None, msg["albums"], msg["favorites"])
     immich.invalidate(hass)
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/calendars"})
+@callback
+def ws_calendars(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Calendar entities with the account/integration they come from.
+
+    Google creates one "Birthdays"/"Holidays" per account, so the name alone
+    can't tell them apart; the config entry title (the account) can.
+    """
+    registry = er.async_get(hass)
+    out = []
+    for state in hass.states.async_all("calendar"):
+        entry = registry.async_get(state.entity_id)
+        cfg = hass.config_entries.async_get_entry(entry.config_entry_id) if entry and entry.config_entry_id else None
+        out.append({
+            "entity_id": state.entity_id,
+            "name": state.attributes.get("friendly_name", state.entity_id),
+            "account": cfg.title if cfg else None,
+            "integration": entry.platform if entry else None,
+        })
+    connection.send_result(msg["id"], sorted(out, key=lambda c: (c["name"].lower(), c["account"] or "")))
