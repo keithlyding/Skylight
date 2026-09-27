@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.6.1";
+const PANEL_VERSION = "1.6.2";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -1091,13 +1091,11 @@ class SkylightPanel extends HTMLElement {
     this._tgH = Math.max(24, scroll.clientHeight / (b - a));
     tg.style.setProperty("--h", `${this._tgH}px`);
   }
-  // Default position: the day window at the top; late at night, show the current time instead.
+  // Default position: always the day window (7am-8pm), whatever the time.
   _scrollGridHome(grid = this.$app?.querySelector(".tg-scroll")) {
     if (!grid) return;
-    const H = this._tgH || 40, now = new Date(), [a, b] = this._tgWindow || [7, 20];
-    const hr = now.getHours() + now.getMinutes() / 60;
-    const showsToday = !!grid.querySelector(".tg-now");
-    grid.scrollTop = showsToday && (hr < a || hr > b) ? Math.max(0, hr * H - grid.clientHeight / 2) : a * H;
+    const [a] = this._tgWindow || [7, 20];
+    grid.scrollTop = a * (this._tgH || 40);
     this._tgScroll = grid.scrollTop;
   }
 
