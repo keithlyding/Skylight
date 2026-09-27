@@ -64,7 +64,7 @@ Skylight uses Home Assistant's built-in **Mealie** integration, so the tablet re
 - **Meals → 📖 Recipes** browses your whole Mealie library: search, categories, tags, and sort by name, newest or rating.
 - Tap any recipe (or **Tonight's dinner** on the Today screen) for **cook mode**: a full-screen recipe with large text, ingredients to tick off, and one highlighted step at a time. Use Next/Back or swipe. The screensaver stays off while cooking.
 - **Servings −/+** rescales ingredient amounts (for ingredients Mealie has parsed into amount/unit/food; plain-text ingredients are shown as written).
-- **🗑** on a recipe card or in cook mode deletes the recipe from Mealie (after a confirmation). This is permanent and affects everyone.
+- **Delete a recipe:** press and hold its picture (on the recipe card or in cook mode) for 5 seconds. A red **🗑 Delete** button appears for 15 seconds; tapping it asks for confirmation. Deleting is permanent in Mealie and affects everyone.
 - **📱 On my phone** shows a QR code that opens the recipe in Mealie. If your phone reaches Mealie by a different address than Home Assistant does, set it under Settings → Mealie → *Link for phones*.
 
 Rows map to Mealie types: Breakfast, Lunch, Dinner, and **Snack**, which shows Mealie's snack, side, dessert and drink entries. Adding to Snack uses "snack" on Mealie 3.7+ and "side" on older versions.

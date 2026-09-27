@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.25.1";
+const PANEL_VERSION = "1.25.2";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -332,6 +332,16 @@ class SkylightPanel extends HTMLElement {
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
     this.shadowRoot.addEventListener("pointerup", (e) => this._swipeEnd(e), { passive: true });
+    this.shadowRoot.addEventListener("pointerdown", (e) => this._holdStart(e), { passive: true });
+    this.shadowRoot.addEventListener("pointermove", (e) => this._holdMove(e), { passive: true });
+    for (const ev of ["pointerup", "pointercancel"]) {
+      this.shadowRoot.addEventListener(ev, () => {
+        this._holdCancel();
+        if (this._holdFired) { this._holdFired = false; this._suppressClickUntil = Date.now() + 150; }
+      }, { passive: true });
+    }
+    // No long-press image menu on the hold-to-delete pictures.
+    this.shadowRoot.addEventListener("contextmenu", (e) => { if (e.target.closest?.(".holdable")) e.preventDefault(); });
     this.shadowRoot.addEventListener("pointercancel", () => { this._swipe = null; }, { passive: true });
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
     this.shadowRoot.addEventListener("input", (e) => {
@@ -1157,6 +1167,7 @@ class SkylightPanel extends HTMLElement {
         catch (e) { return; } // _ws already showed the error
         if (this.browse?.items) this.browse.items = this.browse.items.filter((x) => (x.slug || x.id) !== d.recipe);
         if (this.browse?.total) this.browse.total -= 1;
+        this._delReveal = null;
         if (this.cook?.key === d.recipe || this.cook?.r?.slug === d.recipe) this.closeCook();
         this._todayMeals = null; await this._reloadMealie();
         this.render(); break;
@@ -2123,12 +2134,43 @@ class SkylightPanel extends HTMLElement {
       ${cats.length ? `<div class="seg rcats"><button class="${!b.category ? "on" : ""}" data-action="rb-cat" data-cat="">All</button>${cats.map((c) => `<button class="${b.category === c.slug ? "on" : ""}" data-action="rb-cat" data-cat="${esc(c.slug)}">${esc(c.name)}</button>`).join("")}</div>` : ""}
       ${b.error ? `<p class="hint">⚠️ ${esc(b.error)}</p>` : ""}
       <div class="rbgrid">${(b.items || []).map((r) => `<div class="rbcard" role="button" tabindex="0" data-action="cook" data-recipe="${esc(r.slug || r.id)}">
-          <button class="rbdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}" title="Delete recipe" aria-label="Delete ${esc(r.name)}">🗑</button>
-          <div class="rbimg">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<span>🍽️</span></div>
+          <div class="rbimg holdable" data-hold="${esc(r.slug || r.id)}">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" draggable="false" onerror="this.remove()">` : ""}<span>🍽️</span>
+            ${this._delShown(r.slug || r.id) ? `<button class="rbdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}">🗑 Delete</button>` : ""}</div>
           <b>${esc(r.name)}</b><small>${[r.total_time ? `⏱ ${esc(r.total_time)}` : "", r.rating ? "★".repeat(Math.round(r.rating)) : ""].filter(Boolean).join(" · ")}</small></div>`).join("")}</div>
       ${b.loading ? `<p class="hint center">Loading recipes…</p>` : b.items && !b.items.length ? `<p class="hint center">No recipes found.</p>` : ""}
       ${!b.loading && b.items && b.page < b.pages ? `<div class="center"><button data-action="rb-more">Show more${b.total ? ` (${b.items.length} of ${b.total})` : ""}</button></div>` : ""}
     </div>`;
+  }
+
+  // Hidden delete: hold a recipe picture for 5 s to show its Delete button for 15 s.
+  _delShown(key) { return this._delReveal?.key === key && Date.now() < this._delReveal.until; }
+  _holdStart(e) {
+    const t = e.target.closest?.("[data-hold]");
+    if (!t || !e.isPrimary || e.target.closest(".rbdel")) return;
+    this._holdCancel();
+    const key = t.dataset.hold;
+    t.classList.add("holding");
+    this._hold = { key, el: t, x: e.clientX, y: e.clientY, timer: setTimeout(() => {
+      this._hold = null; t.classList.remove("holding");
+      this._holdFired = true; // the finger lifting mustn't open the recipe (see pointerup)
+      this._delReveal = { key, until: Date.now() + 15000 };
+      clearTimeout(this._delHideTimer);
+      this._delHideTimer = setTimeout(() => { this._delReveal = null; this._refreshRecipeViews(); }, 15000);
+      if (navigator.vibrate) try { navigator.vibrate(40); } catch (err) { /* not supported */ }
+      this._refreshRecipeViews();
+    }, 5000) };
+  }
+  _holdMove(e) {
+    const h = this._hold;
+    if (h && Math.hypot(e.clientX - h.x, e.clientY - h.y) > 12) this._holdCancel(); // scrolling, not holding
+  }
+  _holdCancel() {
+    if (!this._hold) return;
+    clearTimeout(this._hold.timer); this._hold.el.classList.remove("holding"); this._hold = null;
+  }
+  _refreshRecipeViews() {
+    if (this.cook?.r) this.renderCook();
+    if (this.ui.tab === "meals" && this.ui.mealsView === "recipes") this.render();
   }
 
   // ---------- Mealie: tonight's dinner on the Today screen ----------
@@ -2228,12 +2270,12 @@ class SkylightPanel extends HTMLElement {
     const times = [r.prep_time ? `Prep ${esc(r.prep_time)}` : "", r.cook_time ? `Cook ${esc(r.cook_time)}` : "", r.total_time ? `Total ${esc(r.total_time)}` : ""].filter(Boolean).join(" · ");
     this.$cook.innerHTML = shell(`
       <div class="cktop">
-        ${r.image ? `<img src="${esc(r.image)}" alt="" onerror="this.remove()">` : ""}
+        <div class="ckimg holdable" data-hold="${esc(r.slug || r.id)}">${r.image ? `<img src="${esc(r.image)}" alt="" draggable="false" onerror="this.remove()">` : ""}<span>🍽️</span>
+          ${this._delShown(r.slug || r.id) ? `<button class="rbdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}">🗑 Delete</button>` : ""}</div>
         <div class="cktitle"><h2>${esc(r.name)}</h2>${times ? `<small>⏱ ${times}</small>` : ""}</div>
         <span class="spacer"></span>
         ${serv}
         ${r.link ? `<button data-action="cook-qr" title="Open on your phone">📱 On my phone</button>` : ""}
-        <button class="ckdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}" title="Delete recipe">🗑</button>
         <button class="ckx" data-action="cook-close">✕ Close</button>
       </div>
       <div class="ckbody">
@@ -3696,8 +3738,15 @@ label.check input { width:22px; height:22px; }
 .rcats { flex-wrap:wrap; }
 .rbgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
 .rbcard { position:relative; cursor:pointer; }
-.rbdel { position:absolute; top:8px; right:8px; z-index:1; width:40px; height:40px; padding:0; border-radius:50%; background:rgba(255,255,255,.9); box-shadow:0 1px 4px rgba(0,0,0,.25); font-size:18px; }
-.ckdel { font-size:18px; }
+.holdable { -webkit-touch-callout:none; user-select:none; -webkit-user-select:none; }
+.holdable img { pointer-events:none; }
+.holdable::after { content:""; position:absolute; left:0; bottom:0; height:5px; width:0; background:#c62828; opacity:0; }
+.holdable.holding::after { opacity:1; animation:holdbar 5s linear forwards; }
+@keyframes holdbar { to { width:100%; } }
+.rbdel { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:2; padding:10px 16px; border-radius:999px; background:#c62828; color:#fff; font-weight:800; font-size:16px; white-space:nowrap; box-shadow:0 2px 10px rgba(0,0,0,.35); }
+.ckimg { position:relative; width:64px; height:64px; border-radius:12px; overflow:visible; flex:none; display:grid; place-items:center; font-size:30px; background:var(--chip, rgba(127,127,127,.12)); }
+.ckimg img { position:absolute; inset:0; width:100% !important; height:100% !important; border-radius:12px; object-fit:cover; }
+.ckimg .rbdel { left:0; top:calc(100% + 8px); transform:none; font-size:15px; padding:8px 12px; }
 .rbcard { display:flex; flex-direction:column; align-items:stretch; text-align:left; gap:4px; padding:0 0 10px; overflow:hidden; border-radius:16px; background:var(--card); }
 .rbcard b, .rbcard small { padding:0 12px; } .rbcard b { font-size:16px; line-height:1.25; } .rbcard small { color:var(--muted); }
 .rbimg { position:relative; aspect-ratio:4/3; background:var(--chip, rgba(127,127,127,.12)); display:grid; place-items:center; font-size:34px; }
