@@ -38,7 +38,13 @@ class SkylightStore:
         immich = dict(data["immich"])
         immich["has_key"] = bool(immich.pop("api_key", ""))
         data["immich"] = immich
+        data["places"] = {"has_google_key": bool(data["places"].get("google_key"))}
         return data
+
+    async def async_set_places_key(self, key: str) -> None:
+        async with self._lock:
+            self.data["places"] = {"google_key": key}
+            self._changed()
 
     async def async_set_immich(self, url: str, api_key: str | None, albums: list, favorites: bool) -> None:
         async with self._lock:

@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.10.0";
+const PANEL_VERSION = "1.11.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -214,6 +214,7 @@ class SkylightPanel extends HTMLElement {
     this.$saver = this.shadowRoot.getElementById("saver");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
+    this.shadowRoot.addEventListener("input", (e) => { if (e.target.id === "ev-loc") this._locSearch(e.target.value); });
     this.shadowRoot.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.target.dataset.enter) { e.preventDefault(); this._action(e.target.dataset.enter, e.target); }
     });
@@ -499,6 +500,18 @@ class SkylightPanel extends HTMLElement {
       case "save-event": await this.saveEvent(); break;
       case "delete-event": await this.deleteEvent(); break;
       case "scope": this._resolveScope(d.scope === "cancel" ? null : d.scope); break;
+      case "pick-place": {
+        const input = this.shadowRoot.getElementById("ev-loc");
+        if (input) input.value = d.value;
+        this._clearSugg(); break;
+      }
+      case "places-save": {
+        const key = this.shadowRoot.getElementById("places-key").value.trim();
+        if (!key) return;
+        await this._ws({ type: "skylight/places/configure", google_key: key });
+        this._toast("Google Places key saved"); break;
+      }
+      case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
       case "who": {
         const w = this.ui.dialog.who;
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
@@ -800,7 +813,8 @@ class SkylightPanel extends HTMLElement {
           <option value="FREQ=WEEKLY">Every week</option><option value="FREQ=MONTHLY">Every month</option>
           <option value="FREQ=YEARLY">Every year</option></select></label>`}
         ${this._isRecurring(ev) ? `<p class="hint">🔁 Repeating event (${esc(this._rruleText(ev.rrule))}). When you save or delete, you'll choose which events to change.</p>` : ""}
-        <label>Location<input id="ev-loc" value="${esc(ev?.location)}"></label>
+        <label class="locfield">Location<input id="ev-loc" value="${esc(ev?.location)}" autocomplete="off" placeholder="Type a place or business name">
+          <div id="loc-sugg" class="sugg" hidden></div></label>
         <label>Notes<textarea id="ev-desc" rows="2">${esc(ev?.description)}</textarea></label>
         <div class="actions">
           ${ev ? `<button class="danger" data-action="delete-event">Delete</button>` : ""}
@@ -810,6 +824,36 @@ class SkylightPanel extends HTMLElement {
         </div>`,
     };
     this._openDialog(dlg);
+  }
+
+  // ---------- location lookup ----------
+  _locSearch(text) {
+    clearTimeout(this._locTimer);
+    const q = text.trim();
+    if (q.length < 3) { this._clearSugg(); return; }
+    this._locTimer = setTimeout(async () => {
+      const seq = (this._locSeq = (this._locSeq || 0) + 1);
+      let res;
+      try { res = await this._hass.callWS({ type: "skylight/places/search", query: q }); }
+      catch (e) { this._showSugg([], e.message); return; }
+      if (seq !== this._locSeq) return; // a newer search is running
+      this._showSugg(res.results, null, res.provider);
+    }, 450);
+  }
+  _showSugg(results, error, provider) {
+    const box = this.shadowRoot.getElementById("loc-sugg");
+    if (!box) return;
+    const label = (r) => (r.address && !r.address.startsWith(r.name) ? `${r.name}, ${r.address}` : r.address || r.name);
+    box.innerHTML = error ? `<div class="hint">⚠️ ${esc(error)}</div>`
+      : results.length ? results.map((r) => `<button type="button" data-action="pick-place" data-value="${esc(label(r))}">
+          <b>${esc(r.name)}</b><small>${esc(r.address)}</small></button>`).join("") + `<div class="attrib">${provider === "google" ? "Results from Google" : "Results © OpenStreetMap contributors"}</div>`
+      : `<div class="hint">No matches. You can still type the address yourself.</div>`;
+    box.hidden = false;
+    box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  _clearSugg() {
+    const box = this.shadowRoot.getElementById("loc-sugg");
+    if (box) { box.hidden = true; box.innerHTML = ""; }
   }
 
   // Calendar where a person's copy of an event is saved: their first writable (non-info, non-feed) calendar.
@@ -1891,6 +1935,16 @@ class SkylightPanel extends HTMLElement {
       ${this.renderImmichSettings()}
 
       <section class="card">
+        <h2>Address lookup</h2>
+        <p class="hint">${this.data.places?.has_google_key
+          ? "✅ Using <b>Google Places</b> to find addresses when you type a location."
+          : "Using the free <b>OpenStreetMap</b> lookup. For better results with local businesses, add a Google Places API key (Google Cloud Console → enable “Places API (New)” → create an API key; Google bills per search beyond its free allowance)."}</p>
+        <div class="additem"><input id="places-key" type="password" autocomplete="off" data-fresh="1" placeholder="${this.data.places?.has_google_key ? "•••••• saved" : "Google Places API key (optional)"}">
+          <button class="primary" data-action="places-save">Save key</button>
+          ${this.data.places?.has_google_key ? `<button data-action="places-clear">Remove</button>` : ""}</div>
+      </section>
+
+      <section class="card">
         <h2>Display</h2>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
         <label class="inline">Week starts on <select data-change="setting" data-key="week_start" data-num="1"><option value="0" ${Number(s.week_start) === 0 ? "selected" : ""}>Sunday</option><option value="1" ${Number(s.week_start) === 1 ? "selected" : ""}>Monday</option></select></label>
@@ -2051,6 +2105,13 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .whochip.on { border-color:var(--c); background:color-mix(in srgb, var(--c) 18%, var(--card)); }
 .whochip .av { width:28px; height:28px; font-size:16px; }
 .whochip:disabled { opacity:.4; }
+.locfield { position:relative; }
+.sugg { position:absolute; left:0; right:0; top:100%; z-index:5; background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); overflow:hidden; font-weight:400; }
+.sugg button { display:flex; flex-direction:column; align-items:flex-start; width:100%; text-align:left; border-radius:0; box-shadow:none; background:none; padding:9px 12px; border-bottom:1px solid var(--line); }
+.sugg button:hover, .sugg button:active { background:var(--bg); }
+.sugg small { color:var(--muted); font-size:12px; }
+.sugg .hint { padding:8px 12px; }
+.sugg .attrib { font-size:10px; color:var(--muted); padding:4px 12px; text-align:right; }
 .srow .bar { width:5px; align-self:stretch; background:var(--c); border-radius:4px; }
 /* Events shared by several people: diagonal stripes in each person's color (like Skylight) */
 .ev.multi, .tg-ev.multi { background:var(--stripes-soft); }

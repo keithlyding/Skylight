@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -39,6 +39,8 @@ DEFAULT_DATA = {
     "linked_todos": [],
     # api_key is never sent to the browser (see SkylightStore.public).
     "immich": {"url": "", "api_key": "", "albums": [], "favorites": False},
+    # Optional Google Places key for location lookup (never sent to the browser).
+    "places": {"google_key": ""},
     "settings": {
         "weather_entity": None,
         "week_start": 0,
