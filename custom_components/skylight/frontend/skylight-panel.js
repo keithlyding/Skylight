@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.8.0";
+const PANEL_VERSION = "1.9.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -43,6 +43,10 @@ const baseOf = (emoji) => {
   const key = (e) => e.replace(TONE_RE, "").replace(/\uFE0F/g, "");
   return AVATARS.find((x) => key(x) === key(emoji)) || emoji.replace(TONE_RE, "");
 };
+
+// Info-only calendars (birthdays, holidays, school...): icon + muted color choices.
+const INFO_ICONS = ["🎂", "🎉", "🇺🇸", "🎄", "⛪", "🏫", "🏈", "⚽", "🗓️", "🌙", "✈️", "💼", "🗑️", "🌱", "📌"];
+const INFO_COLORS = ["#9e9e9e", "#b0a58f", "#c29fa3", "#9fb3c8", "#a8c3a0", "#c9b37e", "#b39ddb", "#80cbc4"];
 
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -303,9 +307,11 @@ class SkylightPanel extends HTMLElement {
       if (this.ui.tab === "settings") this.render();
     } catch (e) { console.warn("Skylight: calendar info", e); }
   }
+  infoCal(entity) { return (this.data.info_calendars || []).find((c) => c.entity === entity); }
   shownCalendars() {
     const set = new Set(this.data.family_calendars || []);
     for (const m of this.members) for (const c of m.calendars || []) set.add(c);
+    for (const c of this.data.info_calendars || []) set.add(c.entity);
     return [...set].filter((e) => this._hass.states[e]);
   }
   weekStart(d) {
@@ -358,7 +364,7 @@ class SkylightPanel extends HTMLElement {
       const key = e.uid ? `${e.uid}|${e.recurrence_id || ""}|${+e.start}` : null;
       const first = key && byKey.get(key);
       if (!first) { if (key) byKey.set(key, e); out.push(e); continue; }
-      if (first.raw !== e.raw) { out.push(e); continue; } // different title: keep both
+      if (first.raw !== e.raw || first.info || e.info) { out.push(e); continue; } // different title / info: keep both
       const ids = [...new Set([...first.members, ...e.members])];
       this._applyOwners(first, ids.map((id) => this.member(id)).filter(Boolean));
     }
@@ -370,6 +376,15 @@ class SkylightPanel extends HTMLElement {
     const start = allDay ? parseYmd(ev.start.date) : new Date(ev.start.dateTime);
     const end = allDay ? parseYmd(ev.end.date) : new Date(ev.end.dateTime);
     const raw = ev.summary || "(No title)";
+    const info = this.infoCal(entity);
+    if (info) {
+      // Info-only: no owner, its own icon and muted color, never striped or filtered out.
+      return {
+        entity, allDay, start, end, raw, summary: raw, description: ev.description || "", location: ev.location || "",
+        uid: ev.uid, recurrence_id: ev.recurrence_id, rrule: ev.rrule,
+        info: true, members: [], member: null, color: info.color || INFO_COLORS[0], avatar: info.icon || "📌", stripes: "",
+      };
+    }
     const byPrefix = this.prefixOwner(raw);
     const owners = byPrefix ? byPrefix.members : this.calendarOwners(entity);
     return this._applyOwners({
@@ -384,8 +399,10 @@ class SkylightPanel extends HTMLElement {
       .sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
   }
   visibleEvents() {
-    if (!this.ui.filter) return this.events;
-    return this.events.filter((e) => (e.members || []).includes(this.ui.filter));
+    let evs = this.events;
+    if (this.ui.tab === "home" && this.settings.info_on_today === false) evs = evs.filter((e) => !e.info);
+    if (!this.ui.filter) return evs;
+    return evs.filter((e) => e.info || (e.members || []).includes(this.ui.filter));
   }
 
   // "Z- Soccer" -> {member: Sam, rest: "Soccer"} when Sam has prefix "Z".
@@ -638,6 +655,21 @@ class SkylightPanel extends HTMLElement {
           setTimeout(() => this.render(), 1500);
         } finally { el.disabled = false; }
         break;
+      }
+      case "info-cal": {
+        let list = [...(D.info_calendars || [])];
+        if (el.checked) {
+          const name = this.entityName(d.entity).toLowerCase();
+          const icon = /birthday/.test(name) ? "🎂" : /holiday/.test(name) ? "🎉" : /school/.test(name) ? "🏫" : "📌";
+          list.push({ entity: d.entity, icon, color: INFO_COLORS[list.length % INFO_COLORS.length] });
+        } else list = list.filter((c) => c.entity !== d.entity);
+        this._eventsKey = "";
+        await this._set("info_calendars", list); break;
+      }
+      case "info-style": {
+        const list = (D.info_calendars || []).map((c) => (c.entity === d.entity ? { ...c, [d.field]: d.value } : c));
+        this._eventsKey = "";
+        await this._set("info_calendars", list); break;
       }
       case "meal-cal": {
         const set = new Set(D.meal_calendars || []);
@@ -1378,8 +1410,8 @@ class SkylightPanel extends HTMLElement {
     const time = ev.allDay ? "" : `<span class="t">${this.fmtTime(ev.start)}</span>`;
     const multi = ev.allDay && (ev.end - ev.start) > 86400000;
     const cont = day && ev.start < startOfDay(day);
-    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""}" style="--c:${ev.color};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
-      ${compact ? "" : `<span class="av">${ev.avatar}</span>`}<span class="s">${cont ? "↳ " : ""}${esc(ev.summary)}</span>${multi || compact ? "" : time}${compact && !ev.allDay ? `<span class="t">${this.fmtTime(ev.start)}</span>` : ""}</button>`;
+    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""} ${ev.info ? "info" : ""}" style="--c:${ev.color};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
+      ${compact && !ev.info ? "" : `<span class="av">${ev.avatar}</span>`}<span class="s">${cont ? "↳ " : ""}${esc(ev.summary)}</span>${multi || compact ? "" : time}${compact && !ev.allDay ? `<span class="t">${this.fmtTime(ev.start)}</span>` : ""}</button>`;
   }
   dayHead(d) {
     const f = this.forecast[ymd(d)];
@@ -1468,7 +1500,7 @@ class SkylightPanel extends HTMLElement {
         const startH = (s - ds) / 3600000, dur = (en - s) / 3600000;
         const w = 100 / lanes;
         const short = dur < 0.8;
-        return `<button class="tg-ev ${short ? "short" : dur >= 1.5 ? "tall" : ""} ${e.stripes ? "multi" : ""}" style="--c:${e.color};${e.stripes}top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
+        return `<button class="tg-ev ${short ? "short" : dur >= 1.5 ? "tall" : ""} ${e.stripes ? "multi" : ""} ${e.info ? "info" : ""}" style="--c:${e.color};${e.stripes}top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
           <b>${esc(e.summary)}</b><span>${e.avatar} ${this.fmtTime(e.start)}${short ? "" : ` – ${this.fmtTime(e.end)}`}</span>${dur >= 1.5 && e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
       }).join("");
       const slots = [...Array(24)].map((_, hr) => `<div class="tg-slot" style="top:${at(hr)};height:var(--h)" data-action="new-event" data-date="${ymd(d)}" data-hour="${hr}"></div>`).join("");
@@ -1759,6 +1791,21 @@ class SkylightPanel extends HTMLElement {
       </section>
 
       <section class="card">
+        <h2>Info calendars</h2>
+        <p class="hint">Birthdays, holidays and other "good to know" calendars. They show with their own icon in a light outline style, don't belong to anyone, and stay visible when you filter by a person.</p>
+        <div class="checklist">${cals.map((e) => {
+          const ic = this.infoCal(e);
+          return `<div class="inforow"><label class="check"><input type="checkbox" data-change="info-cal" data-entity="${e}" ${ic ? "checked" : ""}> ${esc(this.calName(e))}</label>
+            ${ic ? `<div class="infostyle">
+              ${INFO_ICONS.map((i) => `<button class="emoji mini ${i === ic.icon ? "sel" : ""}" data-action="info-style" data-entity="${e}" data-field="icon" data-value="${i}">${i}</button>`).join("")}
+              <span class="sep"></span>
+              ${INFO_COLORS.map((c) => `<button class="swatch mini ${c === ic.color ? "sel" : ""}" style="background:${c}" data-action="info-style" data-entity="${e}" data-field="color" data-value="${c}"></button>`).join("")}
+            </div>` : ""}</div>`;
+        }).join("") || `<p class="hint">No calendars yet.</p>`}</div>
+        <label class="inline">Show info calendars on the Today screen <input type="checkbox" ${s.info_on_today !== false ? "checked" : ""} data-change="setting" data-key="info_on_today"></label>
+      </section>
+
+      <section class="card">
         <h2>Meal plan sync</h2>
         <p class="hint">Meals from these calendars fill the Meals tab, sorted into breakfast / lunch / dinner / snack by the calendar name, the meal name, or the time of day.
           <b>Plan to Eat:</b> copy your planner's iCal link from Plan to Eat's planner settings and subscribe to it in Calendars above.
@@ -1917,6 +1964,14 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .slist { display:flex; flex-direction:column; gap:4px; padding-top:6px; }
 .srow { display:flex; align-items:center; gap:12px; background:none; box-shadow:none; text-align:left; padding:8px 4px; }
 .srow .st { width:80px; font-weight:700; font-size:14px; }
+.ev.info, .tg-ev.info { background:var(--card); border:1.5px solid var(--c); border-left-width:1.5px; color:var(--ink); font-weight:600; }
+.ev.info.allday { background:color-mix(in srgb, var(--c) 12%, var(--card)); color:var(--ink); }
+.ev.info .av { font-size:13px; }
+.inforow { padding:4px 0; border-bottom:1px solid var(--line); }
+.infostyle { display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:2px 0 6px 32px; }
+.emoji.mini { font-size:16px; padding:2px 5px; }
+.swatch.mini { width:22px; height:22px; border-width:2px; }
+.infostyle .sep { width:10px; }
 .srow .bar { width:5px; align-self:stretch; background:var(--c); border-radius:4px; }
 /* Events shared by several people: diagonal stripes in each person's color (like Skylight) */
 .ev.multi, .tg-ev.multi { background:var(--stripes-soft); }

@@ -149,3 +149,13 @@ async def test_ui_event_payloads_accepted(hass: HomeAssistant, setup, hass_ws_cl
         "uid": piano["uid"], "recurrence_id": piano["recurrence_id"],
     })
     assert (await ws.receive_json())["success"]
+
+
+async def test_info_calendars_saved(hass: HomeAssistant, setup, hass_ws_client) -> None:
+    client = await hass_ws_client(hass)
+    value = [{"entity": "calendar.birthdays", "icon": "🎂", "color": "#9e9e9e"}]
+    await client.send_json({"id": 1, "type": "skylight/set", "key": "info_calendars", "value": value})
+    assert (await client.receive_json())["success"]
+    store = hass.data["skylight"]["store"]
+    assert store.data["info_calendars"] == value
+    assert store.data["settings"]["info_on_today"] is True
