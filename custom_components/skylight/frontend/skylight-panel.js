@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.21.0";
+const PANEL_VERSION = "1.22.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -289,6 +289,8 @@ class SkylightPanel extends HTMLElement {
     this.$dialog = this.shadowRoot.getElementById("dialog");
     this.$saver = this.shadowRoot.getElementById("saver");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
+    this.shadowRoot.addEventListener("focusin", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); e.target.select(); } });
+    this.shadowRoot.addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".tpick")) this._closeTimeLists(); }, true);
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
     this.shadowRoot.addEventListener("pointerup", (e) => this._swipeEnd(e), { passive: true });
@@ -296,10 +298,19 @@ class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
     this.shadowRoot.addEventListener("input", (e) => {
       if (e.target.id === "ev-loc") this._locSearch(e.target.value);
+      if (e.target.classList?.contains("tinput")) { // typing: jump the list to the matching time
+        const t = this._parseTime(e.target.value, Number((e.target.dataset.hm || "12").split(":")[0]));
+        const list = e.target.parentElement.querySelector(".tlist");
+        if (t && list && !list.hidden) {
+          const btn = list.children[t[0] * 4 + Math.floor(t[1] / 15)];
+          if (btn) list.scrollTop = btn.offsetTop - list.offsetTop;
+        }
+      }
       if (e.target.dataset.emojiSearch) this._emojiSearch(e.target);
     });
     this.shadowRoot.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.target.dataset.enter) { e.preventDefault(); this._action(e.target.dataset.enter, e.target); }
+      if ((e.key === "Enter" || e.key === "Escape" || e.key === "Tab") && e.target.classList?.contains("tinput")) this._closeTimeLists();
     });
     for (const ev of ["pointerdown", "keydown", "touchstart"]) {
       this.shadowRoot.addEventListener(ev, () => { this._lastActivity = Date.now(); }, { passive: true });
@@ -737,6 +748,20 @@ class SkylightPanel extends HTMLElement {
         if (!days.size) days.add(i); // keep at least one day
         this.renderDialog(); break;
       }
+      case "time-pick": {
+        this._setTime(d.for, Number(d.h), Number(d.m));
+        this._closeTimeLists();
+        if (d.for === "ev-start") this._shiftEnd();
+        break;
+      }
+      case "time-norm": {
+        // Typed a time: tidy it ("410p" -> "4:10 PM"); keep the old one if it isn't a time.
+        const t = this._readTime(el.id);
+        const wasStart = el.id === "ev-start";
+        this._setTime(el.id, t[0], t[1]);
+        if (wasStart) this._shiftEnd();
+        break; // the list stays open: a tap on it arrives after this (blur fires first)
+      }
       case "who": {
         const w = this.ui.dialog.who;
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
@@ -1043,11 +1068,11 @@ class SkylightPanel extends HTMLElement {
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
         <div class="row">
           <label>Starts<input type="date" id="ev-date" value="${dateStr}" data-change="ev-shift"></label>
-          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-start" value="${startT}" data-change="ev-shift"></label>
+          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;${this.timeInput("ev-start", startT)}</label>
         </div>
         <div class="row">
           <label>Ends<input type="date" id="ev-enddate" value="${endDate}"></label>
-          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-end" value="${endT}"></label>
+          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;${this.timeInput("ev-end", endT)}</label>
         </div>
         ${ev ? "" : this.renderRepeatBuilder(dlg)}
         ${this._isRecurring(ev) ? `<p class="hint">🔁 Repeating event (${esc(this._rruleText(ev.rrule))}). When you save or delete, you'll choose which events to change.</p>` : ""}
@@ -1111,14 +1136,70 @@ class SkylightPanel extends HTMLElement {
     return mine.find((e) => this.calendarOwners(e).length === 1) || mine[0] || null;
   }
 
+  // ---------- time picker: 15-minute list + free typing ----------
+  fmtHM(h, m) { return this.fmtTime(new Date(2000, 0, 1, h, m)); }
+  timeInput(id, hm) {
+    const [h, m] = hm.split(":").map(Number);
+    return `<span class="tpick"><input type="text" id="${id}" class="tinput" inputmode="text" autocomplete="off"
+      value="${this.fmtHM(h, m)}" data-hm="${hm}" data-change="time-norm" data-enter="time-norm"><span class="tlist" hidden></span></span>`;
+  }
+  // "4", "4p", "4pm", "4:10", "4:10 pm", "410p", "16:10", "1610" -> [h, m] (null if not a time).
+  _parseTime(text, prevH = 12) {
+    const t = String(text || "").trim().toLowerCase().replace(/\s+/g, "").replace(/\./g, "");
+    const m = /^(\d{1,2})(?::?(\d{2}))?(a|am|p|pm)?$/.exec(t);
+    if (!m) return null;
+    let h = Number(m[1]), min = Number(m[2] || 0);
+    const ap = m[3];
+    if (min > 59) return null;
+    if (ap) {
+      if (h < 1 || h > 12) return null;
+      if (ap[0] === "p" && h !== 12) h += 12;
+      if (ap[0] === "a" && h === 12) h = 0;
+    } else if (h > 23) return null;
+    else if (!this.settings.clock_24h && h >= 1 && h <= 12) {
+      // No am/pm typed: keep the same half of the day as before (e.g. 4:10 stays PM if it was PM).
+      const pm = prevH >= 12;
+      if (pm && h !== 12) h += 12;
+      if (!pm && h === 12) h = 0;
+    }
+    return [h, min];
+  }
+  _readTime(id) {
+    const el = this.shadowRoot.getElementById(id);
+    if (!el) return null;
+    const prev = (el.dataset.hm || "12:00").split(":").map(Number);
+    return this._parseTime(el.value, prev[0]) || prev;
+  }
+  _setTime(id, h, m) {
+    const el = this.shadowRoot.getElementById(id);
+    if (!el) return;
+    el.dataset.hm = `${pad(h)}:${pad(m)}`;
+    el.value = this.fmtHM(h, m);
+  }
+  _openTimeList(input) {
+    const list = input.parentElement.querySelector(".tlist");
+    if (!list) return;
+    const [h0, m0] = this._readTime(input.id) || [9, 0];
+    const items = [];
+    for (let h = 0; h < 24; h++) for (let m = 0; m < 60; m += 15) items.push([h, m]);
+    list.innerHTML = items.map(([h, m]) => `<button type="button" class="${h === h0 && m === m0 ? "on" : ""}" data-action="time-pick" data-for="${input.id}" data-h="${h}" data-m="${m}">${this.fmtHM(h, m)}</button>`).join("");
+    list.hidden = false;
+    // Scroll so the current time (or the nearest 15 minutes before it) is at the top.
+    const idx = h0 * 4 + Math.floor(m0 / 15);
+    list.scrollTop = Math.max(0, idx - 1) * (list.firstElementChild?.offsetHeight || 36);
+  }
+  _closeTimeLists(except) {
+    this.shadowRoot.querySelectorAll(".tlist").forEach((l) => { if (l !== except) l.hidden = true; });
+  }
+
   // Current start/end from the form fields.
   _formTimes() {
     const $ = (id) => this.shadowRoot.getElementById(id);
     const at = (dateId, timeId) => {
       const v = $(dateId)?.value; if (!v) return null;
       const d = parseYmd(v);
-      const t = $(timeId)?.value;
-      if (t) { const [h, m] = t.split(":").map(Number); d.setHours(h, m); }
+      const t = this._readTime(timeId);
+      if (t) d.setHours(t[0], t[1]);
       return d;
     };
     return { start: at("ev-date", "ev-start"), end: at("ev-enddate", "ev-end") };
@@ -1133,7 +1214,7 @@ class SkylightPanel extends HTMLElement {
     dlg.prevStart = start;
     const $ = (id) => this.shadowRoot.getElementById(id);
     $("ev-enddate").value = ymd(moved);
-    $("ev-end").value = `${pad(moved.getHours())}:${pad(moved.getMinutes())}`;
+    this._setTime("ev-end", moved.getHours(), moved.getMinutes());
   }
 
   _isRecurring(ev) { return !!(ev && (ev.rrule || ev.recurrence_id)); }
@@ -1211,8 +1292,8 @@ class SkylightPanel extends HTMLElement {
     if (allDay) {
       start = parseYmd(date); end = addDays(parseYmd(endDate), 1);
     } else {
-      const [sh, sm] = $("ev-start").value.split(":").map(Number);
-      const [eh, em] = $("ev-end").value.split(":").map(Number);
+      const [sh, sm] = this._readTime("ev-start") || [9, 0];
+      const [eh, em] = this._readTime("ev-end") || [sh + 1, sm];
       start = parseYmd(date); start.setHours(sh, sm);
       end = parseYmd(endDate); end.setHours(eh, em);
       if (end <= start) end = new Date(start.getTime() + 3600000);
@@ -2969,6 +3050,12 @@ label.check input { width:22px; height:22px; }
 .repeat { background:var(--bg); border-radius:14px; padding:4px 12px 8px; margin:8px 0; }
 .rpdays { margin:6px 0; }
 .rpsum { margin:6px 0 2px; font-weight:700; color:var(--ink); }
+.tpick { position:relative; display:block; }
+.tlist { position:absolute; z-index:7; left:0; right:0; top:100%; max-height:216px; overflow-y:auto; background:var(--card);
+  border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.18); display:flex; flex-direction:column; }
+.tlist button { flex:none; height:36px; text-align:left; padding:0 14px; border-radius:0; box-shadow:none; background:none; font-weight:600; }
+.tlist button.on { background:color-mix(in srgb, var(--accent) 18%, var(--card)); color:var(--accent); }
+.tlist button:hover { background:var(--bg); }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }
