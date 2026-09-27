@@ -148,3 +148,47 @@ async def test_not_connected(hass: HomeAssistant, tmp_path, hass_ws_client):
     assert (await _cmd(ws, {"type": "skylight/mealie/info"}))["result"] == {"entries": [], "selected": None}
     res = await _cmd(ws, {"type": "skylight/mealie/week", "start": "2026-09-20", "end": "2026-09-26"})
     assert not res["success"] and "Mealie" in res["error"]["message"]
+
+
+async def test_browse_organizers_and_cook(hass, setup, hass_ws_client, aioclient_mock):
+    ws = await hass_ws_client(hass)
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes", json={"page": 1, "total_pages": 3, "total": 60, "items": [
+        {"id": RID, "name": "Chicken Tacos", "slug": "chicken-tacos", "totalTime": "30 minutes", "rating": 5,
+         "recipeCategory": [{"name": "Dinner", "slug": "dinner"}]}]})
+    res = await _cmd(ws, {"type": "skylight/mealie/browse", "query": "taco", "category": "dinner", "sort": "new", "page": 1})
+    assert res["success"], res
+    r = res["result"]
+    assert r["total_pages"] == 3 and r["items"][0]["categories"] == ["Dinner"] and "authSig=" in r["items"][0]["image"]
+    q = str(aioclient_mock.mock_calls[-1][1])
+    assert "search=taco" in q and "categories=dinner" in q and "orderBy=created_at" in q and "orderDirection=desc" in q
+    assert aioclient_mock.mock_calls[-1][3]["Authorization"] == "Bearer tok"
+
+    aioclient_mock.get(f"{MEALIE_URL}/api/organizers/categories", json={"items": [{"id": "c1", "name": "Dinner", "slug": "dinner"}]})
+    aioclient_mock.get(f"{MEALIE_URL}/api/organizers/tags", status=500)
+    org = (await _cmd(ws, {"type": "skylight/mealie/organizers"}))["result"]
+    assert org == {"categories": [{"id": "c1", "name": "Dinner", "slug": "dinner"}], "tags": []}
+
+    aioclient_mock.get(f"{MEALIE_URL}/api/groups/self", json={"slug": "home"})
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes/chicken-tacos", json={
+        "id": RID, "name": "Chicken Tacos", "slug": "chicken-tacos", "recipeServings": 4, "recipeYield": "4 servings",
+        "prepTime": "10 minutes", "performTime": "20 minutes", "settings": {"disableAmount": False},
+        "recipeIngredient": [
+            {"title": "Filling", "quantity": 1.5, "unit": {"name": "pound", "pluralName": "pounds"}, "food": {"name": "chicken"},
+             "note": "boneless", "display": "1 1/2 pounds chicken boneless"},
+            {"quantity": 0, "unit": None, "food": None, "note": "salt to taste", "display": "salt to taste"},
+        ],
+        "recipeInstructions": [{"title": "", "text": "Cook chicken."}, {"text": ""}, {"title": "Serve", "text": "Assemble."}],
+        "notes": [{"title": "Tip", "text": "Warm the tortillas."}], "orgURL": "https://example.com/tacos"})
+    res = await _cmd(ws, {"type": "skylight/mealie/cook", "recipe": "chicken-tacos"})
+    assert res["success"], res
+    c = res["result"]
+    assert c["servings"] == 4 and c["prep_time"] == "10 minutes" and c["cook_time"] == "20 minutes"
+    chicken, salt = c["ingredients"]
+    assert chicken == {"section": "Filling", "text": "1 1/2 pounds chicken boneless", "scalable": True, "qty": 1.5,
+                       "unit": "pound", "unit_plural": "pounds", "food": "chicken", "food_plural": "chicken", "note": "boneless"}
+    assert salt["scalable"] is False and salt["qty"] is None and salt["text"] == "salt to taste"
+    assert c["steps"] == [{"section": "", "text": "Cook chicken."}, {"section": "Serve", "text": "Assemble."}]
+    assert c["link"] == f"{MEALIE_URL}/g/home/r/chicken-tacos"
+
+    bad = await _cmd(ws, {"type": "skylight/mealie/cook", "recipe": "../api/users"})
+    assert not bad["success"]

@@ -96,7 +96,7 @@ async def _mealie_http(hass: HomeAssistant, method: str, path: str) -> aiohttp.C
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_import):
+    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_import, ws_browse, ws_organizers, ws_cook):
         websocket_api.async_register_command(hass, cmd)
     hass.http.register_view(MealieImageView())
 
@@ -246,6 +246,169 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
 async def ws_import(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     res = await _service(hass, "import_recipe", {"url": msg["url"].strip()})
     connection.send_result(msg["id"], _recipe(hass, res.get("recipe"), connection.refresh_token_id))
+
+
+async def _mealie_json(hass: HomeAssistant, path: str, params: dict[str, Any] | None = None) -> Any:
+    """GET a Mealie API path with the integration's own URL and token."""
+    entry = _entry(hass)
+    host = entry.data["host"].rstrip("/")
+    session = async_get_clientsession(hass, verify_ssl=entry.data.get("verify_ssl", True))
+    try:
+        async with session.get(f"{host}/{path}", params=params, timeout=TIMEOUT,
+                               headers={"Authorization": f"Bearer {entry.data['api_token']}"}) as resp:
+            if resp.status == 404:
+                raise MealieError("Not found in Mealie")
+            if resp.status >= 400:
+                raise MealieError(f"Mealie returned HTTP {resp.status}")
+            return await resp.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise MealieError(f"Cannot reach Mealie: {err}") from err
+
+
+def _time(v: Any) -> str | None:
+    return str(v).strip() if v not in (None, "", 0) else None
+
+
+def _card(hass: HomeAssistant, r: dict[str, Any], token_id: str | None) -> dict[str, Any]:
+    """A recipe from Mealie's REST list (camelCase) in the same shape as _recipe()."""
+    rid = r.get("id")
+    return {
+        "id": rid, "name": r.get("name"), "slug": r.get("slug"), "description": r.get("description") or "",
+        "total_time": _time(r.get("totalTime")), "rating": r.get("rating"),
+        "categories": [c.get("name") for c in r.get("recipeCategory") or [] if c.get("name")],
+        "image": _sign(hass, f"/api/skylight/mealie/image/{rid}", token_id) if rid and r.get("image") is not False else None,
+    }
+
+
+SORTS = {"name": ("name", "asc"), "new": ("created_at", "desc"), "rating": ("rating", "desc"), "updated": ("updated_at", "desc")}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/mealie/browse",
+        vol.Optional("query", default=""): str,
+        vol.Optional("category"): str,
+        vol.Optional("tag"): str,
+        vol.Optional("sort", default="name"): vol.In(list(SORTS)),
+        vol.Optional("page", default=1): vol.All(int, vol.Range(min=1)),
+    }
+)
+@websocket_api.async_response
+@_wrap
+async def ws_browse(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    order, direction = SORTS[msg["sort"]]
+    params: dict[str, Any] = {"page": msg["page"], "perPage": 24, "orderBy": order, "orderDirection": direction}
+    if msg["query"].strip():
+        params["search"] = msg["query"].strip()
+    if msg.get("category"):
+        params["categories"] = msg["category"]
+    if msg.get("tag"):
+        params["tags"] = msg["tag"]
+    data = await _mealie_json(hass, "api/recipes", params)
+    connection.send_result(msg["id"], {
+        "items": [_card(hass, r, connection.refresh_token_id) for r in data.get("items", [])],
+        "page": data.get("page", msg["page"]), "total_pages": data.get("total_pages") or data.get("totalPages") or 1,
+        "total": data.get("total"),
+    })
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/mealie/organizers"})
+@websocket_api.async_response
+@_wrap
+async def ws_organizers(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    out = {}
+    for key, path in (("categories", "api/organizers/categories"), ("tags", "api/organizers/tags")):
+        try:
+            data = await _mealie_json(hass, path, {"perPage": -1, "orderBy": "name", "orderDirection": "asc"})
+            out[key] = [{"id": x.get("id"), "name": x.get("name"), "slug": x.get("slug")} for x in data.get("items", []) if x.get("name")]
+        except MealieError:
+            out[key] = []
+    connection.send_result(msg["id"], out)
+
+
+def _unit(u: Any, plural: bool = False) -> str:
+    if not u:
+        return ""
+    if isinstance(u, str):
+        return u
+    if u.get("useAbbreviation") and u.get("abbreviation"):
+        return u.get("pluralAbbreviation") if plural and u.get("pluralAbbreviation") else u["abbreviation"]
+    return (u.get("pluralName") if plural and u.get("pluralName") else u.get("name")) or ""
+
+
+def _food(f: Any, plural: bool = False) -> str:
+    if not f:
+        return ""
+    if isinstance(f, str):
+        return f
+    return (f.get("pluralName") if plural and f.get("pluralName") else f.get("name")) or ""
+
+
+def _servings(r: dict[str, Any]) -> float | None:
+    for key in ("recipeServings", "recipeYieldQuantity"):
+        try:
+            v = float(r.get(key) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v > 0:
+            return v
+    m = re.search(r"\d+(?:\.\d+)?", str(r.get("recipeYield") or ""))
+    return float(m.group()) if m else None
+
+
+async def _recipe_link(hass: HomeAssistant, slug: str) -> str | None:
+    """Link to the recipe in Mealie's web app, for the QR code."""
+    base = (hass.data[DOMAIN]["store"].data["settings"].get("mealie_phone_url") or _entry(hass).data["host"]).rstrip("/")
+    cache = hass.data.setdefault(f"{DOMAIN}_mealie_group", {})
+    entry_id = _entry(hass).entry_id
+    if entry_id not in cache:
+        try:
+            cache[entry_id] = (await _mealie_json(hass, "api/groups/self")).get("slug")
+        except MealieError:
+            return None
+    group = cache[entry_id]
+    return f"{base}/g/{group}/r/{slug}" if group and slug else None
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "skylight/mealie/cook", vol.Required("recipe"): str}
+)
+@websocket_api.async_response
+@_wrap
+async def ws_cook(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Everything cook mode needs: structured (scalable) ingredients, steps, servings, link."""
+    key = msg["recipe"].strip()
+    if not re.match(r"^[\w-]{1,200}$", key):
+        connection.send_error(msg["id"], "invalid", "Bad recipe id")
+        return
+    r = await _mealie_json(hass, f"api/recipes/{key}")
+    no_amounts = bool((r.get("settings") or {}).get("disableAmount"))
+    ingredients = []
+    for i in r.get("recipeIngredient") or []:
+        qty = i.get("quantity")
+        try:
+            qty = float(qty) if qty not in (None, "") else None
+        except (TypeError, ValueError):
+            qty = None
+        text = (i.get("display") or i.get("originalText") or i.get("note") or "").strip()
+        scalable = not no_amounts and qty is not None and qty > 0 and bool(i.get("food") or i.get("unit"))
+        ingredients.append({
+            "section": (i.get("title") or "").strip(), "text": text, "scalable": scalable, "qty": qty if scalable else None,
+            "unit": _unit(i.get("unit")), "unit_plural": _unit(i.get("unit"), True),
+            "food": _food(i.get("food")), "food_plural": _food(i.get("food"), True), "note": (i.get("note") or "").strip(),
+        })
+    steps = [{"section": (s.get("title") or "").strip(), "text": (s.get("text") or "").strip()}
+             for s in r.get("recipeInstructions") or [] if (s.get("text") or "").strip()]
+    connection.send_result(msg["id"], {
+        **_card(hass, r, connection.refresh_token_id),
+        "servings": _servings(r), "yield": r.get("recipeYield") or "",
+        "prep_time": _time(r.get("prepTime")), "cook_time": _time(r.get("performTime") or r.get("cookTime")),
+        "ingredients": [x for x in ingredients if x["text"] or x["food"]],
+        "steps": steps,
+        "notes": [{"title": n.get("title") or "", "text": n.get("text") or ""} for n in r.get("notes") or [] if n.get("text")],
+        "source": r.get("orgURL") or "",
+        "link": await _recipe_link(hass, r.get("slug") or key),
+    })
 
 
 class MealieImageView(HomeAssistantView):

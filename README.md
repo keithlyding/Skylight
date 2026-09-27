@@ -60,6 +60,12 @@ Skylight uses Home Assistant's built-in **Mealie** integration, so the tablet re
 - Tap a planned recipe to see its **ingredients and steps**, then tick ingredients and send them to a shopping list.
 - Tap ✕ to remove a meal from the plan.
 
+**Recipes and cook mode:**
+- **Meals → 📖 Recipes** browses your whole Mealie library: search, categories, tags, and sort by name, newest or rating.
+- Tap any recipe (or **Tonight's dinner** on the Today screen) for **cook mode**: a full-screen recipe with large text, ingredients to tick off, and one highlighted step at a time. Use Next/Back or swipe. The screensaver stays off while cooking.
+- **Servings −/+** rescales ingredient amounts (for ingredients Mealie has parsed into amount/unit/food; plain-text ingredients are shown as written).
+- **📱 On my phone** shows a QR code that opens the recipe in Mealie. If your phone reaches Mealie by a different address than Home Assistant does, set it under Settings → Mealie → *Link for phones*.
+
 Rows map to Mealie types: Breakfast, Lunch, Dinner, and **Snack**, which shows Mealie's snack, side, dessert and drink entries. Adding to Snack uses "snack" on Mealie 3.7+ and "side" on older versions.
 
 Recipe images are passed through Home Assistant, so the tablet never needs to reach Mealie directly.
@@ -106,7 +112,7 @@ You can also place Skylight on any dashboard as a card (`type: custom:skylight-p
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 49 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 50 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

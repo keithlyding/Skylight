@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.24.1";
+const PANEL_VERSION = "1.25.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -321,10 +321,11 @@ class SkylightPanel extends HTMLElement {
   _buildShadow() {
     if (this._shadowBuilt) return;
     this._shadowBuilt = true;
-    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="dialog"></div><div id="saver"></div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="saver"></div>`;
     this.$app = this.shadowRoot.getElementById("app");
     this.$dialog = this.shadowRoot.getElementById("dialog");
     this.$saver = this.shadowRoot.getElementById("saver");
+    this.$cook = this.shadowRoot.getElementById("cook");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("focusin", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); e.target.select(); } });
     this.shadowRoot.addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".tpick")) this._closeTimeLists(); }, true);
@@ -335,6 +336,11 @@ class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
     this.shadowRoot.addEventListener("input", (e) => {
       if (e.target.id === "ev-loc") this._locSearch(e.target.value);
+      if (e.target.id === "rb-q") {
+        const input = e.target; // e.target is cleared once the event finishes
+        clearTimeout(this._rbTimer);
+        this._rbTimer = setTimeout(() => { if (this.browse && this.browse.query !== input.value) { this.browse.query = input.value; this._browse(); } }, 400);
+      }
       if (e.target.id === "search-q") { clearTimeout(this._searchTimer); this._searchTimer = setTimeout(() => this._runSearch(), 200); }
       if (e.target.classList?.contains("tinput")) { // typing: jump the list to the matching time
         const t = this._parseTime(e.target.value, Number((e.target.dataset.hm || "12").split(":")[0]));
@@ -357,6 +363,12 @@ class SkylightPanel extends HTMLElement {
 
   _swipeStart(e) {
     this._swipe = null;
+    // In cook mode a sideways swipe moves between steps.
+    if (this.cook?.r && !this.ui.dialog && this.$cook.contains(e.target) && e.isPrimary && !e.target.closest(".ckqr")) {
+      this._swipe = { x: e.clientX, y: e.clientY, t: Date.now(), cook: true };
+      return;
+    }
+    if (this.ui.tab === "meals" && this.ui.mealsView === "recipes") return;
     if (!["calendar", "chores", "meals"].includes(this.ui.tab) || this.ui.dialog || this.ui.saver) return;
     if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
     const t = e.target;
@@ -372,6 +384,7 @@ class SkylightPanel extends HTMLElement {
     if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || dt > 800) return;
     const forward = dx < 0;
     this._suppressClickUntil = Date.now() + 400; // don't open the event the swipe started on
+    if (sw.cook) { if (this.cook?.r) this._action(forward ? "cook-next" : "cook-prev", { dataset: {} }); return; }
     if (this.ui.tab === "chores") this._action("chore-day", { dataset: { dir: forward ? "1" : "-1" } });
     else this._action(forward ? "next" : "prev", { dataset: {} });
     const c = this.$app.querySelector(".content");
@@ -1135,7 +1148,27 @@ class SkylightPanel extends HTMLElement {
         } finally { el.disabled = false; }
         break;
       }
-      case "view-recipe": await this.openRecipe(d.recipe); break;
+      case "view-recipe": this.closeDialog(); await this.openCook(d.recipe); break;
+      case "cook": await this.openCook(d.recipe); break;
+      case "cook-close": this.closeCook(); break;
+      case "cook-qr": await this._cookQr(); break;
+      case "cook-ing": { const k = Number(d.k), g = this.cook.got; g.has(k) ? g.delete(k) : g.add(k); this.renderCook(); break; }
+      case "cook-step": this.cook.step = Number(d.k); this.renderCook(); break;
+      case "cook-next": case "cook-prev": {
+        const n = this.cook.r.steps.length;
+        this.cook.step = Math.max(0, Math.min(n - 1, this.cook.step + (action === "cook-next" ? 1 : -1)));
+        this.cook.scrollStep = true; this.renderCook(); break;
+      }
+      case "cook-serv": {
+        const c = this.cook, dd = Number(d.d);
+        c.servings = dd === 0 ? c.r.servings : Math.max(1, Math.round(c.servings) + dd);
+        this.renderCook(); break;
+      }
+      case "cook-mult": this.cook.mult = Number(d.m); this.renderCook(); break;
+      case "meals-view": this.ui.mealsView = d.view; this._resetScroll = true; this.render(); break;
+      case "rb-search": this.browse.query = el.value || this.shadowRoot.getElementById("rb-q")?.value || ""; await this._browse(); break;
+      case "rb-cat": this.browse.category = d.cat; await this._browse(); break;
+      case "rb-more": await this._browse(true); break;
       case "recipe-to-list": {
         const ent = this.shadowRoot.getElementById("recipe-list").value;
         const items = [...this.shadowRoot.querySelectorAll(".ing-check:checked")].map((i) => i.value);
@@ -1144,6 +1177,9 @@ class SkylightPanel extends HTMLElement {
         this._toast(`Added ${items.length} item${items.length > 1 ? "s" : ""} to ${this.entityName(ent)}`);
         break;
       }
+      case "rb-sort": this.browse.sort = el.value; await this._browse(); break;
+      case "rb-tag": this.browse.tag = el.value; await this._browse(); break;
+      case "mealie-phone-url": await this._set("settings", { mealie_phone_url: el.value.trim() || null }); break;
       case "mealie-entry": await this._set("settings", { mealie_entry: el.value }); await this._loadMealieInfo(); break;
       case "linked-todo": {
         const set = new Set(D.linked_todos || []);
@@ -2033,6 +2069,191 @@ class SkylightPanel extends HTMLElement {
     });
   }
 
+  // ---------- Mealie: recipe browser ----------
+  async _loadOrganizers() {
+    if (this._orgLoaded) return;
+    this._orgLoaded = true;
+    try { this.mealieOrg = await this._hass.callWS({ type: "skylight/mealie/organizers" }); }
+    catch (e) { this.mealieOrg = { categories: [], tags: [] }; }
+    if (this.ui.tab === "meals") this.render();
+  }
+  async _browse(more = false) {
+    const b = this.browse || (this.browse = { query: "", category: "", tag: "", sort: "name", items: null, page: 0, pages: 1 });
+    const page = more ? b.page + 1 : 1;
+    const req = (b.req = (b.req || 0) + 1);
+    b.loading = true; if (!more) b.items = null;
+    if (this.ui.tab === "meals") this.render();
+    try {
+      const msg = { type: "skylight/mealie/browse", query: b.query, sort: b.sort, page };
+      if (b.category) msg.category = b.category;
+      if (b.tag) msg.tag = b.tag;
+      const r = await this._hass.callWS(msg);
+      if (req !== b.req) return;
+      b.items = more ? [...(b.items || []), ...r.items] : r.items;
+      b.page = r.page; b.pages = r.total_pages; b.total = r.total; b.error = null;
+    } catch (e) {
+      if (req !== b.req) return;
+      b.error = /unknown command/i.test(e.message || "") ? "Restart Home Assistant to finish updating Skylight." : e.message; b.items = b.items || [];
+    }
+    b.loading = false;
+    if (this.ui.tab === "meals") this.render();
+  }
+  renderRecipes() {
+    this._loadOrganizers();
+    if (!this.browse) this._browse();
+    const b = this.browse;
+    const org = this.mealieOrg || { categories: [], tags: [] };
+    const cats = org.categories.slice(0, 30);
+    return `<div class="rbrowse">
+      <div class="rbar">
+        <input id="rb-q" type="search" placeholder="Search recipes or ingredients…" value="${esc(b.query)}" data-enter="rb-search">
+        <select data-change="rb-sort" aria-label="Sort">${[["name", "A–Z"], ["new", "Newest"], ["rating", "Top rated"], ["updated", "Recently edited"]].map(([v, l]) => `<option value="${v}" ${b.sort === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        ${org.tags.length ? `<select data-change="rb-tag" aria-label="Tag"><option value="">All tags</option>${org.tags.map((t) => `<option value="${esc(t.slug)}" ${b.tag === t.slug ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select>` : ""}
+      </div>
+      ${cats.length ? `<div class="seg rcats"><button class="${!b.category ? "on" : ""}" data-action="rb-cat" data-cat="">All</button>${cats.map((c) => `<button class="${b.category === c.slug ? "on" : ""}" data-action="rb-cat" data-cat="${esc(c.slug)}">${esc(c.name)}</button>`).join("")}</div>` : ""}
+      ${b.error ? `<p class="hint">⚠️ ${esc(b.error)}</p>` : ""}
+      <div class="rbgrid">${(b.items || []).map((r) => `<button class="rbcard" data-action="cook" data-recipe="${esc(r.slug || r.id)}">
+          <div class="rbimg">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<span>🍽️</span></div>
+          <b>${esc(r.name)}</b><small>${[r.total_time ? `⏱ ${esc(r.total_time)}` : "", r.rating ? "★".repeat(Math.round(r.rating)) : ""].filter(Boolean).join(" · ")}</small></button>`).join("")}</div>
+      ${b.loading ? `<p class="hint center">Loading recipes…</p>` : b.items && !b.items.length ? `<p class="hint center">No recipes found.</p>` : ""}
+      ${!b.loading && b.items && b.page < b.pages ? `<div class="center"><button data-action="rb-more">Show more${b.total ? ` (${b.items.length} of ${b.total})` : ""}</button></div>` : ""}
+    </div>`;
+  }
+
+  // ---------- Mealie: tonight's dinner on the Today screen ----------
+  async _loadTodayMeals() {
+    if (!this.mealieOn) return;
+    const today = ymd(new Date());
+    if (this._todayMeals && this._todayMeals.date === today && Date.now() - this._todayMeals.at < 10 * 60000) return;
+    if (this._todayLoading) return;
+    this._todayLoading = true;
+    try {
+      const meals = await this._hass.callWS({ type: "skylight/mealie/week", start: today, end: today });
+      this._todayMeals = { date: today, at: Date.now(), meals };
+    } catch (e) { this._todayMeals = { date: today, at: Date.now(), meals: [] }; }
+    finally { this._todayLoading = false; }
+    if (this.ui.tab === "home") this.render();
+  }
+  renderTonight() {
+    if (!this.mealieOn) return "";
+    this._loadTodayMeals();
+    const meals = this._todayMeals?.date === ymd(new Date()) ? this._todayMeals.meals : [];
+    if (!meals.length) return "";
+    const order = ["dinner", "lunch", "breakfast", "snack"];
+    const after = new Date().getHours() >= 14; // afternoon: dinner is what matters
+    const main = [...meals].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot)).find((m) => m.recipe && (after ? m.slot === "dinner" : true))
+      || meals.find((m) => m.slot === "dinner") || meals[0];
+    const others = meals.filter((m) => m !== main);
+    const label = { dinner: "Tonight's dinner", lunch: "Lunch today", breakfast: "Breakfast today", snack: "Snack today" }[main.slot] || "Today";
+    const img = main.recipe?.image;
+    return `<div class="tonight ${main.recipe ? "tap" : ""}" ${main.recipe ? `data-action="cook" data-recipe="${esc(main.recipe.slug || main.recipe.id)}"` : ""}>
+      ${img ? `<img src="${esc(img)}" alt="" onerror="this.remove()">` : `<span class="tnoimg">🍽️</span>`}
+      <div><small>${label}</small><b>${esc(this.mealieName(main))}</b>${main.recipe ? `<span class="cookbtn">👩‍🍳 Cook ›</span>` : ""}
+      ${others.length ? `<small class="tothers">${others.map((m) => `${(MEAL_SLOTS.find((s) => s[0] === m.slot) || [])[2] || ""} ${esc(this.mealieName(m))}`).join(" · ")}</small>` : ""}</div></div>`;
+  }
+
+  // ---------- Mealie: cook mode ----------
+  async openCook(key) {
+    this.cook = { loading: true, key };
+    this.renderCook();
+    try {
+      const r = await this._ws({ type: "skylight/mealie/cook", recipe: key });
+      if (this.cook?.key !== key) return;
+      this.cook = { key, r, servings: r.servings || null, mult: 1, step: 0, got: new Set(), qr: false };
+    } catch (e) {
+      if (this.cook?.key !== key) return;
+      this.cook = { key, error: /unknown command/i.test(e.message || "") ? "Restart Home Assistant to finish updating Skylight." : e.message };
+    }
+    this.renderCook();
+  }
+  closeCook() { this.cook = null; this.$cook.innerHTML = ""; this._lastActivity = Date.now(); }
+  _cookFactor() {
+    const c = this.cook;
+    return c.r.servings && c.servings ? c.servings / c.r.servings : c.mult;
+  }
+  _fmtQty(q) {
+    if (q >= 10) return String(Math.round(q));
+    const whole = Math.floor(q + 1e-9), frac = q - whole;
+    const fr = [[0, ""], [1 / 8, "⅛"], [1 / 4, "¼"], [1 / 3, "⅓"], [3 / 8, "⅜"], [1 / 2, "½"], [5 / 8, "⅝"], [2 / 3, "⅔"], [3 / 4, "¾"], [7 / 8, "⅞"], [1, ""]];
+    const [v, sym] = fr.reduce((best, x) => (Math.abs(x[0] - frac) < Math.abs(best[0] - frac) ? x : best));
+    if (Math.abs(v - frac) > 0.04) return String(Math.round(q * 100) / 100);
+    const w = v === 1 ? whole + 1 : whole;
+    return w && sym ? `${w} ${sym}` : sym || String(w);
+  }
+  _ingText(i, f) {
+    if (!i.scalable || f === 1) return esc(i.text);
+    const q = i.qty * f, plural = q > 1;
+    const unit = plural ? i.unit_plural || i.unit : i.unit;
+    const food = plural && !unit ? i.food_plural || i.food : i.food;
+    return `<b>${this._fmtQty(q)}</b> ${esc([unit, food].filter(Boolean).join(" "))}${i.note ? `, ${esc(i.note)}` : ""}`;
+  }
+  renderCook() {
+    if (!this.$cook) return;
+    const c = this.cook;
+    if (!c) { this.$cook.innerHTML = ""; return; }
+    const shell = (inner) => `<div class="cook" role="dialog" aria-label="Cook mode">${inner}</div>`;
+    if (c.loading || c.error) {
+      this.$cook.innerHTML = shell(`<div class="cktop"><h2>${c.error ? "Couldn't open the recipe" : "Loading recipe…"}</h2><span class="spacer"></span><button class="ckx" data-action="cook-close">✕ Close</button></div>
+        ${c.error ? `<p class="hint" style="padding:0 24px">${esc(c.error)}</p>` : ""}`);
+      return;
+    }
+    const r = c.r, f = this._cookFactor();
+    const unscalable = f !== 1 && r.ingredients.some((i) => !i.scalable && /\d/.test(i.text));
+    const serv = r.servings
+      ? `<div class="ckserv"><button data-action="cook-serv" data-d="-1" aria-label="Fewer servings">−</button><span><b>${Math.round(c.servings * 10) / 10}</b> servings</span><button data-action="cook-serv" data-d="1" aria-label="More servings">+</button>${c.servings !== r.servings ? `<button class="reset" data-action="cook-serv" data-d="0">Reset</button>` : ""}</div>`
+      : `<div class="seg ckmult">${[0.5, 1, 1.5, 2, 3].map((m) => `<button class="${c.mult === m ? "on" : ""}" data-action="cook-mult" data-m="${m}">×${m === 0.5 ? "½" : m === 1.5 ? "1½" : m}</button>`).join("")}</div>`;
+    let lastSec = null;
+    const ings = r.ingredients.map((i, k) => {
+      const head = i.section && i.section !== lastSec ? `<h4>${esc(i.section)}</h4>` : "";
+      lastSec = i.section || lastSec;
+      return `${head}<button class="ckii ${c.got.has(k) ? "got" : ""}" data-action="cook-ing" data-k="${k}"><span class="box">${c.got.has(k) ? "✓" : ""}</span><span>${this._ingText(i, f)}</span></button>`;
+    }).join("");
+    let lastStepSec = null;
+    const steps = r.steps.map((s, k) => {
+      const head = s.section && s.section !== lastStepSec ? `<h4>${esc(s.section)}</h4>` : "";
+      lastStepSec = s.section || lastStepSec;
+      return `${head}<button class="ckstep ${k === c.step ? "on" : k < c.step ? "past" : ""}" data-action="cook-step" data-k="${k}"><span class="num">${k + 1}</span><p>${esc(s.text)}</p></button>`;
+    }).join("");
+    const times = [r.prep_time ? `Prep ${esc(r.prep_time)}` : "", r.cook_time ? `Cook ${esc(r.cook_time)}` : "", r.total_time ? `Total ${esc(r.total_time)}` : ""].filter(Boolean).join(" · ");
+    this.$cook.innerHTML = shell(`
+      <div class="cktop">
+        ${r.image ? `<img src="${esc(r.image)}" alt="" onerror="this.remove()">` : ""}
+        <div class="cktitle"><h2>${esc(r.name)}</h2>${times ? `<small>⏱ ${times}</small>` : ""}</div>
+        <span class="spacer"></span>
+        ${serv}
+        ${r.link ? `<button data-action="cook-qr" title="Open on your phone">📱 On my phone</button>` : ""}
+        <button class="ckx" data-action="cook-close">✕ Close</button>
+      </div>
+      <div class="ckbody">
+        <section class="ckings"><h3>Ingredients <small>${c.got.size}/${r.ingredients.length}</small></h3>
+          ${unscalable ? `<p class="hint">Some amounts are plain text in Mealie and aren't scaled.</p>` : ""}
+          ${ings || `<p class="hint">None listed</p>`}
+          ${r.notes.length ? `<h3>Notes</h3>${r.notes.map((n) => `<p class="cknote">${n.title ? `<b>${esc(n.title)}:</b> ` : ""}${esc(n.text)}</p>`).join("")}` : ""}
+        </section>
+        <section class="cksteps"><h3>Steps${r.steps.length ? ` <small>${Math.min(c.step + 1, r.steps.length)} of ${r.steps.length}</small>` : ""}</h3>
+          ${steps || `<p class="hint">No steps in this recipe.${r.source ? ` <br>Source: ${esc(r.source)}` : ""}</p>`}</section>
+      </div>
+      ${r.steps.length ? `<div class="cknav"><button data-action="cook-prev" ${c.step <= 0 ? "disabled" : ""}>‹ Back</button>
+        <span>Step ${c.step + 1} of ${r.steps.length}</span>
+        <button class="primary" data-action="${c.step >= r.steps.length - 1 ? "cook-close" : "cook-next"}">${c.step >= r.steps.length - 1 ? "Done 🎉" : "Next ›"}</button></div>` : ""}
+      ${c.qr ? `<div class="ckqr" data-action="cook-qr"><div class="ckqrcard"><h3>Scan with your phone</h3><div class="qrbox">${c.qrSvg || "…"}</div>
+        <p class="hint">Opens this recipe in Mealie. Your phone must be able to reach Mealie (same Wi-Fi, or a link set in Settings → Mealie).</p><small class="qrurl">${esc(r.link)}</small></div></div>` : ""}`);
+    const on = this.$cook.querySelector(".ckstep.on");
+    if (on && c.scrollStep) { on.scrollIntoView({ block: "center", behavior: "smooth" }); c.scrollStep = false; }
+  }
+  async _cookQr() {
+    const c = this.cook;
+    c.qr = !c.qr;
+    if (c.qr && !c.qrSvg) {
+      try {
+        const m = await import(new URL(`qrcode.js?v=${PANEL_VERSION}`, import.meta.url).href);
+        const q = m.default(0, "M"); q.addData(c.r.link); q.make();
+        c.qrSvg = q.createSvgTag({ cellSize: 6, margin: 4, scalable: true });
+      } catch (e) { c.qrSvg = `<p class="hint">Couldn't make the QR code.</p>`; }
+    }
+    this.renderCook();
+  }
+
   // ---------- linked HA to-do lists ----------
   _isTodo() { return String(this.ui.list || "").startsWith("todo:"); }
   _todoEntity() { return this.ui.list.slice(5); }
@@ -2213,6 +2434,7 @@ class SkylightPanel extends HTMLElement {
 
   _checkIdle() {
     // On a wall display, drift back to "now" after 3 minutes without touches.
+    if (this.cook) return; // cooking: keep the recipe on screen
     if (!this.ui.dialog && Date.now() - this._lastActivity > 180000 && Date.now() - (this._lastSnap || 0) > 180000) {
       this._lastSnap = Date.now();
       this._scrollGridHome();
@@ -2803,14 +3025,13 @@ class SkylightPanel extends HTMLElement {
         ${list.length && done === list.length ? `<div class="alldone">All done! 🎉</div>` : ""}
       </div>`;
     }).join("");
-    const meals = this.mealieOn ? this.mealieMeals.filter((m) => m.date === ymd(today)) : [];
     if (this.settings.weather_hints !== false && this.settings.weather_entity) this._loadWeatherFull();
     return `<div class="toolbar hometool">${picker}<button class="primary fab" data-action="new-event">+ Event</button></div>
       <div class="home ${n >= 5 ? "wide" : ""}">
       <section class="hcal">${cal}</section>
       <aside class="hside">
         ${this.settings.weather_hints !== false ? this.renderHints(4) : ""}
-        ${meals.length ? `<div class="hmeals">🍽️ ${meals.map((m) => `<b>${esc(this.mealieName(m))}</b>`).join(" · ")}</div>` : ""}
+        ${this.renderTonight()}
         ${chores ? `<div class="hcols">${chores}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
@@ -2927,13 +3148,15 @@ class SkylightPanel extends HTMLElement {
   }
 
   renderMeals() {
+    const toggle = this.mealieOn ? `<div class="seg mealsview"><button class="${this.ui.mealsView !== "recipes" ? "on" : ""}" data-action="meals-view" data-view="week">📅 Meal plan</button><button class="${this.ui.mealsView === "recipes" ? "on" : ""}" data-action="meals-view" data-view="recipes">📖 Recipes</button></div>` : "";
+    if (this.mealieOn && this.ui.mealsView === "recipes") return `<div class="toolbar"><div class="nav"><h1>Recipes</h1></div>${toggle}</div>${this.renderRecipes()}`;
     this._loadMealEvents();
     this._loadMealie();
     const [s] = [this.weekStart(this.ui.anchor)];
     const days = [...Array(7)].map((_, i) => addDays(s, i));
     return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
       <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div>
-      ${this.mealieOn ? `<span class="hint">🍲 Synced with Mealie</span>` : ""}</div>
+      ${toggle}</div>
       ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
       <div class="meals">
         <div class="mrow head"><div></div>${days.map((d) => `<div class="${sameDay(d, new Date()) ? "today" : ""}">${d.toLocaleDateString([], { weekday: "short" })} <b>${d.getDate()}</b></div>`).join("")}</div>
@@ -2996,6 +3219,8 @@ class SkylightPanel extends HTMLElement {
       <h2>Mealie</h2>
       ${m.entries.length ? `
         <p class="hint">✅ Connected. The Meals tab reads and writes your Mealie meal plan: tap a meal slot to search recipes, pick a random one, or add a note.</p>
+        <label class="inline">Link for phones (QR codes) <input placeholder="Optional, e.g. https://mealie.example.com" value="${esc(this.settings.mealie_phone_url || "")}" data-change="mealie-phone-url"></label>
+        <p class="hint">The recipe QR code in cook mode uses the Mealie address Home Assistant uses. If your phone reaches Mealie by a different address, enter it here.</p>
         ${m.entries.length > 1 ? `<label class="inline">Mealie server <select data-change="mealie-entry">${m.entries.map((e) => `<option value="${e.entry_id}" ${e.entry_id === m.selected ? "selected" : ""}>${esc(e.title)}</option>`).join("")}</select></label>` : ""}`
         : `<p class="hint">Not connected. An admin adds it once: Home Assistant → Settings → Devices &amp; Services → Add Integration → <b>Mealie</b> (needs your Mealie URL and an API token from Mealie → User profile → API Tokens). Then reload this page.</p>`}
       <div class="label">Shopping &amp; to-do lists to show in the Lists tab</div>
@@ -3453,6 +3678,53 @@ label.check input { width:22px; height:22px; }
 .wdn { font-weight:700; } .wdi { font-size:22px; } .wlo { color:var(--muted); text-align:right; } .whi { font-weight:800; }
 .wrange { position:relative; height:8px; background:var(--bg); border-radius:4px; }
 .wrange i { position:absolute; top:0; bottom:0; border-radius:4px; background:linear-gradient(90deg, #6fa8dc, #f6b26b); }
+.mealsview { margin-left:auto; }
+.rbrowse { display:flex; flex-direction:column; gap:12px; }
+.rbar { display:flex; gap:8px; flex-wrap:wrap; } .rbar input { flex:1 1 260px; min-width:0; font-size:17px; } .rbar select { flex:none; width:auto; }
+.rcats { flex-wrap:wrap; }
+.rbgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
+.rbcard { display:flex; flex-direction:column; align-items:stretch; text-align:left; gap:4px; padding:0 0 10px; overflow:hidden; border-radius:16px; background:var(--card); }
+.rbcard b, .rbcard small { padding:0 12px; } .rbcard b { font-size:16px; line-height:1.25; } .rbcard small { color:var(--muted); }
+.rbimg { position:relative; aspect-ratio:4/3; background:var(--chip, rgba(127,127,127,.12)); display:grid; place-items:center; font-size:34px; }
+.rbimg img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.tonight { display:flex; gap:12px; align-items:center; padding:10px; border-radius:16px; background:var(--card); box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:10px; }
+.tonight.tap { cursor:pointer; }
+.tonight img, .tnoimg { width:84px; height:84px; border-radius:12px; object-fit:cover; flex:none; display:grid; place-items:center; font-size:36px; background:var(--chip, rgba(127,127,127,.12)); }
+.tonight small { display:block; color:var(--muted); font-weight:700; } .tonight b { display:block; font-size:18px; line-height:1.25; }
+.cookbtn { display:inline-block; margin-top:4px; font-weight:800; color:var(--accent); }
+.tonight .tothers { font-weight:600; margin-top:4px; }
+.cook { position:fixed; inset:0; z-index:400; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; }
+.cktop { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.cktop img { width:64px; height:64px; border-radius:12px; object-fit:cover; }
+.cktitle h2 { margin:0; font-size:26px; } .cktitle small { color:var(--muted); font-size:15px; }
+.cktop .spacer { flex:1; }
+.cktop button { font-size:16px; padding:10px 14px; }
+.ckserv { display:flex; align-items:center; gap:8px; } .ckserv span { font-size:17px; min-width:96px; text-align:center; }
+.ckserv button:not(.reset) { width:44px; height:44px; font-size:22px; padding:0; border-radius:50%; }
+.ckbody { flex:1; min-height:0; display:grid; grid-template-columns:minmax(260px,2fr) 3fr; }
+.ckings, .cksteps { overflow-y:auto; padding:12px 20px 20px; }
+.ckings { border-right:1px solid var(--line); }
+.ckings h3, .cksteps h3 { margin:6px 0 10px; } .ckings h3 small, .cksteps h3 small { color:var(--muted); font-weight:600; }
+.ckings h4, .cksteps h4 { margin:14px 0 6px; color:var(--muted); text-transform:uppercase; font-size:13px; letter-spacing:.04em; }
+.ckii { display:flex; gap:12px; align-items:flex-start; width:100%; text-align:left; padding:10px 8px; font-size:19px; line-height:1.35; background:none; box-shadow:none; border-radius:10px; }
+.ckii .box { flex:none; width:26px; height:26px; border-radius:8px; border:2px solid var(--line); display:grid; place-items:center; font-size:16px; margin-top:1px; }
+.ckii.got { color:var(--muted); text-decoration:line-through; } .ckii.got .box { background:var(--accent); border-color:var(--accent); color:#fff; }
+.cknote { font-size:16px; }
+.ckstep { display:flex; gap:14px; width:100%; text-align:left; align-items:flex-start; padding:14px; margin-bottom:8px; border-radius:14px; background:var(--card); box-shadow:none; font-size:19px; opacity:.75; }
+.ckstep p { margin:0; line-height:1.45; white-space:pre-line; }
+.ckstep .num { flex:none; width:34px; height:34px; border-radius:50%; display:grid; place-items:center; font-weight:800; background:var(--chip, rgba(127,127,127,.15)); }
+.ckstep.on { opacity:1; font-size:24px; outline:3px solid var(--accent); } .ckstep.on .num { background:var(--accent); color:#fff; }
+.ckstep.past { opacity:.5; }
+.cknav { display:flex; align-items:center; gap:12px; padding:12px 20px; border-top:1px solid var(--line); }
+.cknav span { flex:1; text-align:center; color:var(--muted); font-weight:700; }
+.cknav button { font-size:20px; padding:14px 28px; min-width:140px; }
+.ckqr { position:absolute; inset:0; background:rgba(0,0,0,.5); display:grid; place-items:center; padding:16px; }
+.ckqrcard { background:#fff; color:#222; border-radius:20px; padding:20px; width:min(380px,100%); text-align:center; }
+.qrbox svg { width:260px; height:260px; max-width:100%; } .qrurl { word-break:break-all; color:#666; }
+@media (max-width: 800px) {
+  .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
+  .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
+}
 .hints { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
 .hintrow { display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-radius:12px; background:var(--chip, rgba(127,127,127,.1)); }
 .hintrow span { font-size:20px; line-height:1.2; flex:none; }
@@ -3460,7 +3732,7 @@ label.check input { width:22px; height:22px; }
 .hintrow.h-now { background:#e3f0fb; color:#0d3c61; }
 .hintrow.h-alert { background:#fdecea; color:#7f1d1d; }
 .alertpop { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
-.apcard { width:min(640px,100%); max-height:90vh; overflow:auto; background:var(--card); color:var(--text); border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,.4); border:4px solid var(--ac); }
+.apcard { width:min(640px,100%); max-height:90vh; overflow:auto; background:var(--card); color:var(--ink); border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,.4); border:4px solid var(--ac); }
 .aphead { display:flex; gap:14px; align-items:center; padding:18px 20px; font-size:24px; }
 .aphead small { display:block; font-size:15px; opacity:.9; }
 .apicon { font-size:40px; animation:appulse 1.2s ease-in-out infinite; }
