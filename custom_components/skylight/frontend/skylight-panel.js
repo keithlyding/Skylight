@@ -2,7 +2,35 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.14.0";
+const PANEL_VERSION = "1.15.0";
+// Profile colors: each column is a color family, rows go light -> dark.
+const MEMBER_COLORS = [
+  // light
+  "#ffb3b3", "#ffc9a3", "#ffe89a", "#b9f0c9", "#a8e6dc", "#b3ecff", "#b8cbff", "#d9c2ff", "#ffc2ee", "#d7c3b8", "#c7d2d9", "#e0e0e0",
+  // medium
+  "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb", "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#9e9e9e",
+  // strong
+  "#e53935", "#f57c00", "#f9a825", "#2e7d32", "#00897b", "#0288d1", "#1e40af", "#6a1b9a", "#c2185b", "#6d4c41", "#37474f", "#616161",
+  // dark
+  "#8e1b1b", "#a0470a", "#9a6b00", "#1b4d23", "#00564d", "#01497c", "#172554", "#3f0f63", "#7a0e3a", "#3e2723", "#222f3e", "#212121",
+];
+// Pick black or white text for a background color (WCAG relative luminance).
+const textOn = (hex) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return "#fff";
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#2d2a26" : "#fff";
+};
+// "#abc" / "abc" / "#aabbcc" -> "#aabbcc", or null if not a hex color.
+const normHex = (v) => {
+  let h = String(v || "").trim().replace(/^#/, "").toLowerCase();
+  if (/^[0-9a-f]{3}$/.test(h)) h = h.split("").map((c) => c + c).join("");
+  return /^[0-9a-f]{6}$/.test(h) ? `#${h}` : null;
+};
+
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -317,6 +345,7 @@ class SkylightPanel extends HTMLElement {
     ev.members = owners.map((m) => m.id);
     ev.member = owners[0]?.id || null;
     ev.color = owners[0]?.color || fam;
+    ev.on = textOn(ev.color);
     ev.avatar = owners.length ? owners.map((m) => m.avatar).join("") : "🏠";
     ev.stripes = "";
     if (owners.length > 1) {
@@ -566,6 +595,13 @@ class SkylightPanel extends HTMLElement {
       case "new-member": this.openMemberDialog(); break;
       case "edit-member": this.openMemberDialog(this.member(d.member)); break;
       case "pick-color": this.ui.dialog.color = d.color; this.renderDialog(); break;
+      case "color-wheel": if (el.value !== this.ui.dialog.color) { this.ui.dialog.color = el.value; this.renderDialog(); } break;
+      case "color-hex": {
+        const hex = normHex(el.value);
+        if (hex === this.ui.dialog.color) break; // Enter already applied it; ignore the blur that follows
+        if (!hex) { this._toast("Use a hex color like #3a7bd5"); return; }
+        this.ui.dialog.color = hex; this.renderDialog(); break;
+      }
       case "pick-avatar": this.ui.dialog.avatar = d.avatar; this.renderDialog(); break;
       case "pick-tone": this.ui.dialog.tone = d.tone; this.ui.dialog.avatar = withTone(baseOf(this.ui.dialog.avatar), d.tone); this.renderDialog(); break;
       case "save-member": await this.saveMember(); break;
@@ -799,6 +835,11 @@ class SkylightPanel extends HTMLElement {
   // ---------- dialogs ----------
   closeDialog() { this.ui.dialog = null; this.$dialog.innerHTML = ""; }
   renderDialog() {
+    if (this._renderingDialog) return; // a blur/change fired while replacing the dialog
+    this._renderingDialog = true;
+    try { this._renderDialog(); } finally { this._renderingDialog = false; }
+  }
+  _renderDialog() {
     const dlg = this.ui.dialog;
     if (!dlg) { this.$dialog.innerHTML = ""; return; }
     // keep typed values across re-renders of the same dialog
@@ -1149,7 +1190,12 @@ class SkylightPanel extends HTMLElement {
           <input id="m-prefix" value="${esc((m?.prefixes || []).join(", "))}" placeholder="e.g. Z, Sam"></label>
         <p class="hint" style="margin-top:-4px">Events whose title starts with one of these, followed by "-", ":" or a space (like “Z- Soccer”), show in this person's color on any calendar.</p>
         <div class="label">Color</div>
-        <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
+        <div class="swatches colorgrid">${MEMBER_COLORS.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" title="${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
+        <div class="customcolor">
+          <label class="wheel" title="Color wheel"><input type="color" id="m-wheel" data-fresh="1" value="${dlg.color}" data-change="color-wheel"><span>🎨 Color wheel</span></label>
+          <input id="m-hex" data-fresh="1" value="${dlg.color}" maxlength="7" placeholder="#3a7bd5" data-change="color-hex" data-enter="color-hex" autocomplete="off">
+          <span class="preview" style="background:${dlg.color};color:${textOn(dlg.color)}">Aa</span>
+        </div>
         <div class="label">Avatar</div>
         <div class="tones">Skin tone: ${SKIN_TONES.map(([t, name]) => `<button class="tone ${t === dlg.tone ? "sel" : ""}" title="${name}" data-action="pick-tone" data-tone="${t}">👋${t}</button>`).join("")}</div>
         <input class="emojisearch" id="avatar-q" data-fresh="1" autocomplete="off" placeholder="🔍 Search all emoji (bear, guitar, dad…)" data-emoji-search="avatar">
@@ -1714,7 +1760,7 @@ class SkylightPanel extends HTMLElement {
     const time = ev.allDay ? "" : `<span class="t">${this.fmtTime(ev.start)}</span>`;
     const multi = ev.allDay && (ev.end - ev.start) > 86400000;
     const cont = day && ev.start < startOfDay(day);
-    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""} ${ev.info ? "info" : ""}" style="--c:${ev.color};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
+    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""} ${ev.info ? "info" : ""}" style="--c:${ev.color};--on:${ev.on || "#fff"};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
       ${compact && !ev.info ? "" : `<span class="av">${ev.avatar}</span>`}<span class="s">${cont ? "↳ " : ""}${esc(ev.summary)}</span>${multi || compact ? "" : time}${compact && !ev.allDay ? `<span class="t">${this.fmtTime(ev.start)}</span>` : ""}</button>`;
   }
   dayHead(d) {
@@ -2172,6 +2218,13 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .members { flex:1; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
 .mchip { display:flex; align-items:center; gap:8px; padding:4px 14px 4px 4px; border-radius:999px; font-weight:700; border:2px solid transparent; }
 .mchip.on { border-color:var(--c); }
+.swatches.colorgrid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:5px; max-width:480px; }
+.swatches.colorgrid .swatch { width:100%; height:auto; aspect-ratio:1; border-radius:50%; padding:0; }
+.customcolor { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.customcolor .wheel { flex-direction:row; align-items:center; gap:6px; margin:0; flex:0 0 auto; font-weight:700; cursor:pointer; }
+.customcolor .wheel input { width:44px; height:36px; padding:0; border:0; background:none; cursor:pointer; }
+.customcolor #m-hex { width:110px; font-family:monospace; }
+.customcolor .preview { padding:6px 12px; border-radius:10px; font-weight:800; }
 .mchip.dim { opacity:.45; }
 .av { display:inline-grid; place-items:center; width:32px; height:32px; border-radius:50%; font-size:18px; flex:none; }
 .av.big { width:48px; height:48px; font-size:26px; }
@@ -2212,7 +2265,7 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .dh .wx { margin-left:auto; font-size:13px; color:var(--muted); }
 .evs { display:flex; flex-direction:column; gap:6px; flex:1; }
 .ev { display:flex; align-items:center; gap:6px; text-align:left; padding:6px 8px; border-radius:12px; background:color-mix(in srgb, var(--c) 18%, var(--card)); border-left:5px solid var(--c); box-shadow:none; font-size:14px; width:100%; }
-.ev.allday { background:var(--c); color:#fff; font-weight:700; border-left:0; }
+.ev.allday { background:var(--c); color:var(--on, #fff); font-weight:700; border-left:0; }
 .ev .av { width:22px; height:22px; font-size:13px; background:none; }
 .ev { flex-wrap:wrap; }
 .ev .s { flex:1; min-width:0; overflow-wrap:anywhere; font-weight:600; line-height:1.2; }
