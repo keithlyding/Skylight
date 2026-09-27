@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.19.0";
+const PANEL_VERSION = "1.19.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -1064,10 +1064,14 @@ class SkylightPanel extends HTMLElement {
   }
 
   // Calendar where a person's copy of an event is saved: their first writable (non-info, non-feed) calendar.
+  // Where new events for a person are saved: their chosen default, else a writable calendar that
+  // belongs only to them (so shared ones like "Home Maintenance" don't pull in other people).
   targetCalendar(m) {
     if (!m) return null;
-    return (m.calendars || []).find((e) => this._hass.states[e] && !this.infoCal(e) &&
-      this.calInfo?.[e]?.integration !== "remote_calendar") || null;
+    const ok = (e) => this._hass.states[e] && !this.infoCal(e) && this.calInfo?.[e]?.integration !== "remote_calendar";
+    if (m.default_calendar && (m.calendars || []).includes(m.default_calendar) && ok(m.default_calendar)) return m.default_calendar;
+    const mine = (m.calendars || []).filter(ok);
+    return mine.find((e) => this.calendarOwners(e).length === 1) || mine[0] || null;
   }
 
   // Current start/end from the form fields.
@@ -1316,6 +1320,12 @@ class SkylightPanel extends HTMLElement {
         <div class="tones">Skin tone: ${SKIN_TONES.map(([t, name]) => `<button class="tone ${t === dlg.tone ? "sel" : ""}" title="${name}" data-action="pick-tone" data-tone="${t}">👋${t}</button>`).join("")}</div>
         <input class="emojisearch" id="avatar-q" data-fresh="1" autocomplete="off" placeholder="🔍 Search all emoji (bear, guitar, dad…)" data-emoji-search="avatar">
         <div class="swatches" id="avatar-grid">${this._emojiButtons(AVATARS.map((a0) => withTone(a0, dlg.tone)), "avatar")}</div>
+        <label>New events for ${esc(m?.name || "this person")} go to
+          <select id="m-default">
+            <option value="">Automatic (their own calendar)</option>
+            ${this.allCalendars().filter((e) => !this.infoCal(e)).map((e) => `<option value="${e}" ${e === m?.default_calendar ? "selected" : ""}>${esc(this.calName(e))}</option>`).join("")}
+          </select></label>
+        <p class="hint" style="margin-top:-4px">Used when you pick this person in an event's “Who”. Shared calendars (like Home Maintenance) can stay ticked for several people without new events landing on them.</p>
         <div class="label">Today screen shows</div>
         <div class="row">
           <label><select id="m-today" data-change="member-today">
@@ -1344,6 +1354,8 @@ class SkylightPanel extends HTMLElement {
     const name = this.shadowRoot.getElementById("m-name").value.trim();
     if (!name) { this._toast("Please enter a name"); return; }
     const calendars = [...this.shadowRoot.querySelectorAll(".m-cal:checked")].map((i) => i.value);
+    const defaultCal = this.shadowRoot.getElementById("m-default")?.value || "";
+    if (defaultCal && !calendars.includes(defaultCal)) calendars.push(defaultCal); // their default is one of theirs
     const prefixes = this.shadowRoot.getElementById("m-prefix").value.split(",").map((x) => x.trim()).filter(Boolean);
     const today = this.shadowRoot.getElementById("m-today").value;
     let todayList = this.shadowRoot.getElementById("m-todaylist")?.value || "";
@@ -1354,7 +1366,7 @@ class SkylightPanel extends HTMLElement {
       todayList = list.id;
     }
     const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes,
-      today, today_list: today === "list" ? todayList : "" };
+      today, today_list: today === "list" ? todayList : "", default_calendar: defaultCal };
     const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
     await this._set("members", members);
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
