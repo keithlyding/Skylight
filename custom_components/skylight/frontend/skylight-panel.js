@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.7.0";
+const PANEL_VERSION = "1.7.1";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -1266,12 +1266,22 @@ class SkylightPanel extends HTMLElement {
   renderCalendar() {
     const v = this.ui.view, a = this.ui.anchor;
     let title;
+    // Short titles so the toolbar never wraps; year only when it isn't this year.
+    const thisYear = new Date().getFullYear();
+    const yr = (d) => (d.getFullYear() !== thisYear ? `, ${d.getFullYear()}` : "");
     if (v === "month") title = a.toLocaleDateString([], { month: "long", year: "numeric" });
-    else if (v === "day") title = a.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-    else { const [s, e] = this._range(); title = `${s.toLocaleDateString([], { month: "short", day: "numeric" })} – ${addDays(e, -1).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`; }
+    else if (v === "day") title = `${a.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}${yr(a)}`;
+    else {
+      const [s, e0] = this._range(), e = addDays(e0, -1);
+      const sm = s.toLocaleDateString([], { month: "short" }), em = e.toLocaleDateString([], { month: "short" });
+      title = sm === em && s.getFullYear() === e.getFullYear()
+        ? `${sm} ${s.getDate()} – ${e.getDate()}${yr(e)}`
+        : `${sm} ${s.getDate()}${s.getFullYear() !== e.getFullYear() ? yr(s) : ""} – ${em} ${e.getDate()}${yr(e)}`;
+    }
     const noCals = !this.shownCalendars().length;
-    const toolbar = `<div class="toolbar">
-      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button><h1>${title}</h1></div>
+    const toolbar = `<div class="toolbar caltool">
+      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button></div>
+      <h1>${title}</h1>
       <div class="seg">${CAL_VIEWS.map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
       <button class="primary fab" data-action="new-event">+ Event</button>
     </div>`;
@@ -1728,6 +1738,18 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:6px 0 12px; flex-wrap:wrap; }
 .toolbar h1 { font-size:24px; margin:0 0 0 8px; }
 .toolbar h2 { margin:0; }
+/* Calendar toolbar: always one row; the title shrinks instead of pushing buttons down */
+.caltool { flex-wrap:nowrap; }
+.caltool .nav { flex:none; }
+.caltool .nav button { flex:none; }
+.caltool h1 { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.caltool .seg, .caltool .fab { flex:none; }
+/* Narrower screens: two fixed rows (same in every view, so nothing jumps) */
+@media (max-width: 1100px) {
+  .caltool { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"nav title fab" "seg seg seg"; row-gap:10px; }
+  .caltool .nav { grid-area:nav; } .caltool h1 { grid-area:title; } .caltool .fab { grid-area:fab; }
+  .caltool .seg { grid-area:seg; justify-self:start; max-width:100%; overflow-x:auto; }
+}
 .nav { display:flex; align-items:center; gap:8px; }
 .seg { display:flex; background:var(--card); border-radius:14px; padding:4px; gap:2px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
 .seg button { box-shadow:none; background:none; }
