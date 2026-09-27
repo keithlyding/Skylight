@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.25.2";
+const PANEL_VERSION = "1.25.3";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -2134,8 +2134,7 @@ class SkylightPanel extends HTMLElement {
       ${cats.length ? `<div class="seg rcats"><button class="${!b.category ? "on" : ""}" data-action="rb-cat" data-cat="">All</button>${cats.map((c) => `<button class="${b.category === c.slug ? "on" : ""}" data-action="rb-cat" data-cat="${esc(c.slug)}">${esc(c.name)}</button>`).join("")}</div>` : ""}
       ${b.error ? `<p class="hint">⚠️ ${esc(b.error)}</p>` : ""}
       <div class="rbgrid">${(b.items || []).map((r) => `<div class="rbcard" role="button" tabindex="0" data-action="cook" data-recipe="${esc(r.slug || r.id)}">
-          <div class="rbimg holdable" data-hold="${esc(r.slug || r.id)}">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" draggable="false" onerror="this.remove()">` : ""}<span>🍽️</span>
-            ${this._delShown(r.slug || r.id) ? `<button class="rbdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}">🗑 Delete</button>` : ""}</div>
+          <div class="rbimg">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<span>🍽️</span></div>
           <b>${esc(r.name)}</b><small>${[r.total_time ? `⏱ ${esc(r.total_time)}` : "", r.rating ? "★".repeat(Math.round(r.rating)) : ""].filter(Boolean).join(" · ")}</small></div>`).join("")}</div>
       ${b.loading ? `<p class="hint center">Loading recipes…</p>` : b.items && !b.items.length ? `<p class="hint center">No recipes found.</p>` : ""}
       ${!b.loading && b.items && b.page < b.pages ? `<div class="center"><button data-action="rb-more">Show more${b.total ? ` (${b.items.length} of ${b.total})` : ""}</button></div>` : ""}
@@ -2170,7 +2169,6 @@ class SkylightPanel extends HTMLElement {
   }
   _refreshRecipeViews() {
     if (this.cook?.r) this.renderCook();
-    if (this.ui.tab === "meals" && this.ui.mealsView === "recipes") this.render();
   }
 
   // ---------- Mealie: tonight's dinner on the Today screen ----------
