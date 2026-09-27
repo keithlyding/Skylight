@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.5.1";
+const PANEL_VERSION = "1.6.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -112,6 +112,7 @@ class SkylightPanel extends HTMLElement {
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
     clearInterval(this._refreshTimer);
+    if (this._onResize) { window.removeEventListener("resize", this._onResize); this._onResize = null; }
     for (const u of Object.values(this._todoSubs)) u.then((f) => f && f()).catch(() => {});
     this._todoSubs = {};
   }
@@ -125,6 +126,10 @@ class SkylightPanel extends HTMLElement {
     this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); }, 5 * 60000);
     this._lastActivity = Date.now();
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
+    if (!this._onResize) {
+      this._onResize = () => { const g = this.$app?.querySelector(".tg-scroll"); if (!g) return; this._fitGrid(); this._scrollGridHome(g); };
+      window.addEventListener("resize", this._onResize);
+    }
   }
 
   _fatal(e) {
@@ -1074,13 +1079,25 @@ class SkylightPanel extends HTMLElement {
   }
 
   // ---------- screensaver ----------
-  // Put the current time about a third of the way down; otherwise start at the morning.
+  // Size the grid to the space left on screen so the day window (6am-9pm) fits exactly.
+  _fitGrid() {
+    const tg = this.$app?.querySelector(".tg");
+    if (!tg) return;
+    const narrow = window.innerWidth <= 900;
+    if (!narrow) tg.style.height = `${Math.max(360, window.innerHeight - tg.getBoundingClientRect().top - 26)}px`;
+    else tg.style.height = `${Math.max(420, window.innerHeight * 0.75)}px`;
+    const scroll = tg.querySelector(".tg-scroll");
+    const [a, b] = this._tgWindow || [6, 21];
+    this._tgH = Math.max(24, scroll.clientHeight / (b - a));
+    tg.style.setProperty("--h", `${this._tgH}px`);
+  }
+  // Default position: the day window at the top; late at night, show the current time instead.
   _scrollGridHome(grid = this.$app?.querySelector(".tg-scroll")) {
     if (!grid) return;
-    const H = this._tgH || 52, now = new Date();
-    grid.scrollTop = this._tgHasToday
-      ? Math.max(0, (now.getHours() + now.getMinutes() / 60) * H - grid.clientHeight / 3)
-      : Math.max(0, this._tgFirstHour * H - 10);
+    const H = this._tgH || 40, now = new Date(), [a, b] = this._tgWindow || [6, 21];
+    const hr = now.getHours() + now.getMinutes() / 60;
+    const showsToday = !!grid.querySelector(".tg-now");
+    grid.scrollTop = showsToday && (hr < a || hr > b) ? Math.max(0, hr * H - grid.clientHeight / 2) : a * H;
     this._tgScroll = grid.scrollTop;
   }
 
@@ -1141,8 +1158,7 @@ class SkylightPanel extends HTMLElement {
     const now = new Date();
     const t = this.fmtTime(now);
     const dt = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-    const H = this._tgH || 52;
-    this.shadowRoot.querySelectorAll(".tg-now").forEach((l) => { l.style.top = `${(now.getHours() + now.getMinutes() / 60) * H}px`; });
+    this.shadowRoot.querySelectorAll(".tg-now").forEach((l) => { l.style.top = `calc(var(--h) * ${(now.getHours() + now.getMinutes() / 60).toFixed(3)})`; });
     for (const [id, v] of [["clock", t], ["date", dt], ["sv-time", t], ["sv-date", dt]]) {
       const el = this.shadowRoot.getElementById(id); if (el) el.textContent = v;
     }
@@ -1178,6 +1194,7 @@ class SkylightPanel extends HTMLElement {
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
     const grid = this.$app.querySelector(".tg-scroll");
     if (grid) {
+      this._fitGrid();
       // Same days as before: keep where the user scrolled. New days: jump to "now" (or morning).
       if (this._tgKeyNext !== prevKey || this._tgScroll === undefined) this._scrollGridHome(grid);
       else grid.scrollTop = this._tgScroll;
@@ -1243,10 +1260,10 @@ class SkylightPanel extends HTMLElement {
 
   // Google/Outlook-style time grid: all-day row on top, hourly blocks below.
   renderTimeGrid(days, { labels } = {}) {
-    const H = 52; // px per hour
+    const DAY_START = 6, DAY_END = 21; // window that fits on screen without scrolling
+    const at = (hours) => `calc(var(--h) * ${hours.toFixed(3)})`;
     const isAllDay = (e, d) => e.allDay || (e.start <= startOfDay(d) && e.end >= addDays(startOfDay(d), 1));
     const now = new Date();
-    let earliest = 24;
     const head = days.map((d, i) => {
       const f = this.forecast[ymd(d)];
       const name = labels ? labels(d, i) : d.toLocaleDateString([], { weekday: "short" });
@@ -1286,27 +1303,24 @@ class SkylightPanel extends HTMLElement {
       }
       flush();
       const blocks = timed.map(({ e, s, en, lane, lanes, span }) => {
-        const top = ((s - ds) / 3600000) * H, h = Math.max(((en - s) / 3600000) * H - 2, 22);
-        earliest = Math.min(earliest, (s - ds) / 3600000);
+        const startH = (s - ds) / 3600000, dur = (en - s) / 3600000;
         const w = 100 / lanes;
-        return `<button class="tg-ev ${h < 40 ? "short" : ""}" style="--c:${e.color};top:${top}px;height:${h}px;left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
-          <b>${esc(e.summary)}</b><span>${e.avatar} ${this.fmtTime(e.start)}${h >= 40 ? ` – ${this.fmtTime(e.end)}` : ""}</span>${h >= 64 && e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
+        const short = dur < 0.8;
+        return `<button class="tg-ev ${short ? "short" : dur >= 1.5 ? "tall" : ""}" style="--c:${e.color};top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
+          <b>${esc(e.summary)}</b><span>${e.avatar} ${this.fmtTime(e.start)}${short ? "" : ` – ${this.fmtTime(e.end)}`}</span>${dur >= 1.5 && e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
       }).join("");
-      const slots = [...Array(24)].map((_, hr) => `<div class="tg-slot" style="top:${hr * H}px;height:${H}px" data-action="new-event" data-date="${ymd(d)}" data-hour="${hr}"></div>`).join("");
-      const nowLine = sameDay(d, now) ? `<div class="tg-now" style="top:${(now.getHours() + now.getMinutes() / 60) * H}px"></div>` : "";
+      const slots = [...Array(24)].map((_, hr) => `<div class="tg-slot" style="top:${at(hr)};height:var(--h)" data-action="new-event" data-date="${ymd(d)}" data-hour="${hr}"></div>`).join("");
+      const nowLine = sameDay(d, now) ? `<div class="tg-now" style="top:${at(now.getHours() + now.getMinutes() / 60)}"></div>` : "";
       return `<div class="tg-col ${sameDay(d, now) ? "today" : ""}">${slots}${blocks}${nowLine}</div>`;
     }).join("");
-    const hours = [...Array(24)].map((_, hr) => `<div class="tg-hr" style="top:${hr * H}px">${hr ? new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h }) : ""}</div>`).join("");
+    const hours = [...Array(24)].map((_, hr) => `<div class="tg-hr" style="top:${at(hr)}">${hr ? new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h }) : ""}</div>`).join("");
     // Initial scroll: an hour before the earliest event, but no later than 7am.
-    const firstHour = Math.max(0, Math.min(7, Math.floor(earliest) - 1));
-    this._tgH = H;
-    this._tgHasToday = days.some((d) => sameDay(d, now));
-    this._tgFirstHour = firstHour;
+    this._tgWindow = [DAY_START, DAY_END];
     this._tgKeyNext = `${this.ui.tab}|${days.map(ymd).join(",")}`;
-    return `<div class="tg" style="--n:${days.length};--h:${H}px">
+    return `<div class="tg" style="--n:${days.length};--h:${this._tgH || 40}px">
       <div class="tg-row tg-head"><div class="tg-gutter"></div>${head}</div>
       ${hasAllDay ? `<div class="tg-row tg-allday"><div class="tg-gutter">all-day</div>${allDayCells.map((c, i) => `<div class="tg-adcell">${c.map((e) => this.evPill(e, days[i], true)).join("")}</div>`).join("")}</div>` : ""}
-      <div class="tg-scroll"><div class="tg-body" style="height:${24 * H}px">
+      <div class="tg-scroll"><div class="tg-body" style="height:calc(var(--h) * 24)">
         <div class="tg-hours">${hours}</div><div class="tg-cols">${cols}</div>
       </div></div></div>`;
   }
@@ -1694,10 +1708,10 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .tg-dh.today .dd { color:#fff; background:var(--accent); border-radius:999px; min-width:36px; text-align:center; padding:0 6px; }
 .tg-dh .wx { margin-left:auto; font-size:12px; color:var(--muted); }
 .tg-adcell { display:flex; flex-direction:column; gap:3px; padding:4px; border-left:1px solid var(--line); min-width:0; max-height:96px; overflow-y:auto; }
-.tg-scroll { overflow-y:auto; max-height:calc(100vh - 250px); min-height:320px; }
+.tg-scroll { overflow-y:auto; flex:1; min-height:0; }
 .tg-body { position:relative; display:grid; grid-template-columns:56px 1fr; }
 .tg-hours { position:relative; }
-.tg-hr { position:absolute; right:6px; transform:translateY(-50%); font-size:11px; color:var(--muted); white-space:nowrap; }
+.tg-hr { position:absolute; right:6px; transform:translateY(2px); font-size:11px; color:var(--muted); white-space:nowrap; }
 .tg-cols { position:relative; display:grid; grid-template-columns:repeat(var(--n), minmax(0,1fr)); background:repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--h)); }
 .tg-col { position:relative; border-left:1px solid var(--line); }
 .tg-col.today { background:color-mix(in srgb, var(--accent) 5%, transparent); }
@@ -1705,7 +1719,8 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .tg-slot:active { background:color-mix(in srgb, var(--accent) 12%, transparent); }
 .tg-ev { position:absolute; z-index:1; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:3px 6px; text-align:left; overflow:hidden;
   background:color-mix(in srgb, var(--c) 24%, var(--card)); border-left:4px solid var(--c); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.08); font-size:13px; line-height:1.2; }
-.tg-ev b { font-weight:700; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+.tg-ev b { font-weight:700; overflow:hidden; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; }
+.tg-ev.tall b { -webkit-line-clamp:3; }
 .tg-ev span { font-size:11px; opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .tg-ev.short { flex-direction:row; align-items:center; gap:6px; }
 .tg-ev.short b { -webkit-line-clamp:1; white-space:nowrap; text-overflow:ellipsis; flex:0 1 auto; }
@@ -1830,7 +1845,7 @@ label.check input { width:22px; height:22px; }
 .emoji { font-size:24px; padding:4px 8px; background:var(--bg); box-shadow:none; }
 .swatches:has(.emoji) { max-height:190px; overflow-y:auto; }
 .home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
-.home .tg-scroll { max-height:calc(100vh - 230px); }
+
 .three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; height:100%; }
 .three .dn { font-size:15px; }
 .hside { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
