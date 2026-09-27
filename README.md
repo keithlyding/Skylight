@@ -12,6 +12,7 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 |---|---|
 | **Today** | Overview: a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather, each person's chores for today (tap to check off), and today's meals. Opens by default. |
 | **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), optional air-quality / pollen / UV sensors, and official **US National Weather Service alerts** (cards on the Weather tab plus a banner on every screen). Tap a forecast day for the written day/night forecast. Uses the weather integration chosen in Settings; the **NWS** integration is recommended in the US for rain chances and forecast text. |
+| **Weather extras** | **Today's tips** in plain language on the Today screen and Weather tab (umbrella for an outdoor event, jacket this morning, freeze tonight, gusty, high UV, poor air, high pollen, much colder than yesterday). **Rain in the next 2 hours** in 15-minute steps ("Rain starting in about 30 min"). **Alert pop-ups**: a new NWS warning covers the screen (and wakes the photo screensaver) with an optional chime until someone taps OK. **Radar layers** (radar, rain forecast, storms, wind, gusts, temperature, clouds, satellite), **air quality** (US AQI with a 24-hour outlook), **pollen**, **comparisons** (yesterday, this day last year, rain over the last 7/30 days) and a **moon** card with the next phases. Rain-soon, air quality and comparisons come from Open-Meteo (free, no key). US pollen uses the Google Pollen API with the Google key from Location lookup. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per person with a progress ring. Tap a chore to check it off and earn stars. Chores repeat daily, on certain weekdays, weekly or once. You can page back and forth by day. |
 | **Rewards** | Star balances with manual +/−, and rewards with progress bars. **Redeem** spends the stars. |
@@ -105,7 +106,7 @@ You can also place Skylight on any dashboard as a card (`type: custom:skylight-p
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 26 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 49 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

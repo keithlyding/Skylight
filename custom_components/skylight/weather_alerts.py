@@ -20,7 +20,7 @@ from .const import DOMAIN, VERSION
 
 NWS_ALERTS = "https://api.weather.gov/alerts/active"
 CACHE_KEY = f"{DOMAIN}_alerts"
-CACHE_SECONDS = 5 * 60
+CACHE_SECONDS = 2 * 60
 TIMEOUT = aiohttp.ClientTimeout(total=10)
 SEVERITY_ORDER = {"Extreme": 0, "Severe": 1, "Moderate": 2, "Minor": 3, "Unknown": 4}
 

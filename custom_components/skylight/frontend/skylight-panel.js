@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.23.0";
+const PANEL_VERSION = "1.24.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -138,6 +138,18 @@ const moonPhase = (d) => {
   return `${icon} ${name}`;
 };
 
+// Moon details: illumination and the next new / first quarter / full / last quarter (mean cycle, within about a day).
+const SYNODIC = 29.530588853;
+const moonInfo = (d) => {
+  const days = (d.getTime() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+  const age = ((days % SYNODIC) + SYNODIC) % SYNODIC;
+  const illum = Math.round((1 - Math.cos((2 * Math.PI * age) / SYNODIC)) / 2 * 100);
+  const next = [[0, "🌑", "New moon"], [0.25, "🌓", "First quarter"], [0.5, "🌕", "Full moon"], [0.75, "🌗", "Last quarter"]]
+    .map(([f, icon, name]) => ({ icon, name, date: new Date(d.getTime() + ((f * SYNODIC - age + SYNODIC) % SYNODIC || SYNODIC) * 86400000) }))
+    .sort((a, b) => a.date - b.date);
+  return { age, illum, waxing: age < SYNODIC / 2, next };
+};
+
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // Calendar tab views, in display order. N-day views start on the selected day, like the Today screen.
@@ -245,7 +257,7 @@ class SkylightPanel extends HTMLElement {
   disconnectedCallback() {
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
-    clearInterval(this._refreshTimer);
+    clearInterval(this._refreshTimer); clearInterval(this._alertTimer);
     if (this._onResize) { window.removeEventListener("resize", this._onResize); this._onResize = null; }
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
     for (const u of Object.values(this._todoSubs)) u.then((f) => f && f()).catch(() => {});
@@ -258,7 +270,8 @@ class SkylightPanel extends HTMLElement {
     this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
     this._unsub.catch((e) => this._fatal(e));
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
-    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather") this._loadWeatherFull(); this._loadAlerts(); }, 5 * 60000);
+    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather" || this.ui.tab === "home") this._loadWeatherFull(); this._loadWxExtra(); }, 5 * 60000);
+    this._alertTimer = setInterval(() => this._loadAlerts(), 2 * 60000);
     this._lastActivity = Date.now();
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
     if (!this._onResize) {
@@ -293,7 +306,7 @@ class SkylightPanel extends HTMLElement {
     if (this.ui.filter && !data.members.find((m) => m.id === this.ui.filter)) this.ui.filter = null;
     this.render();
     this._loadEvents();
-    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); this._loadCalInfo(); this._loadAlerts(); }
+    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); this._loadCalInfo(); this._loadAlerts(); this._loadWxExtra(); }
   }
 
   async _loadMealieInfo() {
@@ -402,6 +415,14 @@ class SkylightPanel extends HTMLElement {
   set homeAgenda(v) {
     this._homeAgenda = v;
     try { localStorage.setItem("skylight.homeView", v ? "agenda" : "grid"); } catch (e) { /* private mode */ }
+  }
+  get radarLayer() {
+    if (this._radarLayer === undefined) { try { this._radarLayer = localStorage.getItem("skylight.radarLayer") || "radar"; } catch (e) { this._radarLayer = "radar"; } }
+    return this._radarLayer;
+  }
+  set radarLayer(v) {
+    this._radarLayer = v;
+    try { localStorage.setItem("skylight.radarLayer", v); } catch (e) { /* private mode */ }
   }
   get homeDays() {
     if (!this._homeDays) {
@@ -615,6 +636,7 @@ class SkylightPanel extends HTMLElement {
     if (this.settings.weather_alerts === false) { this.alerts = null; return; }
     try { this.alerts = await this._hass.callWS({ type: "skylight/weather/alerts", force }); }
     catch (e) { this.alerts = null; return; } // e.g. server not restarted after an update
+    this._checkNewAlerts();
     this.render();
   }
   alertColor(sev) { return { Extreme: "#7b1fa2", Severe: "#c62828", Moderate: "#ef6c00", Minor: "#f9a825" }[sev] || "#607d8b"; }
@@ -645,6 +667,199 @@ class SkylightPanel extends HTMLElement {
             <p class="hint">${esc(a.sender)}</p></details>
         </div></section>`;
     }).join("");
+  }
+
+  // ----- kiosk alert popup: a new Severe/Extreme NWS alert takes over the screen until dismissed -----
+  _seenAlerts() {
+    if (!this.__seen) { try { this.__seen = JSON.parse(localStorage.getItem("skylight.seenAlerts") || "[]"); } catch (e) { this.__seen = []; } }
+    return this.__seen;
+  }
+  _markAlertsSeen(ids) {
+    this.__seen = [...new Set([...this._seenAlerts(), ...ids])].slice(-60);
+    try { localStorage.setItem("skylight.seenAlerts", JSON.stringify(this.__seen)); } catch (e) { /* private mode */ }
+  }
+  _popupLevels() {
+    const p = this.settings.alert_popup || "severe";
+    return p === "off" ? [] : p === "all" ? ["Extreme", "Severe", "Moderate", "Minor", "Unknown"] : p === "extreme" ? ["Extreme"] : ["Extreme", "Severe"];
+  }
+  _checkNewAlerts() {
+    const list = (this.alerts?.alerts || []).filter((a) => this._popupLevels().includes(a.severity));
+    const seen = this._seenAlerts();
+    const fresh = list.filter((a) => a.id && !seen.includes(a.id));
+    if (!fresh.length) return;
+    this.ui.alertPop = fresh.map((a) => a.id);
+    if (this.ui.saver) this.stopSaver();
+    this._lastActivity = Date.now();
+    if (this.settings.alert_sound !== false) this._chime();
+  }
+  _chime() {
+    // A short two-tone chime. Browsers may block sound until the screen has been touched once;
+    // in Fully Kiosk enable "Autoplay audio" (Web content settings).
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = this._ac || (this._ac = new AC());
+      ctx.resume?.();
+      [[880, 0], [660, 0.35], [880, 0.7], [660, 1.05]].forEach(([f, t]) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+        const at = ctx.currentTime + t;
+        g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.35, at + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
+        o.start(at); o.stop(at + 0.32);
+      });
+    } catch (e) { /* no audio */ }
+  }
+  renderAlertPopup() {
+    const ids = this.ui.alertPop;
+    if (!ids || !ids.length) return "";
+    const list = (this.alerts?.alerts || []).filter((a) => ids.includes(a.id));
+    if (!list.length) { this.ui.alertPop = null; return ""; }
+    const a = list[0], c = this.alertColor(a.severity);
+    const fmt = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "");
+    return `<div class="alertpop" role="alertdialog" aria-label="${esc(a.event)}">
+      <div class="apcard" style="--ac:${c}">
+        <div class="aphead" style="background:${c};color:${textOn(c)}"><span class="apicon">⚠️</span><div><b>${esc(a.event)}</b>
+          <small>${esc(a.severity)}${a.ends ? ` · until ${fmt(a.ends)}` : ""}</small></div></div>
+        <div class="apbody">
+          ${a.headline ? `<p><b>${esc(a.headline)}</b></p>` : ""}
+          ${a.instruction ? `<p class="apre">${esc(a.instruction)}</p>` : `<p class="apre">${esc((a.description || "").slice(0, 600))}</p>`}
+          ${list.length > 1 ? `<p class="hint">+ ${list.length - 1} more alert${list.length > 2 ? "s" : ""}</p>` : ""}
+        </div>
+        <div class="apbtns"><button data-action="alert-details">Details</button><button class="primary" data-action="alert-dismiss">OK, got it</button></div>
+      </div></div>`;
+  }
+
+  // ----- extra weather data (Open-Meteo rain-by-15-min, comparisons, air quality, pollen) -----
+  async _loadWxExtra(force = false) {
+    if (this.settings.weather_extra === false) { this.wxx = null; return; }
+    if (!force && this.wxx && Date.now() - this.wxx.at < 10 * 60000) return;
+    if (this._wxxLoading) return;
+    this._wxxLoading = true;
+    try { this.wxx = { at: Date.now(), ...(await this._hass.callWS({ type: "skylight/weather/extra", force })) }; }
+    catch (e) { this.wxx = null; } // e.g. server not restarted after an update
+    finally { this._wxxLoading = false; }
+    if (this.ui.tab === "weather" || this.ui.tab === "home") this.render();
+  }
+  _isMetric() {
+    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
+    return !((w?.attributes?.temperature_unit || this._hass.config?.unit_system?.temperature || "°F").includes("F"));
+  }
+  // Rain in the next 2 hours from 15-minute data. Returns {text, bars} or null.
+  _rainSoon() {
+    const m = this.wxx?.forecast?.minutely;
+    const off = this.wxx?.forecast?.utc_offset;
+    if (!m || !m.length || off === undefined || off === null) return null;
+    // Open-Meteo times are local to the location without an offset: convert with utc_offset_seconds.
+    const at = (t) => new Date(Date.parse(t + "Z") - off * 1000);
+    const now = Date.now();
+    const slots = m.map((s) => ({ t: at(s.time), p: Number(s.precip) || 0 })).filter((s) => s.t.getTime() + 15 * 60000 > now);
+    if (!slots.length) return null;
+    const wet = (s) => s.p >= (this._isMetric() ? 0.1 : 0.004);
+    const bars = slots.slice(0, 8);
+    let text = null;
+    if (wet(slots[0])) {
+      const stop = slots.findIndex((s) => !wet(s));
+      text = stop === -1 ? "Rain now, continuing for the next 2 hours" : `Rain now, ending around ${this.fmtTime(slots[stop].t)}`;
+    } else {
+      const start = slots.findIndex(wet);
+      if (start !== -1) {
+        const mins = Math.max(0, Math.round((slots[start].t - now) / 60000));
+        text = mins <= 60 ? `Rain starting in about ${Math.max(5, Math.round(mins / 5) * 5)} min` : `Rain likely around ${this.fmtTime(slots[start].t)}`;
+      }
+    }
+    return { text, bars };
+  }
+
+  // Plain-language tips for today from the forecast, air quality, pollen and today's events.
+  _weatherHints() {
+    const out = [];
+    const metric = this._isMetric();
+    const F = (f) => (metric ? (f - 32) * 5 / 9 : f); // thresholds are written in °F
+    const mph = (v) => (metric ? v * 1.609 : v);
+    const now = new Date(), end = new Date(now); end.setHours(21, 0, 0, 0);
+    const hours = (this.wx?.hourly || []).map((h) => ({ ...h, t: new Date(h.datetime) })).filter((h) => h.t > new Date(now - 3600000));
+    const today = hours.filter((h) => h.t <= end);
+    const n = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
+    const alerts = this.alerts?.alerts || [];
+    if (alerts.length) out.push({ icon: "⚠️", text: `${alerts[0].event} in effect`, level: "h-alert" });
+    const soon = this._rainSoon();
+    if (soon?.text) out.push({ icon: "🌧️", text: soon.text, level: "h-now" });
+    // Outdoor events today
+    const OUTDOOR = /soccer|baseball|softball|football|practice|game|tournament|park|zoo|pool|swim|picnic|hike|camp|parade|field|bbq|cookout|golf|tennis|run\b|race|fair|festival|playground|beach|lake|garden|yard|walk|bike|recess|outdoor/i;
+    const evs = (this.events || []).filter((e) => !e.allDay && !e.info && sameDay(e.start, now) && e.end > now && OUTDOOR.test(`${e.summary} ${e.location}`));
+    for (const e of evs.slice(0, 3)) {
+      const h = hours.reduce((best, x) => (!best || Math.abs(x.t - e.start) < Math.abs(best.t - e.start) ? x : best), null);
+      if (!h || Math.abs(h.t - e.start) > 2 * 3600000) continue;
+      const when = `${esc(e.summary)} (${this.fmtTime(e.start)})`;
+      const p = n(h.precipitation_probability), feel = n(h.apparent_temperature) ?? n(h.temperature);
+      if (p !== null && p >= 40) out.push({ icon: "☔", text: `${p}% chance of rain for ${when}. Bring an umbrella` });
+      else if (feel !== null && feel >= F(90)) out.push({ icon: "💧", text: `Hot for ${when}, feels like ${Math.round(feel)}°. Bring water` });
+      else if (feel !== null && feel <= F(45)) out.push({ icon: "🧤", text: `Chilly for ${when}, ${Math.round(feel)}°. Dress warm` });
+    }
+    // Umbrella for the day
+    const wetHours = today.filter((h) => n(h.precipitation_probability) >= 40);
+    if (wetHours.length && !soon?.text && !out.some((o) => o.icon === "☔")) {
+      const peak = wetHours.reduce((a, b) => (n(b.precipitation_probability) > n(a.precipitation_probability) ? b : a));
+      out.push({ icon: "☂️", text: `${Math.round(n(peak.precipitation_probability))}% chance of rain around ${this.fmtTime(peak.t)}. Take an umbrella` });
+    }
+    // Jacket for the morning / school run
+    const morning = hours.filter((h) => h.t.getHours() >= 7 && h.t.getHours() <= 9 && sameDay(h.t, now));
+    const coldAM = morning.length ? Math.min(...morning.map((h) => n(h.apparent_temperature) ?? n(h.temperature))) : null;
+    if (coldAM !== null && coldAM <= F(50)) out.push({ icon: "🧥", text: `Jacket weather this morning, ${Math.round(coldAM)}°` });
+    // Heat
+    const feels = today.map((h) => n(h.apparent_temperature) ?? n(h.temperature)).filter((v) => v !== null);
+    const maxFeel = feels.length ? Math.max(...feels) : null;
+    if (maxFeel !== null && maxFeel >= F(95)) out.push({ icon: "🥵", text: `Very hot, feels like ${Math.round(maxFeel)}°. Limit time outside and drink water` });
+    else if (maxFeel !== null && maxFeel >= F(88)) out.push({ icon: "☀️", text: `Hot afternoon, feels like ${Math.round(maxFeel)}°. Drink water` });
+    // Freeze / frost tonight (until 9 AM tomorrow)
+    const tmr = new Date(now); tmr.setDate(tmr.getDate() + 1); tmr.setHours(9, 0, 0, 0);
+    const night = hours.filter((h) => h.t > now && h.t <= tmr && (h.t.getHours() >= 18 || h.t.getHours() <= 9));
+    const lowNight = night.length ? Math.min(...night.map((h) => n(h.temperature)).filter((v) => v !== null)) : null;
+    if (lowNight !== null && lowNight <= F(32)) out.push({ icon: "❄️", text: `Freeze tonight (${Math.round(lowNight)}°). Cover plants and bring pets in` });
+    else if (lowNight !== null && lowNight <= F(36)) out.push({ icon: "🌱", text: `Frost possible tonight (${Math.round(lowNight)}°). Cover tender plants` });
+    // Wind
+    const gusts = today.map((h) => n(h.wind_gust_speed) ?? n(h.wind_speed)).filter((v) => v !== null);
+    const maxGust = gusts.length ? Math.max(...gusts) : null;
+    if (maxGust !== null && maxGust >= mph(30)) out.push({ icon: "💨", text: `Gusty, up to ${Math.round(maxGust)} ${metric ? "km/h" : "mph"}. Secure trash cans and patio items` });
+    // UV
+    const uvs = today.map((h) => n(h.uv_index)).filter((v) => v !== null);
+    const uv = uvs.length ? Math.max(...uvs) : n(this._hass.states[this.settings.weather_entity]?.attributes?.uv_index);
+    if (uv !== null && uv >= 7) out.push({ icon: "🧴", text: `High UV (${Math.round(uv)}) midday. Wear sunscreen` });
+    // Air quality and pollen
+    const aqi = n(this.wxx?.air?.aqi);
+    if (aqi !== null && aqi > 150) out.push({ icon: "😷", text: `Unhealthy air (AQI ${aqi}). Keep outdoor play short` });
+    else if (aqi !== null && aqi > 100) out.push({ icon: "😷", text: `Air quality is poor for sensitive groups (AQI ${aqi})` });
+    const high = this._pollenToday().filter((p) => p.level >= 4);
+    if (high.length) out.push({ icon: "🤧", text: `${high.map((p) => p.name).join(" & ")} pollen ${high.some((p) => p.level >= 5) ? "very high" : "high"} today` });
+    // Big change from yesterday
+    const days = this.wxx?.forecast?.days || [];
+    const yi = days.findIndex((d) => d.date === ymd(now)) - 1;
+    const y = days[yi], td = days[yi + 1];
+    if (y && td && n(y.high) !== null && n(td.high) !== null) {
+      const diff = Math.round(n(td.high) - n(y.high));
+      if (Math.abs(diff) >= (metric ? 6 : 10)) out.push({ icon: diff > 0 ? "📈" : "📉", text: `${Math.abs(diff)}° ${diff > 0 ? "warmer" : "colder"} than yesterday` });
+    }
+    // A nice day
+    if (!out.length && today.length >= 4) {
+      const ok = today.every((h) => (n(h.precipitation_probability) ?? 0) < 20) && maxFeel !== null && maxFeel >= F(60) && maxFeel <= F(85) && (maxGust === null || maxGust < mph(20));
+      if (ok) out.push({ icon: "🌿", text: "Nice day. Good for yard work or the park" });
+    }
+    return out;
+  }
+  // Pollen for today as [{name, level, category}] on Google's 0-5 scale (0 none … 4 high, 5 very high),
+  // from Google (US) or Open-Meteo (Europe).
+  _pollenToday() {
+    const g = this.wxx?.pollen?.[0];
+    if (g) return g.types.filter((t) => t.value !== null && t.value !== undefined).map((t) => ({ name: t.name, level: Number(t.value), category: t.category || "", in_season: t.in_season }));
+    const eu = this.wxx?.air?.eu_pollen || [];
+    // Open-Meteo reports grains/m³; rough bands: <10 low, <50 moderate, <200 high, else very high.
+    const lvl = (v) => (v < 1 ? 0 : v < 10 ? 2 : v < 50 ? 3 : v < 200 ? 4 : 5);
+    return eu.map((p) => ({ name: p.code[0].toUpperCase() + p.code.slice(1), level: lvl(Number(p.value)), category: ["None", "Very low", "Low", "Moderate", "High", "Very high"][lvl(Number(p.value))] }));
+  }
+  renderHints(limit) {
+    const hints = this._weatherHints();
+    if (!hints.length) return "";
+    const shown = limit ? hints.slice(0, limit) : hints;
+    return `<div class="hints">${shown.map((h) => `<div class="hintrow ${h.level || ""}"><span>${h.icon}</span><p>${h.text}</p></div>`).join("")}</div>`;
   }
 
   // Daily + hourly forecasts for the Weather tab (refreshed every 15 minutes while viewed).
@@ -682,7 +897,7 @@ class SkylightPanel extends HTMLElement {
     }
     this._wxLoading = false;
     this.wx = { at: Date.now(), daily: daily || [], hourly: hourly || [], hourlyMissing: hourly === null, periods };
-    if (this.ui.tab === "weather") this.render();
+    if (this.ui.tab === "weather" || this.ui.tab === "home") this.render();
   }
 
   async _loadForecast() {
@@ -760,6 +975,9 @@ class SkylightPanel extends HTMLElement {
         el.checked ? set.add(d.entity) : set.delete(d.entity);
         await this._set("settings", { weather_sensors: [...set] }); break;
       }
+      case "alert-dismiss": this._markAlertsSeen(this.ui.alertPop || []); this.ui.alertPop = null; this.render(); break;
+      case "alert-details": this._markAlertsSeen(this.ui.alertPop || []); this.ui.alertPop = null; this.ui.tab = "weather"; this._resetScroll = true; this.render(); break;
+      case "radar-layer": this.radarLayer = d.layer; this.render(); break;
       case "wx-day": this.ui.wxOpen = this.ui.wxOpen === d.day ? null : d.day; this.render(); break;
       case "rp": {
         const r = this.ui.dialog.rep, f = d.field;
@@ -854,6 +1072,7 @@ class SkylightPanel extends HTMLElement {
         await this._set("settings", { [d.key]: v });
         if (d.key === "weather_entity") setTimeout(() => this._loadForecast(), 300);
         if (d.key === "weather_alerts") setTimeout(() => this._loadAlerts(true), 300);
+        if (d.key === "weather_extra") setTimeout(() => this._loadWxExtra(true), 300);
         if (d.key === "week_start") { this._eventsKey = ""; }
         break;
       }
@@ -2086,7 +2305,7 @@ class SkylightPanel extends HTMLElement {
         ${this.renderHeader()}
         ${this.renderAlertBanner()}
         <div class="content">${body}</div>
-      </main>`;
+      </main>${this.renderAlertPopup()}`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
     this._fitMonth();
     if (this.$app.querySelector(".month")) requestAnimationFrame(() => this._fitMonth());
@@ -2377,16 +2596,90 @@ class SkylightPanel extends HTMLElement {
     const radarSrc = this.settings.weather_radar === "off" || lat === undefined ? null
       : this.settings.weather_radar === "rainviewer"
         ? `https://www.rainviewer.com/map.html?loc=${lat},${lon},7&oFa=0&oC=1&oU=0&oCS=1&oF=0&oAP=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1`
-        : `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&zoom=7&level=surface&overlay=radar&product=radar&menu=&message=true&marker=true&calendar=now&type=map&location=coordinates&metricWind=${a.wind_speed_unit === "mph" ? "mph" : "km%2Fh"}&metricTemp=${tu.includes("F") ? "%C2%B0F" : "%C2%B0C"}`;
-    const radar = radarSrc ? `<section class="wcard"><h3>Radar</h3>
+        : `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&zoom=7&level=surface&overlay=${encodeURIComponent(this.radarLayer)}&product=${["radar", "satellite"].includes(this.radarLayer) ? this.radarLayer : "ecmwf"}&menu=&message=true&marker=true&calendar=now&type=map&location=coordinates&metricWind=${a.wind_speed_unit === "mph" ? "mph" : "km%2Fh"}&metricTemp=${tu.includes("F") ? "%C2%B0F" : "%C2%B0C"}`;
+    const layers = [["radar", "Radar"], ["rain", "Rain forecast"], ["thunder", "Storms"], ["wind", "Wind"], ["gust", "Gusts"], ["temp", "Temperature"], ["clouds", "Clouds"], ["satellite", "Satellite"]];
+    const layerPick = this.settings.weather_radar === "rainviewer" ? "" : `<div class="seg layers">${layers.map(([v, l]) => `<button class="${this.radarLayer === v ? "on" : ""}" data-action="radar-layer" data-layer="${v}">${l}</button>`).join("")}</div>`;
+    const radar = radarSrc ? `<section class="wcard"><h3>Radar &amp; maps</h3>${layerPick}
       <iframe class="wradar" src="${radarSrc}" loading="lazy" referrerpolicy="no-referrer" title="Weather radar"></iframe></section>` : "";
     const extraIds = (this.settings.weather_sensors || []).filter((e) => this._hass.states[e]);
     const extras = extraIds.length ? `<section class="wcard"><h3>Air &amp; more</h3><div class="wstats">${extraIds.map((e) => {
       const st = this._hass.states[e];
       return stat(esc(st.attributes.friendly_name || e), `${esc(st.state)}${st.attributes.unit_of_measurement ? ` ${esc(st.attributes.unit_of_measurement)}` : ""}`);
     }).join("")}</div></section>` : "";
-    return `<div class="wxtab">${this.renderAlertCards()}${current}${hourly}${radar}${extras}${daily}
+    return `<div class="wxtab">${this.renderAlertCards()}${this._wxHintsCard()}${this._rainSoonCard()}${current}${hourly}${radar}${this._airCard()}${extras}${daily}${this._compareCard(tu, pu)}${this._moonCard()}
       <p class="hint center">Source: ${esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
+  }
+
+  _wxHintsCard() {
+    if (this.settings.weather_hints === false) return "";
+    const h = this.renderHints();
+    return h ? `<section class="wcard"><h3>Today's tips</h3>${h}</section>` : "";
+  }
+  _rainSoonCard() {
+    const r = this._rainSoon();
+    if (!r || !r.bars.length) return "";
+    const metric = this._isMetric();
+    const max = Math.max(metric ? 2 : 0.08, ...r.bars.map((b) => b.p));
+    return `<section class="wcard rainsoon"><h3>🌧️ Next 2 hours</h3>
+      <p class="rsline">${r.text || "No rain expected in the next 2 hours"}</p>
+      <div class="rsbars">${r.bars.map((b) => `<div class="rsb"><i style="height:${Math.max(b.p > 0 ? 6 : 2, (b.p / max) * 60)}px" title="${b.p.toFixed(metric ? 1 : 2)} ${metric ? "mm" : "in"}"></i><small>${this.fmtTime(b.t)}</small></div>`).join("")}</div></section>`;
+  }
+  _airCard() {
+    const air = this.wxx?.air;
+    const pollen = this._pollenToday();
+    if ((!air || air.aqi === null || air.aqi === undefined) && !pollen.length) return "";
+    const band = (v) => (v <= 50 ? ["Good", "#43a047"] : v <= 100 ? ["Moderate", "#f9a825"] : v <= 150 ? ["Unhealthy for sensitive groups", "#ef6c00"]
+      : v <= 200 ? ["Unhealthy", "#c62828"] : v <= 300 ? ["Very unhealthy", "#7b1fa2"] : ["Hazardous", "#6d1b1b"]);
+    let aq = "";
+    if (air && air.aqi !== null && air.aqi !== undefined) {
+      const [label, c] = band(air.aqi);
+      const hrs = (air.hourly || []).map((x) => ({ t: new Date(x.time), v: x.aqi })).filter((x) => x.t > new Date(Date.now() - 3600000)).slice(0, 24);
+      const mx = Math.max(100, ...hrs.map((x) => x.v));
+      aq = `<div class="aqi"><div class="aqibadge" style="background:${c};color:${textOn(c)}"><b>${Math.round(air.aqi)}</b><small>AQI</small></div>
+        <div><b>${label}</b><div class="hint">${[air.pm2_5 != null ? `PM2.5 ${Math.round(air.pm2_5)} µg/m³` : "", air.ozone != null ? `Ozone ${Math.round(air.ozone)} µg/m³` : ""].filter(Boolean).join(" · ")}</div></div></div>
+        ${hrs.length > 3 ? `<div class="aqbars" title="Air quality, next 24 hours">${hrs.map((x) => `<i style="height:${Math.max(3, (x.v / mx) * 36)}px;background:${band(x.v)[1]}" title="${this.fmtTime(x.t)}: AQI ${Math.round(x.v)}"></i>`).join("")}</div><div class="hint">Next 24 hours</div>` : ""}`;
+    }
+    const pc = ["#9e9e9e", "#43a047", "#9ccc65", "#f9a825", "#ef6c00", "#c62828"];
+    const pol = pollen.length ? `<div class="pollen">${pollen.map((p) => `<div class="pol"><span>${/tree|birch|alder|olive/i.test(p.name) ? "🌳" : /grass/i.test(p.name) ? "🌾" : "🌿"}</span>
+        <b>${esc(p.name)}</b><i class="pdots">${[1, 2, 3, 4, 5].map((k) => `<em style="background:${k <= p.level ? pc[Math.min(5, p.level)] : "var(--line)"}"></em>`).join("")}</i><small>${esc(p.category || "")}${p.in_season === false ? " · out of season" : ""}</small></div>`).join("")}</div>`
+      : `<p class="hint">Pollen: add a Google key in Settings → Location lookup and enable the Pollen API to see US pollen.</p>`;
+    return `<section class="wcard"><h3>Air quality &amp; pollen</h3>${aq}${pol}</section>`;
+  }
+  _compareCard(tu, pu) {
+    const days = this.wxx?.forecast?.days || [];
+    const ti = days.findIndex((d) => d.date === ymd(new Date()));
+    if (ti < 1) return "";
+    const td = days[ti], y = days[ti - 1], ly = this.wxx.last_year;
+    const r = (v) => (v === null || v === undefined ? "–" : `${Math.round(v)}°`);
+    const diff = (a, b) => { if (a == null || b == null) return ""; const x = Math.round(a - b); return x === 0 ? `<small class="same">same</small>` : `<small class="${x > 0 ? "up" : "down"}">${x > 0 ? "▲" : "▼"} ${Math.abs(x)}°</small>`; };
+    const past = days.slice(0, ti);
+    const sum = (arr) => arr.reduce((a, d) => a + (Number(d.precip) || 0), 0);
+    const metric = this._isMetric(), unit = metric ? "mm" : "in", fx = (v) => v.toFixed(metric ? 0 : 2);
+    const wk = sum(past.slice(-7)), mo = sum(past.slice(-30));
+    const lastRain = [...past].reverse().find((d) => Number(d.precip) >= (metric ? 1 : 0.04));
+    const since = lastRain ? Math.round((parseYmd(td.date) - parseYmd(lastRain.date)) / 86400000) : null;
+    return `<section class="wcard"><h3>Compared with…</h3><div class="cmp">
+      <div class="cmpc"><small>Today</small><b>${r(td.high)} / ${r(td.low)}</b></div>
+      <div class="cmpc"><small>Yesterday</small><b>${r(y.high)} / ${r(y.low)}</b>${diff(td.high, y.high)}</div>
+      ${ly ? `<div class="cmpc"><small>This day last year</small><b>${r(ly.high)} / ${r(ly.low)}</b>${diff(td.high, ly.high)}</div>` : ""}
+      <div class="cmpc"><small>Rain, last 7 days</small><b>${fx(wk)} ${unit}</b></div>
+      <div class="cmpc"><small>Rain, last 30 days</small><b>${fx(mo)} ${unit}</b></div>
+      <div class="cmpc"><small>Last rainy day</small><b>${since === null ? "30+ days ago" : since <= 1 ? (since === 0 ? "Today" : "Yesterday") : `${since} days ago`}</b></div>
+    </div><p class="hint">▲▼ compare today's high. Past data: Open-Meteo.</p></section>`;
+  }
+  _moonCard() {
+    const now = new Date(), m = moonInfo(now);
+    const strip = [...Array(30)].map((_, i) => {
+      const d = addDays(startOfDay(now), i); d.setHours(21);
+      const ph = moonPhase(d).split(" ")[0];
+      return `<div class="mday ${i === 0 ? "on" : ""}"><span>${ph}</span><small>${i === 0 ? "Today" : d.getDate() === 1 || i === 1 || d.getDay() === 0 ? d.toLocaleDateString([], { month: "short", day: "numeric" }) : d.getDate()}</small></div>`;
+    }).join("");
+    return `<section class="wcard"><h3>Moon</h3>
+      <div class="moonnow"><span class="mbig">${moonPhase(now).split(" ")[0]}</span><div><b>${moonPhase(now).split(" ").slice(1).join(" ")}</b>
+        <div class="hint">${m.illum}% lit · ${m.waxing ? "waxing" : "waning"} · day ${Math.floor(m.age) + 1} of 29.5</div></div></div>
+      <div class="mnext">${m.next.map((x) => `<div><span>${x.icon}</span><b>${x.name}</b><small>${x.date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</small></div>`).join("")}</div>
+      <div class="mstrip">${strip}</div>
+      <p class="hint">Phase dates are from the average lunar cycle and can be off by up to a day.</p></section>`;
   }
 
   // One row per metric the weather service provides, aligned under the hourly chart.
@@ -2509,10 +2802,12 @@ class SkylightPanel extends HTMLElement {
       </div>`;
     }).join("");
     const meals = this.mealieOn ? this.mealieMeals.filter((m) => m.date === ymd(today)) : [];
+    if (this.settings.weather_hints !== false && this.settings.weather_entity) this._loadWeatherFull();
     return `<div class="toolbar hometool">${picker}<button class="primary fab" data-action="new-event">+ Event</button></div>
       <div class="home ${n >= 5 ? "wide" : ""}">
       <section class="hcal">${cal}</section>
       <aside class="hside">
+        ${this.settings.weather_hints !== false ? this.renderHints(4) : ""}
         ${meals.length ? `<div class="hmeals">🍽️ ${meals.map((m) => `<b>${esc(this.mealieName(m))}</b>`).join(" · ")}</div>` : ""}
         ${chores ? `<div class="hcols">${chores}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
@@ -2801,6 +3096,12 @@ class SkylightPanel extends HTMLElement {
         <h2>Display</h2>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
         <label class="inline">Weather alerts (US National Weather Service) <input type="checkbox" ${s.weather_alerts !== false ? "checked" : ""} data-change="setting" data-key="weather_alerts"></label>
+        <label class="inline">Pop up new alerts on this screen <select data-change="setting" data-key="alert_popup">
+          ${[["severe", "Severe & extreme (warnings)"], ["extreme", "Extreme only"], ["all", "All alerts, including advisories"], ["off", "Off (banner only)"]].map(([v, l]) => `<option value="${v}" ${(s.alert_popup || "severe") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <label class="inline">Chime with alert pop-ups <input type="checkbox" ${s.alert_sound !== false ? "checked" : ""} data-change="setting" data-key="alert_sound"></label>
+        <label class="inline">Rain-soon, air quality, comparisons (Open-Meteo, free) <input type="checkbox" ${s.weather_extra !== false ? "checked" : ""} data-change="setting" data-key="weather_extra"></label>
+        <label class="inline">Weather tips on the Today screen <input type="checkbox" ${s.weather_hints !== false ? "checked" : ""} data-change="setting" data-key="weather_hints"></label>
+        <p class="hint">Pollen in the US uses the Google Pollen API with the Google key from Location lookup (enable “Pollen API” in Google Cloud). Without it, pollen is shown only in Europe.</p>
         <label class="inline">Weather radar map <select data-change="setting" data-key="weather_radar">
           ${[["windy", "Windy (default)"], ["rainviewer", "RainViewer"], ["off", "Off"]].map(([v, l]) => `<option value="${v}" ${(s.weather_radar || "windy") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <div class="label">Extra weather sensors (air quality, pollen, UV, solar radiation…)</div>
@@ -3150,6 +3451,49 @@ label.check input { width:22px; height:22px; }
 .wdn { font-weight:700; } .wdi { font-size:22px; } .wlo { color:var(--muted); text-align:right; } .whi { font-weight:800; }
 .wrange { position:relative; height:8px; background:var(--bg); border-radius:4px; }
 .wrange i { position:absolute; top:0; bottom:0; border-radius:4px; background:linear-gradient(90deg, #6fa8dc, #f6b26b); }
+.hints { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+.hintrow { display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-radius:12px; background:var(--chip, rgba(127,127,127,.1)); }
+.hintrow span { font-size:20px; line-height:1.2; flex:none; }
+.hintrow p { margin:0; font-size:15px; font-weight:600; line-height:1.35; }
+.hintrow.h-now { background:#e3f0fb; color:#0d3c61; }
+.hintrow.h-alert { background:#fdecea; color:#7f1d1d; }
+.alertpop { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+.apcard { width:min(640px,100%); max-height:90vh; overflow:auto; background:var(--card); color:var(--text); border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,.4); border:4px solid var(--ac); }
+.aphead { display:flex; gap:14px; align-items:center; padding:18px 20px; font-size:24px; }
+.aphead small { display:block; font-size:15px; opacity:.9; }
+.apicon { font-size:40px; animation:appulse 1.2s ease-in-out infinite; }
+@keyframes appulse { 50% { transform:scale(1.15); } }
+@media (prefers-reduced-motion: reduce) { .apicon { animation:none; } }
+.apbody { padding:6px 20px; font-size:17px; }
+.apbtns { display:flex; justify-content:flex-end; gap:10px; padding:12px 20px 18px; }
+.apbtns button { font-size:17px; padding:12px 20px; }
+.rsline { margin:0 0 8px; font-weight:700; font-size:17px; }
+.rsbars { display:flex; gap:6px; align-items:flex-end; }
+.rsb { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; justify-content:flex-end; height:84px; }
+.rsb i { width:100%; max-width:40px; background:#6fa8dc; border-radius:6px 6px 2px 2px; }
+.rsb small { font-size:11px; color:var(--muted); white-space:nowrap; }
+.seg.layers { flex-wrap:wrap; margin-bottom:8px; }
+.aqi { display:flex; gap:12px; align-items:center; margin-bottom:8px; }
+.aqibadge { width:64px; height:64px; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; flex:none; }
+.aqibadge b { font-size:24px; line-height:1; } .aqibadge small { font-size:11px; }
+.aqbars { display:flex; gap:2px; align-items:flex-end; height:38px; }
+.aqbars i { flex:1; border-radius:3px 3px 0 0; }
+.pollen { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; margin-top:10px; }
+.pol { display:grid; grid-template-columns:auto 1fr; column-gap:8px; align-items:center; }
+.pol span { grid-row:span 3; font-size:24px; }
+.pdots { display:flex; gap:3px; font-style:normal; } .pdots em { width:14px; height:8px; border-radius:4px; }
+.pol small { color:var(--muted); }
+.cmp { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+.cmpc { display:flex; flex-direction:column; padding:10px 12px; border-radius:12px; background:var(--chip, rgba(127,127,127,.1)); }
+.cmpc small:first-child { color:var(--muted); } .cmpc b { font-size:20px; }
+.cmpc .up { color:#c62828; font-weight:700; } .cmpc .down { color:#1565c0; font-weight:700; } .cmpc .same { color:var(--muted); }
+.moonnow { display:flex; gap:14px; align-items:center; } .mbig { font-size:54px; line-height:1; }
+.mnext { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin:12px 0; }
+.mnext div { display:flex; flex-direction:column; align-items:center; padding:8px; border-radius:12px; background:var(--chip, rgba(127,127,127,.1)); }
+.mnext span { font-size:28px; } .mnext small { color:var(--muted); }
+.mstrip { display:flex; gap:4px; overflow-x:auto; padding-bottom:4px; }
+.mday { flex:none; width:44px; display:flex; flex-direction:column; align-items:center; font-size:22px; border-radius:10px; padding:4px 0; }
+.mday small { font-size:11px; color:var(--muted); } .mday.on { background:var(--chip, rgba(127,127,127,.15)); }
 .alertbar { display:flex; align-items:center; gap:8px; margin:4px 22px 0; padding:8px 14px; border-radius:12px; font-size:15px; text-align:left; box-shadow:0 2px 8px rgba(0,0,0,.15); }
 .alertbar span { margin-left:auto; font-weight:700; opacity:.9; }
 .alertcard { background:var(--card); border-radius:var(--radius); overflow:hidden; border:2px solid var(--ac); }
