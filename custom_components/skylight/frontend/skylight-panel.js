@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.17.0";
+const PANEL_VERSION = "1.18.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -104,6 +104,16 @@ const REWARD_ICONS = [
   "💵", "🪙", "🏆", "⭐", "👑", "🛍️", "🌙", "😴", "🐶", "🦄", "❤️", "✨",
 ];
 
+// Moon phase from the mean synodic month, measured from the new moon of 2000-01-06 18:14 UTC.
+const moonPhase = (d) => {
+  const days = (d.getTime() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+  const age = ((days % 29.530588853) + 29.530588853) % 29.530588853;
+  const names = [["🌑", "New moon"], ["🌒", "Waxing crescent"], ["🌓", "First quarter"], ["🌔", "Waxing gibbous"],
+    ["🌕", "Full moon"], ["🌖", "Waning gibbous"], ["🌗", "Last quarter"], ["🌘", "Waning crescent"]];
+  const [icon, name] = names[Math.floor((age / 29.530588853) * 8 + 0.5) % 8];
+  return `${icon} ${name}`;
+};
+
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // Calendar tab views, in display order. N-day views start on the selected day, like the Today screen.
@@ -113,6 +123,7 @@ const viewDays = (v) => ({ day: 1, "3day": 3, "5day": 5, "7day": 7 }[v] || 0);
 
 const TABS = [
   ["home", "Today", "mdi:view-dashboard"],
+  ["weather", "Weather", "mdi:weather-partly-cloudy"],
   ["calendar", "Calendar", "mdi:calendar-month"],
   ["chores", "Chores", "mdi:checkbox-marked-circle-outline"],
   ["rewards", "Rewards", "mdi:star-circle"],
@@ -223,7 +234,7 @@ class SkylightPanel extends HTMLElement {
     this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
     this._unsub.catch((e) => this._fatal(e));
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
-    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); }, 5 * 60000);
+    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather") this._loadWeatherFull(); }, 5 * 60000);
     this._lastActivity = Date.now();
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
     if (!this._onResize) {
@@ -318,6 +329,16 @@ class SkylightPanel extends HTMLElement {
   }
 
   // Days shown on the Today screen; remembered per device (tablet vs phone).
+  get homeAgenda() {
+    if (this._homeAgenda === undefined) {
+      try { this._homeAgenda = localStorage.getItem("skylight.homeView") === "agenda"; } catch (e) { this._homeAgenda = false; }
+    }
+    return this._homeAgenda;
+  }
+  set homeAgenda(v) {
+    this._homeAgenda = v;
+    try { localStorage.setItem("skylight.homeView", v ? "agenda" : "grid"); } catch (e) { /* private mode */ }
+  }
   get homeDays() {
     if (!this._homeDays) {
       try { this._homeDays = Number(localStorage.getItem("skylight.homeDays")) || 3; } catch (e) { this._homeDays = 3; }
@@ -395,7 +416,7 @@ class SkylightPanel extends HTMLElement {
 
   // ---------- calendar data ----------
   _range() {
-    if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, this.homeDays)]; }
+    if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, this.homeAgenda ? 14 : this.homeDays)]; }
     const a = this.ui.anchor;
     switch (this.ui.view) {
       case "month": {
@@ -526,6 +547,26 @@ class SkylightPanel extends HTMLElement {
     return { member: members[0], members, rest: rest || t };
   }
 
+  // Daily + hourly forecasts for the Weather tab (refreshed every 15 minutes while viewed).
+  async _loadWeatherFull(force = false) {
+    const w = this.settings.weather_entity;
+    if (!w || !this._hass.states[w]) return;
+    if (!force && this.wx && Date.now() - this.wx.at < 15 * 60000) return;
+    if (this._wxLoading) return;
+    this._wxLoading = true;
+    const get = async (type) => {
+      try {
+        const res = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts",
+          service_data: { type }, target: { entity_id: w }, return_response: true });
+        return res?.response?.[w]?.forecast || [];
+      } catch (e) { return null; } // provider doesn't offer this forecast type
+    };
+    const [daily, hourly] = await Promise.all([get("daily"), get("hourly")]);
+    this._wxLoading = false;
+    this.wx = { at: Date.now(), daily: daily || [], hourly: hourly || [], hourlyMissing: hourly === null };
+    if (this.ui.tab === "weather") this.render();
+  }
+
   async _loadForecast() {
     const w = this.settings.weather_entity;
     if (!w || !this._hass.states[w]) return;
@@ -564,7 +605,10 @@ class SkylightPanel extends HTMLElement {
 
       // calendar events
       case "new-event": this.openEventDialog(null, d.date, d.hour !== undefined ? Number(d.hour) : undefined); break;
-      case "home-days": this.homeDays = Number(d.days); this.render(); this._loadEvents(); break;
+      case "home-days":
+        if (d.days === "agenda") this.homeAgenda = true;
+        else { this.homeAgenda = false; this.homeDays = Number(d.days); }
+        this.render(); this._loadEvents(); break;
       case "open-event": this.openEventDialog(this.visibleEvents()[Number(d.idx)]); break;
       case "save-event": await this.saveEvent(); break;
       case "delete-event": await this.deleteEvent(); break;
@@ -592,6 +636,11 @@ class SkylightPanel extends HTMLElement {
         await this._listAdd(d.list, text);
         this.shadowRoot.querySelector(`input.hadd[data-list="${CSS.escape(d.list)}"]`)?.focus();
         break;
+      }
+      case "wx-sensor": {
+        const set = new Set(this.settings.weather_sensors || []);
+        el.checked ? set.add(d.entity) : set.delete(d.entity);
+        await this._set("settings", { weather_sensors: [...set] }); break;
       }
       case "who": {
         const w = this.ui.dialog.who;
@@ -893,7 +942,7 @@ class SkylightPanel extends HTMLElement {
         }).join("")}</div>
         ${this.members.some((m) => !this.targetCalendar(m)) ? `<p class="hint">Grayed-out people have no calendar yet. Give them one in Settings → Family members, or use their title prefix.</p>` : ""}
         <label class="calpick" ${dlg.who.size ? "hidden" : ""}>Calendar <small class="hint">(when no one is selected)</small><select id="ev-cal">${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
-        <p class="hint whohint" ${dlg.who.size ? "" : "hidden"}>Saved to each person's calendar${dlg.who.size > 1 ? " and shown once, in everyone's colors" : ""}.</p>
+        <p class="hint whohint" ${dlg.who.size ? "" : "hidden"}>📍 Will be saved to: <b>${[...new Set([...dlg.who].map((id) => this.targetCalendar(this.member(id))).filter(Boolean))].map((e) => esc(this.calName(e))).join(", ")}</b>${dlg.who.size > 1 ? " — shown once, in everyone's colors" : ""}.</p>
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
         <div class="row">
           <label>Starts<input type="date" id="ev-date" value="${dateStr}" data-change="ev-shift"></label>
@@ -1611,6 +1660,18 @@ class SkylightPanel extends HTMLElement {
   }
 
   // ---------- screensaver ----------
+  // Today-screen agenda scrolls inside its own box; chores column matches its height.
+  _fitAgenda() {
+    const a = this.$app?.querySelector(".hagenda");
+    if (!a || window.innerWidth <= 900) return;
+    const content = this.$app.querySelector(".content");
+    const bottom = content.getBoundingClientRect().bottom - parseFloat(getComputedStyle(content).paddingBottom || 0);
+    const h = Math.max(360, Math.floor(bottom - a.getBoundingClientRect().top - content.scrollTop - 2));
+    a.style.height = `${h}px`;
+    const side = this.$app.querySelector(".hside");
+    if (side) side.style.maxHeight = `${h}px`;
+  }
+
   // Month grid fills the remaining space so all six weeks are visible.
   _fitMonth() {
     const m = this.$app?.querySelector(".month");
@@ -1731,7 +1792,7 @@ class SkylightPanel extends HTMLElement {
     const prevKey = this._tgKey;
     const tab = this.ui.tab;
     const body = {
-      home: () => this.renderHome(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
+      home: () => this.renderHome(), weather: () => this.renderWeather(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
       meals: () => this.renderMeals(), lists: () => this.renderLists(), photos: () => this.renderPhotos(),
       settings: () => this.renderSettings(),
     }[tab]();
@@ -1747,6 +1808,8 @@ class SkylightPanel extends HTMLElement {
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
     this._fitMonth();
     if (this.$app.querySelector(".month")) requestAnimationFrame(() => this._fitMonth());
+    this._fitAgenda();
+    if (this.$app.querySelector(".hagenda")) requestAnimationFrame(() => this._fitAgenda());
     const grid = this.$app.querySelector(".tg-scroll");
     if (grid) {
       this._fitGrid();
@@ -1929,6 +1992,105 @@ class SkylightPanel extends HTMLElement {
       </div></div></div>`;
   }
 
+  renderWeather() {
+    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
+    if (!w) return `<div class="empty"><h2>No weather source</h2><p>Choose one in Settings → Display → Weather.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    this._loadWeatherFull();
+    const a = w.attributes, tu = a.temperature_unit || "°", wu = a.wind_speed_unit || "", pu = a.precipitation_unit || "";
+    const round = (v) => (v === undefined || v === null ? null : Math.round(Number(v)));
+    const cond = (c) => (c || "").replace(/-/g, " ").replace(/\b\w/g, (x) => x.toUpperCase()).replace("Partlycloudy", "Partly cloudy");
+    const compass = (b) => (b === undefined || b === null ? "" : ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((Number(b) % 360) + 360) % 360 / 45) % 8]);
+    const sun = this._hass.states["sun.sun"]?.attributes || {};
+    const tfmt = (iso) => (iso ? this.fmtTime(new Date(iso)) : "–");
+    const stat = (label, value) => (value === null || value === undefined || value === "" ? "" : `<div class="wstat"><small>${label}</small><b>${value}</b></div>`);
+    const today = this.wx?.daily?.[0];
+    const current = `<section class="wnow">
+      <div class="wbig">${WEATHER_ICONS[w.state] || "🌡️"}</div>
+      <div class="wmain"><div class="wtemp">${round(a.temperature)}${tu}</div>
+        <div class="wcond">${cond(w.state)}${today ? ` · H ${round(today.temperature)}°${today.templow !== undefined && today.templow !== null ? ` L ${round(today.templow)}°` : ""}` : ""}</div>
+        ${a.apparent_temperature !== undefined ? `<div class="hint">Feels like ${round(a.apparent_temperature)}${tu}</div>` : ""}</div>
+      <div class="wstats">
+        ${stat("Humidity", a.humidity !== undefined ? `${round(a.humidity)}%` : null)}
+        ${stat("Wind", a.wind_speed !== undefined ? `${round(a.wind_speed)} ${wu} ${compass(a.wind_bearing)}` : null)}
+        ${stat("UV index", a.uv_index)}
+        ${stat("Dew point", a.dew_point !== undefined ? `${round(a.dew_point)}${tu}` : null)}
+        ${stat("Pressure", a.pressure !== undefined ? `${round(a.pressure)} ${a.pressure_unit || ""}` : null)}
+        ${stat("Clouds", a.cloud_coverage !== undefined ? `${round(a.cloud_coverage)}%` : null)}
+        ${stat("Sunrise", sun.next_rising ? tfmt(sun.next_rising) : null)}
+        ${stat("Sunset", sun.next_setting ? tfmt(sun.next_setting) : null)}
+        ${stat("Moon", moonPhase(new Date()))}
+      </div></section>`;
+    if (!this.wx) return current + `<p class="hint center">Loading forecast…</p>`;
+    // ----- hourly: one temperature line (single series, no legend), labels only at high/low -----
+    const hours = this.wx.hourly.filter((h) => new Date(h.datetime) >= new Date(Date.now() - 3600000)).slice(0, 24);
+    let hourly = "";
+    if (hours.length > 1) {
+      const W = 44 * hours.length, H = 120, top = 26, bottom = 30;
+      const temps = hours.map((h) => Number(h.temperature));
+      const lo = Math.min(...temps), hi = Math.max(...temps), span = Math.max(1, hi - lo);
+      const x = (i) => 22 + i * 44, y = (t) => top + (1 - (t - lo) / span) * (H - top - bottom);
+      const pts = temps.map((t, i) => `${x(i)},${y(t).toFixed(1)}`).join(" ");
+      const iHi = temps.indexOf(hi), iLo = temps.indexOf(lo);
+      const precip = (h) => (h.precipitation_probability !== undefined && h.precipitation_probability !== null
+        ? (h.precipitation_probability >= 10 ? `${Math.round(h.precipitation_probability)}%` : "")
+        : h.precipitation ? `${Number(h.precipitation).toFixed(1)}${pu}` : "");
+      hourly = `<section class="wcard"><h3>Next ${hours.length} hours</h3><div class="whourly">
+        <svg width="${W}" height="${H}" role="img" aria-label="Hourly temperature">
+          <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          ${temps.map((t, i) => `<g class="wpt"><circle cx="${x(i)}" cy="${y(t).toFixed(1)}" r="${i === iHi || i === iLo ? 4 : 2.5}" fill="var(--accent)" stroke="var(--card)" stroke-width="2"/>
+            <title>${this.fmtTime(new Date(hours[i].datetime))}: ${Math.round(t)}${tu}${precip(hours[i]) ? `, precip ${precip(hours[i])}` : ""}</title>
+            <rect x="${x(i) - 22}" y="0" width="44" height="${H}" fill="transparent"/></g>`).join("")}
+          ${[iHi, iLo].filter((v, k, arr) => arr.indexOf(v) === k).map((i) => `<text x="${x(i)}" y="${(y(temps[i]) + (i === iHi ? -9 : 17)).toFixed(1)}" text-anchor="middle" class="wlab">${Math.round(temps[i])}°</text>`).join("")}
+        </svg>
+        ${hours.some((h) => Number(h.precipitation) > 0) ? (() => {
+          const amt = hours.map((h) => Number(h.precipitation) || 0), maxA = Math.max(...amt);
+          return `<svg width="${W}" height="36" role="img" aria-label="Hourly precipitation">${amt.map((v, i) => v > 0
+            ? `<rect x="${x(i) - 8}" y="${(34 - (v / maxA) * 30).toFixed(1)}" width="16" height="${((v / maxA) * 30).toFixed(1)}" rx="4" fill="#6fa8dc"><title>${this.fmtTime(new Date(hours[i].datetime))}: ${v.toFixed(1)} ${pu}</title></rect>` : "").join("")}
+            <line x1="0" x2="${W}" y1="34.5" y2="34.5" stroke="var(--line)"/></svg>`;
+        })() : ""}
+        <div class="whrow" style="width:${W}px">${hours.map((h, i) => `<div class="wh" title="${this.fmtTime(new Date(h.datetime))}">
+          <span>${WEATHER_ICONS[h.condition] || ""}</span><b>${Math.round(Number(h.temperature))}°</b>
+          <small class="rain">${precip(h) || "&nbsp;"}</small>
+          <small>${new Date(h.datetime).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h })}</small></div>`).join("")}</div>
+      </div></section>`;
+    } else if (this.wx.hourlyMissing) {
+      hourly = `<p class="hint">This weather source doesn't provide an hourly forecast.</p>`;
+    }
+    // ----- daily: range bars on a shared scale -----
+    const days = this.wx.daily.slice(0, 8);
+    let daily = "";
+    if (days.length) {
+      const all = days.flatMap((d) => [Number(d.templow ?? d.temperature), Number(d.temperature)]);
+      const mn = Math.min(...all), mx = Math.max(...all), sp = Math.max(1, mx - mn);
+      daily = `<section class="wcard"><h3>${days.length}-day forecast</h3><div class="wdaily">${days.map((d, i) => {
+        const date = new Date(d.datetime), lo = Number(d.templow ?? d.temperature), hi = Number(d.temperature);
+        const rain = d.precipitation_probability !== undefined && d.precipitation_probability !== null ? `${Math.round(d.precipitation_probability)}%`
+          : d.precipitation ? `${Number(d.precipitation).toFixed(1)}${pu}` : "";
+        return `<div class="wday">
+          <span class="wdn">${i === 0 ? "Today" : date.toLocaleDateString([], { weekday: "short" })}</span>
+          <span class="wdi">${WEATHER_ICONS[d.condition] || ""}</span>
+          <span class="rain">${rain}</span>
+          <span class="wlo">${Math.round(lo)}°</span>
+          <span class="wrange"><i style="left:${((lo - mn) / sp) * 100}%;right:${100 - ((hi - mn) / sp) * 100}%"></i></span>
+          <span class="whi">${Math.round(hi)}°</span></div>`;
+      }).join("")}</div></section>`;
+    }
+    const lat = this._hass.config?.latitude, lon = this._hass.config?.longitude;
+    const radarSrc = this.settings.weather_radar === "off" || lat === undefined ? null
+      : this.settings.weather_radar === "rainviewer"
+        ? `https://www.rainviewer.com/map.html?loc=${lat},${lon},7&oFa=0&oC=1&oU=0&oCS=1&oF=0&oAP=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1`
+        : `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&zoom=7&level=surface&overlay=radar&product=radar&menu=&message=true&marker=true&calendar=now&type=map&location=coordinates&metricWind=${a.wind_speed_unit === "mph" ? "mph" : "km%2Fh"}&metricTemp=${tu.includes("F") ? "%C2%B0F" : "%C2%B0C"}`;
+    const radar = radarSrc ? `<section class="wcard"><h3>Radar</h3>
+      <iframe class="wradar" src="${radarSrc}" loading="lazy" referrerpolicy="no-referrer" title="Weather radar"></iframe></section>` : "";
+    const extraIds = (this.settings.weather_sensors || []).filter((e) => this._hass.states[e]);
+    const extras = extraIds.length ? `<section class="wcard"><h3>Air &amp; more</h3><div class="wstats">${extraIds.map((e) => {
+      const st = this._hass.states[e];
+      return stat(esc(st.attributes.friendly_name || e), `${esc(st.state)}${st.attributes.unit_of_measurement ? ` ${esc(st.attributes.unit_of_measurement)}` : ""}`);
+    }).join("")}</div></section>` : "";
+    return `<div class="wxtab">${current}${hourly}${radar}${extras}${daily}
+      <p class="hint center">Source: ${esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
+  }
+
   renderSchedule() {
     const [s] = this._range();
     const days = [...Array(14)].map((_, i) => addDays(s, i)).filter((d) => this.eventsOn(d).length);
@@ -1949,9 +2111,11 @@ class SkylightPanel extends HTMLElement {
     const days = [...Array(n)].map((_, i) => addDays(today, i));
     const noCals = !this.shownCalendars().length;
     const label = (d) => this.dayLabel(d, n);
-    const picker = `<div class="seg daypick">${[1, 3, 5, 7].map((k) => `<button class="${k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
+    const agenda = this.homeAgenda;
+    const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${[1, 3, 5, 7].map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
     const cal = noCals
       ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
+      : agenda ? `<div class="hagenda">${this.renderSchedule()}</div>`
       : this.renderTimeGrid(days, { labels: label });
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
     const free = [];
@@ -2264,6 +2428,13 @@ class SkylightPanel extends HTMLElement {
       <section class="card">
         <h2>Display</h2>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
+        <label class="inline">Weather radar map <select data-change="setting" data-key="weather_radar">
+          ${[["windy", "Windy (default)"], ["rainviewer", "RainViewer"], ["off", "Off"]].map(([v, l]) => `<option value="${v}" ${(s.weather_radar || "windy") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <div class="label">Extra weather sensors (air quality, pollen, UV…)</div>
+        <div class="checklist">${Object.keys(this._hass.states).filter((e) => e.startsWith("sensor.") && (/aqi|air_quality|pollen|uv|pm2|pm10|ozone|lightning|rain|precip|smoke/.test(e) ||
+            ["aqi", "pm25", "pm10", "ozone", "precipitation", "precipitation_intensity"].includes(this._hass.states[e].attributes.device_class))).sort()
+          .map((e) => `<label class="check"><input type="checkbox" data-change="wx-sensor" data-entity="${e}" ${(s.weather_sensors || []).includes(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("")
+          || `<p class="hint">No air quality / pollen / UV sensors found in Home Assistant.</p>`}</div>
         <label class="inline">Week starts on <select data-change="setting" data-key="week_start" data-num="1"><option value="0" ${Number(s.week_start) === 0 ? "selected" : ""}>Sunday</option><option value="1" ${Number(s.week_start) === 1 ? "selected" : ""}>Monday</option></select></label>
         <label class="inline">Default calendar view <select data-change="setting" data-key="default_view">${CAL_VIEWS.map(([v, label]) => `<option value="${v}" ${v === (LEGACY_VIEWS[s.default_view] || s.default_view || "7day") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <label class="inline">24-hour clock <input type="checkbox" ${s.clock_24h ? "checked" : ""} data-change="setting" data-key="clock_24h"></label>
@@ -2569,6 +2740,37 @@ label.check input { width:22px; height:22px; }
 .hchores .box { width:24px; height:24px; }
 .hadd { padding:6px 10px; font-size:14px; border-radius:10px; background:var(--bg); }
 .hlist .hint { font-size:12px; }
+.hagenda { overflow-y:auto; }
+.hagenda .schedule { gap:10px; }
+/* weather tab */
+.wxtab { display:flex; flex-direction:column; gap:14px; max-width:1200px; margin:0 auto; width:100%; }
+.wxgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:14px; }
+.wnow { display:flex; align-items:center; gap:22px; background:var(--card); border-radius:var(--radius); padding:18px 22px; flex-wrap:wrap; }
+.wbig { font-size:84px; line-height:1; }
+.wtemp { font-size:64px; font-weight:800; line-height:1; }
+.wcond { font-size:20px; font-weight:700; margin-top:4px; }
+.wstats { flex:1; display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px; min-width:260px; }
+.wstat { background:var(--bg); border-radius:12px; padding:8px 12px; display:flex; flex-direction:column; }
+.wstat small { color:var(--muted); font-weight:700; font-size:12px; }
+.wstat b { font-size:18px; }
+.wcard { background:var(--card); border-radius:var(--radius); padding:14px 18px; }
+.wcard h3 { margin:0 0 8px; }
+.whourly { overflow-x:auto; padding-bottom:6px; }
+.whourly svg { display:block; }
+.wradar { width:100%; height:440px; border:0; border-radius:12px; background:var(--bg); }
+.wlab { font-size:12px; font-weight:700; fill:var(--ink); }
+.wpt:hover circle { r:5; }
+.whrow { display:flex; }
+.wh { width:44px; flex:none; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:13px; }
+.wh span { font-size:18px; }
+.wh small { color:var(--muted); font-size:11px; }
+.rain { color:#2f6fb3; font-weight:700; font-size:12px; }
+.wdaily { display:flex; flex-direction:column; }
+.wday { display:grid; grid-template-columns:70px 36px 48px 40px 1fr 40px; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:16px; }
+.wday:last-child { border-bottom:0; }
+.wdn { font-weight:700; } .wdi { font-size:22px; } .wlo { color:var(--muted); text-align:right; } .whi { font-weight:800; }
+.wrange { position:relative; height:8px; background:var(--bg); border-radius:4px; }
+.wrange i { position:absolute; top:0; bottom:0; border-radius:4px; background:linear-gradient(90deg, #6fa8dc, #f6b26b); }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }

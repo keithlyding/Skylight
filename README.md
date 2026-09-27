@@ -11,6 +11,7 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 | Tab | What it does |
 |---|---|
 | **Today** | Overview: a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather, each person's chores for today (tap to check off), and today's meals. Opens by default. |
+| **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), and optional air-quality / pollen / UV sensors. Uses the weather integration chosen in Settings. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per person with a progress ring. Tap a chore to check it off and earn stars. Chores repeat daily, on certain weekdays, weekly or once. You can page back and forth by day. |
 | **Rewards** | Star balances with manual +/−, and rewards with progress bars. **Redeem** spends the stars. |
