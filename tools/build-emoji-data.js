@@ -18,7 +18,7 @@ const extra = {
   "🍂": "rake leaves fall yard", "🍁": "rake leaves fall autumn", "❄️": "shovel snow winter", "🚗": "wash car", "🛒": "groceries shopping",
   "📬": "mail get the mail", "🧸": "toys pick up tidy", "🎒": "backpack school pack", "👨‍🍳": "dad cook chef grill", "👩‍🍳": "mom cook chef",
   "🍖": "grill bbq meat dad", "🥩": "grill steak bbq", "👨": "dad father man", "👩": "mom mother woman", "🧔": "dad beard", "👴": "grandpa",
-  "👵": "grandma", "👦": "boy son kid", "👧": "girl daughter kid", "👶": "baby",
+  "👵": "grandma", "🎀": "bow hair bow girl pink ribbon", "👦": "boy son kid", "👧": "girl daughter kid", "👶": "baby",
 };
 const rows = [];
 for (const [e, d] of Object.entries(data)) {

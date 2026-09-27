@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.15.0";
+const PANEL_VERSION = "1.15.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -49,7 +49,7 @@ const AVATARS = [
   // home, food & hobbies
   "🍳", "🧁", "🍕", "🌮", "📚", "✏️", "🔬", "🧩", "🎮", "♟️", "🧶", "🪴", "🎣", "⛺", "🏕️",
   // fun
-  "🚀", "🚗", "🚂", "✈️", "🌈", "⭐", "🌸", "🌻", "👑", "🧸", "💎", "🔥",
+  "🚀", "🚗", "🚂", "✈️", "🌈", "⭐", "🌸", "🌻", "👑", "🎀", "🧸", "💎", "🔥",
 ];
 // Emoji skin tones (Unicode modifiers). "" = default yellow.
 const SKIN_TONES = [["", "Default"], ["\u{1F3FB}", "Light"], ["\u{1F3FC}", "Medium-light"], ["\u{1F3FD}", "Medium"], ["\u{1F3FE}", "Medium-dark"], ["\u{1F3FF}", "Dark"]];
