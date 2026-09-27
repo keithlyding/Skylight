@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.25.0";
+const PANEL_VERSION = "1.25.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -1151,6 +1151,16 @@ class SkylightPanel extends HTMLElement {
       case "view-recipe": this.closeDialog(); await this.openCook(d.recipe); break;
       case "cook": await this.openCook(d.recipe); break;
       case "cook-close": this.closeCook(); break;
+      case "recipe-delete": {
+        if (!confirm(`Delete "${d.name}" from Mealie?\n\nThis removes the recipe for everyone and can't be undone.`)) return;
+        try { await this._ws({ type: "skylight/mealie/delete_recipe", recipe: d.recipe }); }
+        catch (e) { return; } // _ws already showed the error
+        if (this.browse?.items) this.browse.items = this.browse.items.filter((x) => (x.slug || x.id) !== d.recipe);
+        if (this.browse?.total) this.browse.total -= 1;
+        if (this.cook?.key === d.recipe || this.cook?.r?.slug === d.recipe) this.closeCook();
+        this._todayMeals = null; await this._reloadMealie();
+        this.render(); break;
+      }
       case "cook-qr": await this._cookQr(); break;
       case "cook-ing": { const k = Number(d.k), g = this.cook.got; g.has(k) ? g.delete(k) : g.add(k); this.renderCook(); break; }
       case "cook-step": this.cook.step = Number(d.k); this.renderCook(); break;
@@ -2112,9 +2122,10 @@ class SkylightPanel extends HTMLElement {
       </div>
       ${cats.length ? `<div class="seg rcats"><button class="${!b.category ? "on" : ""}" data-action="rb-cat" data-cat="">All</button>${cats.map((c) => `<button class="${b.category === c.slug ? "on" : ""}" data-action="rb-cat" data-cat="${esc(c.slug)}">${esc(c.name)}</button>`).join("")}</div>` : ""}
       ${b.error ? `<p class="hint">⚠️ ${esc(b.error)}</p>` : ""}
-      <div class="rbgrid">${(b.items || []).map((r) => `<button class="rbcard" data-action="cook" data-recipe="${esc(r.slug || r.id)}">
+      <div class="rbgrid">${(b.items || []).map((r) => `<div class="rbcard" role="button" tabindex="0" data-action="cook" data-recipe="${esc(r.slug || r.id)}">
+          <button class="rbdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}" title="Delete recipe" aria-label="Delete ${esc(r.name)}">🗑</button>
           <div class="rbimg">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<span>🍽️</span></div>
-          <b>${esc(r.name)}</b><small>${[r.total_time ? `⏱ ${esc(r.total_time)}` : "", r.rating ? "★".repeat(Math.round(r.rating)) : ""].filter(Boolean).join(" · ")}</small></button>`).join("")}</div>
+          <b>${esc(r.name)}</b><small>${[r.total_time ? `⏱ ${esc(r.total_time)}` : "", r.rating ? "★".repeat(Math.round(r.rating)) : ""].filter(Boolean).join(" · ")}</small></div>`).join("")}</div>
       ${b.loading ? `<p class="hint center">Loading recipes…</p>` : b.items && !b.items.length ? `<p class="hint center">No recipes found.</p>` : ""}
       ${!b.loading && b.items && b.page < b.pages ? `<div class="center"><button data-action="rb-more">Show more${b.total ? ` (${b.items.length} of ${b.total})` : ""}</button></div>` : ""}
     </div>`;
@@ -2222,6 +2233,7 @@ class SkylightPanel extends HTMLElement {
         <span class="spacer"></span>
         ${serv}
         ${r.link ? `<button data-action="cook-qr" title="Open on your phone">📱 On my phone</button>` : ""}
+        <button class="ckdel" data-action="recipe-delete" data-recipe="${esc(r.slug || r.id)}" data-name="${esc(r.name)}" title="Delete recipe">🗑</button>
         <button class="ckx" data-action="cook-close">✕ Close</button>
       </div>
       <div class="ckbody">
@@ -3683,6 +3695,9 @@ label.check input { width:22px; height:22px; }
 .rbar { display:flex; gap:8px; flex-wrap:wrap; } .rbar input { flex:1 1 260px; min-width:0; font-size:17px; } .rbar select { flex:none; width:auto; }
 .rcats { flex-wrap:wrap; }
 .rbgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
+.rbcard { position:relative; cursor:pointer; }
+.rbdel { position:absolute; top:8px; right:8px; z-index:1; width:40px; height:40px; padding:0; border-radius:50%; background:rgba(255,255,255,.9); box-shadow:0 1px 4px rgba(0,0,0,.25); font-size:18px; }
+.ckdel { font-size:18px; }
 .rbcard { display:flex; flex-direction:column; align-items:stretch; text-align:left; gap:4px; padding:0 0 10px; overflow:hidden; border-radius:16px; background:var(--card); }
 .rbcard b, .rbcard small { padding:0 12px; } .rbcard b { font-size:16px; line-height:1.25; } .rbcard small { color:var(--muted); }
 .rbimg { position:relative; aspect-ratio:4/3; background:var(--chip, rgba(127,127,127,.12)); display:grid; place-items:center; font-size:34px; }

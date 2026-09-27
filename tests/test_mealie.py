@@ -192,3 +192,17 @@ async def test_browse_organizers_and_cook(hass, setup, hass_ws_client, aioclient
 
     bad = await _cmd(ws, {"type": "skylight/mealie/cook", "recipe": "../api/users"})
     assert not bad["success"]
+
+
+async def test_delete_recipe(hass, setup, hass_ws_client, aioclient_mock):
+    ws = await hass_ws_client(hass)
+    aioclient_mock.delete(f"{MEALIE_URL}/api/recipes/chicken-tacos", json={})
+    res = await _cmd(ws, {"type": "skylight/mealie/delete_recipe", "recipe": "chicken-tacos"})
+    assert res["success"], res
+    assert aioclient_mock.mock_calls[-1][0] == "DELETE" and aioclient_mock.mock_calls[-1][3]["Authorization"] == "Bearer tok"
+    aioclient_mock.clear_requests()
+    aioclient_mock.delete(f"{MEALIE_URL}/api/recipes/locked-one", status=403)
+    res = await _cmd(ws, {"type": "skylight/mealie/delete_recipe", "recipe": "locked-one"})
+    assert not res["success"] and "locked" in res["error"]["message"]
+    res = await _cmd(ws, {"type": "skylight/mealie/delete_recipe", "recipe": "../users/self"})
+    assert not res["success"]

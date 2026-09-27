@@ -96,7 +96,7 @@ async def _mealie_http(hass: HomeAssistant, method: str, path: str) -> aiohttp.C
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_import, ws_browse, ws_organizers, ws_cook):
+    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_import, ws_browse, ws_organizers, ws_cook, ws_delete_recipe):
         websocket_api.async_register_command(hass, cmd)
     hass.http.register_view(MealieImageView())
 
@@ -409,6 +409,28 @@ async def ws_cook(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         "source": r.get("orgURL") or "",
         "link": await _recipe_link(hass, r.get("slug") or key),
     })
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "skylight/mealie/delete_recipe", vol.Required("recipe"): str}
+)
+@websocket_api.async_response
+@_wrap
+async def ws_delete_recipe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Permanently delete a recipe from Mealie."""
+    key = msg["recipe"].strip()
+    if not re.match(r"^[\w-]{1,200}$", key):
+        connection.send_error(msg["id"], "invalid", "Bad recipe id")
+        return
+    try:
+        resp = await _mealie_http(hass, "DELETE", f"api/recipes/{key}")
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise MealieError(f"Cannot reach Mealie: {err}") from err
+    if resp.status in (401, 403):
+        raise MealieError("Mealie won't let this account delete that recipe (it may be locked or owned by someone else).")
+    if resp.status >= 400:
+        raise MealieError(f"Mealie refused to delete the recipe (HTTP {resp.status})")
+    connection.send_result(msg["id"])
 
 
 class MealieImageView(HomeAssistantView):
