@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.7.2";
+const PANEL_VERSION = "1.7.3";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -23,6 +23,27 @@ const AVATARS = [
   // fun
   "🚀", "🚗", "🚂", "✈️", "🌈", "⭐", "🌸", "🌻", "👑", "🧸", "💎", "🔥",
 ];
+// Emoji skin tones (Unicode modifiers). "" = default yellow.
+const SKIN_TONES = [["", "Default"], ["\u{1F3FB}", "Light"], ["\u{1F3FC}", "Medium-light"], ["\u{1F3FD}", "Medium"], ["\u{1F3FE}", "Medium-dark"], ["\u{1F3FF}", "Dark"]];
+const TONE_RE = /[\u{1F3FB}-\u{1F3FF}]/gu;
+// People emoji that accept a skin tone (the first code point of the emoji).
+const TONEABLE = new Set([..."👨👩🧔👱👦👧🧒👶👴👵🧑🏊🚴🏋🤸🏃💪"].map((c) => c.codePointAt(0)));
+// Apply a tone to a person emoji (also inside sequences like 👨‍🍳); other emoji are unchanged.
+const withTone = (emoji, tone) => {
+  const plain = emoji.replace(TONE_RE, "");
+  const cps = [...plain];
+  if (!tone || !TONEABLE.has(cps[0].codePointAt(0))) return plain;
+  const rest = cps.slice(1);
+  if (rest[0] === "\uFE0F") rest.shift(); // e.g. 🏋️ -> 🏋🏻
+  return cps[0] + tone + rest.join("");
+};
+const toneOf = (emoji) => (emoji.match(TONE_RE) || [""])[0];
+// The original picker emoji for a (possibly toned) avatar, so switching back to Default restores it exactly.
+const baseOf = (emoji) => {
+  const key = (e) => e.replace(TONE_RE, "").replace(/\uFE0F/g, "");
+  return AVATARS.find((x) => key(x) === key(emoji)) || emoji.replace(TONE_RE, "");
+};
+
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // Calendar tab views, in display order. N-day views start on the selected day, like the Today screen.
@@ -403,6 +424,7 @@ class SkylightPanel extends HTMLElement {
       case "edit-member": this.openMemberDialog(this.member(d.member)); break;
       case "pick-color": this.ui.dialog.color = d.color; this.renderDialog(); break;
       case "pick-avatar": this.ui.dialog.avatar = d.avatar; this.renderDialog(); break;
+      case "pick-tone": this.ui.dialog.tone = d.tone; this.ui.dialog.avatar = withTone(baseOf(this.ui.dialog.avatar), d.tone); this.renderDialog(); break;
       case "save-member": await this.saveMember(); break;
       case "delete-member": {
         const m = this.ui.dialog.member;
@@ -795,6 +817,7 @@ class SkylightPanel extends HTMLElement {
       type: "member", member: m,
       color: m?.color || PALETTE.find((c) => !used.has(c)) || PALETTE[0],
       avatar: m?.avatar || AVATARS[this.members.length % AVATARS.length],
+      tone: m?.avatar ? toneOf(m.avatar) : "",
       html: () => {
         const cals = this.allCalendars();
         const mine = new Set(m?.calendars || []);
@@ -808,7 +831,8 @@ class SkylightPanel extends HTMLElement {
         <div class="label">Color</div>
         <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
         <div class="label">Avatar</div>
-        <div class="swatches">${AVATARS.map((a) => `<button class="emoji ${a === dlg.avatar ? "sel" : ""}" data-action="pick-avatar" data-avatar="${a}">${a}</button>`).join("")}</div>
+        <div class="tones">Skin tone: ${SKIN_TONES.map(([t, name]) => `<button class="tone ${t === dlg.tone ? "sel" : ""}" title="${name}" data-action="pick-tone" data-tone="${t}">👋${t}</button>`).join("")}</div>
+        <div class="swatches">${AVATARS.map((a0) => { const a = withTone(a0, dlg.tone); return `<button class="emoji ${a === dlg.avatar ? "sel" : ""}" data-action="pick-avatar" data-avatar="${a}">${a}</button>`; }).join("")}</div>
         <div class="label">Calendars</div>
         <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
         <div class="actions">
@@ -1939,6 +1963,9 @@ label.check input { width:22px; height:22px; }
 .swatches { display:flex; flex-wrap:wrap; gap:8px; }
 .swatch { width:38px; height:38px; border-radius:50%; padding:0; border:3px solid transparent; }
 .swatch.sel { border-color:var(--ink); }
+.tones { display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:13px; font-weight:700; color:var(--muted); }
+.tone { font-size:22px; padding:2px 6px; background:var(--bg); box-shadow:none; }
+.tone.sel { outline:3px solid var(--accent); }
 .emoji { font-size:24px; padding:4px 8px; background:var(--bg); box-shadow:none; }
 .swatches:has(.emoji) { max-height:190px; overflow-y:auto; }
 .home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
