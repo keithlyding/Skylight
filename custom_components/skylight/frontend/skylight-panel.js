@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.24.0";
+const PANEL_VERSION = "1.24.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -2785,7 +2785,9 @@ class SkylightPanel extends HTMLElement {
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
     const free = [];
     const lists = this.allLists();
-    const chores = members.map((m) => {
+    // Chores first so they're never pushed out of view; to-do lists after them.
+    const ordered = [...members.filter((m) => m.today !== "list"), ...members.filter((m) => m.today === "list")];
+    const chores = ordered.map((m) => {
       if (m.today === "none") return "";
       if (m.today === "list") return this.renderHomeList(m, lists.find((l) => l.id === m.today_list));
       const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
