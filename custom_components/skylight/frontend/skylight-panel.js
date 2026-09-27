@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.13.0";
+const PANEL_VERSION = "1.13.1";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -61,7 +61,7 @@ const CHORE_ICONS = [
   // bedroom & tidying
   "🛏️", "🧸", "🧩", "🪀", "🎒", "👟",
   // outdoors & garden
-  "🌱", "🪴", "🌻", "🍂", "❄️", "🚗", "🚲", "🪵", "💧",
+  "🚜", "🌿", "☘️", "🌱", "🪴", "🌻", "🍂", "🍁", "❄️", "🚗", "🚲", "🪵", "💧",
   // self-care & routine
   "🪥", "🦷", "🛀", "💊", "💇", "⏰", "🌙", "☀️",
   // school, music & activity
