@@ -2,6 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
+const PANEL_VERSION = "1.3.1";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -1503,6 +1504,7 @@ class SkylightPanel extends HTMLElement {
         <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
         <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
       </section>
+      <p class="hint center">Skylight v${PANEL_VERSION}</p>
     </div>`;
   }
 }

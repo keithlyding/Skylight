@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import pathlib
 
 from homeassistant.components import frontend, panel_custom
@@ -22,7 +23,13 @@ from .immich import SkylightImmichView
 from .photos import SkylightPhotoUploadView, photo_dir
 from .store import SkylightStore
 
-MODULE_URL = f"{URL_FRONTEND}/skylight-panel.js?v={VERSION}"
+PANEL_JS = pathlib.Path(__file__).parent / "frontend" / "skylight-panel.js"
+
+
+def _module_url() -> str:
+    """URL that changes whenever the panel file changes, so browsers never run a stale copy."""
+    digest = hashlib.sha1(PANEL_JS.read_bytes()).hexdigest()[:10]
+    return f"{URL_FRONTEND}/skylight-panel.js?v={VERSION}-{digest}"
 
 
 async def _async_register_once(hass: HomeAssistant) -> None:
@@ -44,7 +51,8 @@ async def _async_register_once(hass: HomeAssistant) -> None:
     websocket_api.async_register(hass)
     mealie.async_register(hass)
     # Also load the element on every dashboard so it can be used as a card.
-    frontend.add_extra_js_url(hass, MODULE_URL)
+    hass.data[f"{DOMAIN}_module_url"] = await hass.async_add_executor_job(_module_url)
+    frontend.add_extra_js_url(hass, hass.data[f"{DOMAIN}_module_url"])
     hass.data[f"{DOMAIN}_http"] = True
 
 
@@ -60,7 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         webcomponent_name=PANEL_ELEMENT,
         sidebar_title="Skylight",
         sidebar_icon="mdi:calendar-heart",
-        module_url=MODULE_URL,
+        module_url=hass.data[f"{DOMAIN}_module_url"],
         require_admin=False,
         config={},
     )
