@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.18.0"
+VERSION = "1.19.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -51,5 +51,6 @@ DEFAULT_DATA = {
         "default_view": "7day",
         "mealie_entry": None,
         "info_on_today": True,
+        "weather_alerts": True,
     },
 }

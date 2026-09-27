@@ -10,7 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from . import mealie, places, websocket_api
+from . import mealie, places, weather_alerts, websocket_api
 from .const import (
     DOMAIN,
     PANEL_ELEMENT,
@@ -51,6 +51,7 @@ async def _async_register_once(hass: HomeAssistant) -> None:
     websocket_api.async_register(hass)
     mealie.async_register(hass)
     places.async_register(hass)
+    weather_alerts.async_register(hass)
     # Also load the element on every dashboard so it can be used as a card.
     hass.data[f"{DOMAIN}_module_url"] = await hass.async_add_executor_job(_module_url)
     frontend.add_extra_js_url(hass, hass.data[f"{DOMAIN}_module_url"])

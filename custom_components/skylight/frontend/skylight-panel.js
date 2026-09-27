@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.18.0";
+const PANEL_VERSION = "1.19.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -234,7 +234,7 @@ class SkylightPanel extends HTMLElement {
     this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
     this._unsub.catch((e) => this._fatal(e));
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
-    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather") this._loadWeatherFull(); }, 5 * 60000);
+    this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather") this._loadWeatherFull(); this._loadAlerts(); }, 5 * 60000);
     this._lastActivity = Date.now();
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
     if (!this._onResize) {
@@ -269,7 +269,7 @@ class SkylightPanel extends HTMLElement {
     if (this.ui.filter && !data.members.find((m) => m.id === this.ui.filter)) this.ui.filter = null;
     this.render();
     this._loadEvents();
-    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); this._loadCalInfo(); }
+    if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); this._loadCalInfo(); this._loadAlerts(); }
   }
 
   async _loadMealieInfo() {
@@ -547,6 +547,42 @@ class SkylightPanel extends HTMLElement {
     return { member: members[0], members, rest: rest || t };
   }
 
+  async _loadAlerts(force = false) {
+    if (this.settings.weather_alerts === false) { this.alerts = null; return; }
+    try { this.alerts = await this._hass.callWS({ type: "skylight/weather/alerts", force }); }
+    catch (e) { this.alerts = null; return; } // e.g. server not restarted after an update
+    this.render();
+  }
+  alertColor(sev) { return { Extreme: "#7b1fa2", Severe: "#c62828", Moderate: "#ef6c00", Minor: "#f9a825" }[sev] || "#607d8b"; }
+  renderAlertBanner() {
+    const list = this.settings.weather_alerts === false ? [] : this.alerts?.alerts || [];
+    if (!list.length || this.ui.tab === "weather") return "";
+    const a = list[0], c = this.alertColor(a.severity);
+    const until = a.ends ? ` until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
+    return `<button class="alertbar" style="background:${c};color:${textOn(c)}" data-action="tab" data-tab="weather">
+      ⚠️ <b>${esc(a.event)}</b>${until}${list.length > 1 ? ` · +${list.length - 1} more` : ""}<span>Details ›</span></button>`;
+  }
+  renderAlertCards() {
+    if (this.settings.weather_alerts === false || !this.alerts) return "";
+    if (!this.alerts.supported) return "";
+    if (this.alerts.error) return `<p class="hint">⚠️ ${esc(this.alerts.error)}</p>`;
+    const fmt = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
+    if (!this.alerts.alerts.length) return `<p class="noalerts">✅ No active weather alerts for your area</p>`;
+    return this.alerts.alerts.map((a) => {
+      const c = this.alertColor(a.severity);
+      return `<section class="alertcard" style="--ac:${c}">
+        <div class="ahead" style="background:${c};color:${textOn(c)}">⚠️ <b>${esc(a.event)}</b><span>${esc(a.severity)}${a.urgency ? ` · ${esc(a.urgency)}` : ""}</span></div>
+        <div class="abody">
+          ${a.headline ? `<p><b>${esc(a.headline)}</b></p>` : ""}
+          <p class="hint">${a.effective ? `From ${fmt(a.effective)}` : ""}${a.ends ? ` until ${fmt(a.ends)}` : ""}${a.area ? ` · ${esc(a.area)}` : ""}</p>
+          <details><summary>Full details</summary>
+            <p class="apre">${esc(a.description)}</p>
+            ${a.instruction ? `<p class="apre"><b>What to do:</b> ${esc(a.instruction)}</p>` : ""}
+            <p class="hint">${esc(a.sender)}</p></details>
+        </div></section>`;
+    }).join("");
+  }
+
   // Daily + hourly forecasts for the Weather tab (refreshed every 15 minutes while viewed).
   async _loadWeatherFull(force = false) {
     const w = this.settings.weather_entity;
@@ -561,9 +597,27 @@ class SkylightPanel extends HTMLElement {
         return res?.response?.[w]?.forecast || [];
       } catch (e) { return null; } // provider doesn't offer this forecast type
     };
-    const [daily, hourly] = await Promise.all([get("daily"), get("hourly")]);
+    const [daily0, hourly, twice] = await Promise.all([get("daily"), get("hourly"), get("twice_daily")]);
+    // Some providers (e.g. US NWS) only offer day/night periods: build days from them.
+    let daily = daily0 && daily0.length ? daily0 : null;
+    const periods = {};
+    for (const t of twice || []) {
+      const key = ymd(new Date(t.datetime));
+      (periods[key] = periods[key] || {})[t.is_daytime === false ? "night" : "day"] = t;
+    }
+    if (!daily && twice && twice.length) {
+      daily = Object.entries(periods).map(([key, p]) => {
+        const main = p.day || p.night;
+        const probs = [p.day, p.night].filter(Boolean).map((x) => x.precipitation_probability).filter((v) => v !== undefined && v !== null);
+        return {
+          datetime: parseYmd(key).toISOString(), condition: main.condition,
+          temperature: (p.day || p.night).temperature, templow: p.night ? p.night.temperature : null,
+          precipitation_probability: probs.length ? Math.max(...probs) : null,
+        };
+      });
+    }
     this._wxLoading = false;
-    this.wx = { at: Date.now(), daily: daily || [], hourly: hourly || [], hourlyMissing: hourly === null };
+    this.wx = { at: Date.now(), daily: daily || [], hourly: hourly || [], hourlyMissing: hourly === null, periods };
     if (this.ui.tab === "weather") this.render();
   }
 
@@ -642,6 +696,7 @@ class SkylightPanel extends HTMLElement {
         el.checked ? set.add(d.entity) : set.delete(d.entity);
         await this._set("settings", { weather_sensors: [...set] }); break;
       }
+      case "wx-day": this.ui.wxOpen = this.ui.wxOpen === d.day ? null : d.day; this.render(); break;
       case "who": {
         const w = this.ui.dialog.who;
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
@@ -702,6 +757,7 @@ class SkylightPanel extends HTMLElement {
         if (v === "") v = null;
         await this._set("settings", { [d.key]: v });
         if (d.key === "weather_entity") setTimeout(() => this._loadForecast(), 300);
+        if (d.key === "weather_alerts") setTimeout(() => this._loadAlerts(true), 300);
         if (d.key === "week_start") { this._eventsKey = ""; }
         break;
       }
@@ -1803,6 +1859,7 @@ class SkylightPanel extends HTMLElement {
       </nav>
       <main>
         ${this.renderHeader()}
+        ${this.renderAlertBanner()}
         <div class="content">${body}</div>
       </main>`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
@@ -2032,7 +2089,7 @@ class SkylightPanel extends HTMLElement {
       const pts = temps.map((t, i) => `${x(i)},${y(t).toFixed(1)}`).join(" ");
       const iHi = temps.indexOf(hi), iLo = temps.indexOf(lo);
       const precip = (h) => (h.precipitation_probability !== undefined && h.precipitation_probability !== null
-        ? (h.precipitation_probability >= 10 ? `${Math.round(h.precipitation_probability)}%` : "")
+        ? (h.precipitation_probability >= 20 ? `${Math.round(h.precipitation_probability)}%` : "")
         : h.precipitation ? `${Number(h.precipitation).toFixed(1)}${pu}` : "");
       hourly = `<section class="wcard"><h3>Next ${hours.length} hours</h3><div class="whourly">
         <svg width="${W}" height="${H}" role="img" aria-label="Hourly temperature">
@@ -2042,10 +2099,13 @@ class SkylightPanel extends HTMLElement {
             <rect x="${x(i) - 22}" y="0" width="44" height="${H}" fill="transparent"/></g>`).join("")}
           ${[iHi, iLo].filter((v, k, arr) => arr.indexOf(v) === k).map((i) => `<text x="${x(i)}" y="${(y(temps[i]) + (i === iHi ? -9 : 17)).toFixed(1)}" text-anchor="middle" class="wlab">${Math.round(temps[i])}°</text>`).join("")}
         </svg>
-        ${hours.some((h) => Number(h.precipitation) > 0) ? (() => {
-          const amt = hours.map((h) => Number(h.precipitation) || 0), maxA = Math.max(...amt);
+        ${hours.some((h) => Number(h.precipitation) > 0 || Number(h.precipitation_probability) >= 20) ? (() => {
+          // Bars show rain amount when provided, otherwise chance of rain (scaled to 100%).
+          const useProb = !hours.some((h) => Number(h.precipitation) > 0);
+          const amt = hours.map((h) => (useProb ? (Number(h.precipitation_probability) >= 20 ? Number(h.precipitation_probability) : 0) : Number(h.precipitation) || 0));
+          const maxA = useProb ? 100 : Math.max(...amt);
           return `<svg width="${W}" height="36" role="img" aria-label="Hourly precipitation">${amt.map((v, i) => v > 0
-            ? `<rect x="${x(i) - 8}" y="${(34 - (v / maxA) * 30).toFixed(1)}" width="16" height="${((v / maxA) * 30).toFixed(1)}" rx="4" fill="#6fa8dc"><title>${this.fmtTime(new Date(hours[i].datetime))}: ${v.toFixed(1)} ${pu}</title></rect>` : "").join("")}
+            ? `<rect x="${x(i) - 8}" y="${(34 - (v / maxA) * 30).toFixed(1)}" width="16" height="${((v / maxA) * 30).toFixed(1)}" rx="4" fill="#6fa8dc"><title>${this.fmtTime(new Date(hours[i].datetime))}: ${useProb ? `${Math.round(v)}% chance of rain` : `${v.toFixed(1)} ${pu}`}</title></rect>` : "").join("")}
             <line x1="0" x2="${W}" y1="34.5" y2="34.5" stroke="var(--line)"/></svg>`;
         })() : ""}
         <div class="whrow" style="width:${W}px">${hours.map((h, i) => `<div class="wh" title="${this.fmtTime(new Date(h.datetime))}">
@@ -2062,17 +2122,21 @@ class SkylightPanel extends HTMLElement {
     if (days.length) {
       const all = days.flatMap((d) => [Number(d.templow ?? d.temperature), Number(d.temperature)]);
       const mn = Math.min(...all), mx = Math.max(...all), sp = Math.max(1, mx - mn);
-      daily = `<section class="wcard"><h3>${days.length}-day forecast</h3><div class="wdaily">${days.map((d, i) => {
+      daily = `<section class="wcard"><h3>${days.length}-day forecast${Object.keys(this.wx.periods || {}).length ? ` <small class="hint">tap a day for details</small>` : ""}</h3><div class="wdaily">${days.map((d, i) => {
         const date = new Date(d.datetime), lo = Number(d.templow ?? d.temperature), hi = Number(d.temperature);
         const rain = d.precipitation_probability !== undefined && d.precipitation_probability !== null ? `${Math.round(d.precipitation_probability)}%`
           : d.precipitation ? `${Number(d.precipitation).toFixed(1)}${pu}` : "";
-        return `<div class="wday">
+        const key = ymd(date), p = this.wx.periods?.[key] || {};
+        const detail = [["Day", p.day], ["Night", p.night]].filter(([, x]) => x && (x.detailed_description || x.short_description));
+        const open = this.ui.wxOpen === key;
+        return `<div class="wday ${detail.length ? "tap" : ""}" ${detail.length ? `data-action="wx-day" data-day="${key}"` : ""}>
           <span class="wdn">${i === 0 ? "Today" : date.toLocaleDateString([], { weekday: "short" })}</span>
           <span class="wdi">${WEATHER_ICONS[d.condition] || ""}</span>
           <span class="rain">${rain}</span>
           <span class="wlo">${Math.round(lo)}°</span>
           <span class="wrange"><i style="left:${((lo - mn) / sp) * 100}%;right:${100 - ((hi - mn) / sp) * 100}%"></i></span>
-          <span class="whi">${Math.round(hi)}°</span></div>`;
+          <span class="whi">${Math.round(hi)}°</span></div>
+          ${open ? `<div class="wdetail">${detail.map(([label, x]) => `<p><b>${label}${x.temperature !== undefined ? ` · ${Math.round(x.temperature)}°` : ""}:</b> ${esc(x.detailed_description || x.short_description)}</p>`).join("")}</div>` : ""}`;
       }).join("")}</div></section>`;
     }
     const lat = this._hass.config?.latitude, lon = this._hass.config?.longitude;
@@ -2087,7 +2151,7 @@ class SkylightPanel extends HTMLElement {
       const st = this._hass.states[e];
       return stat(esc(st.attributes.friendly_name || e), `${esc(st.state)}${st.attributes.unit_of_measurement ? ` ${esc(st.attributes.unit_of_measurement)}` : ""}`);
     }).join("")}</div></section>` : "";
-    return `<div class="wxtab">${current}${hourly}${radar}${extras}${daily}
+    return `<div class="wxtab">${this.renderAlertCards()}${current}${hourly}${radar}${extras}${daily}
       <p class="hint center">Source: ${esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
   }
 
@@ -2428,6 +2492,7 @@ class SkylightPanel extends HTMLElement {
       <section class="card">
         <h2>Display</h2>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
+        <label class="inline">Weather alerts (US National Weather Service) <input type="checkbox" ${s.weather_alerts !== false ? "checked" : ""} data-change="setting" data-key="weather_alerts"></label>
         <label class="inline">Weather radar map <select data-change="setting" data-key="weather_radar">
           ${[["windy", "Windy (default)"], ["rainviewer", "RainViewer"], ["off", "Off"]].map(([v, l]) => `<option value="${v}" ${(s.weather_radar || "windy") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <div class="label">Extra weather sensors (air quality, pollen, UV…)</div>
@@ -2771,6 +2836,18 @@ label.check input { width:22px; height:22px; }
 .wdn { font-weight:700; } .wdi { font-size:22px; } .wlo { color:var(--muted); text-align:right; } .whi { font-weight:800; }
 .wrange { position:relative; height:8px; background:var(--bg); border-radius:4px; }
 .wrange i { position:absolute; top:0; bottom:0; border-radius:4px; background:linear-gradient(90deg, #6fa8dc, #f6b26b); }
+.alertbar { display:flex; align-items:center; gap:8px; margin:4px 22px 0; padding:8px 14px; border-radius:12px; font-size:15px; text-align:left; box-shadow:0 2px 8px rgba(0,0,0,.15); }
+.alertbar span { margin-left:auto; font-weight:700; opacity:.9; }
+.alertcard { background:var(--card); border-radius:var(--radius); overflow:hidden; border:2px solid var(--ac); }
+.alertcard .ahead { display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:18px; }
+.alertcard .ahead span { margin-left:auto; font-size:13px; font-weight:700; }
+.alertcard .abody { padding:10px 16px; }
+.alertcard .abody p { margin:4px 0; }
+.apre { white-space:pre-wrap; line-height:1.4; }
+.noalerts { margin:0; color:var(--muted); font-weight:700; }
+.wday.tap { cursor:pointer; }
+.wdetail { background:var(--bg); border-radius:12px; padding:6px 14px; margin:2px 0 8px; font-size:15px; line-height:1.4; }
+.wdetail p { margin:6px 0; }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }
