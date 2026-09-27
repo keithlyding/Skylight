@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.25.3";
+const PANEL_VERSION = "1.26.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -276,6 +276,8 @@ class SkylightPanel extends HTMLElement {
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
     if (!this._onResize) {
       this._onResize = () => {
+        if (this._wasPhone !== undefined && this._wasPhone !== this.isPhone) { this._eventsKey = ""; this.render(); this._loadEvents(); } // rotated / resized across the phone breakpoint
+        this._wasPhone = this.isPhone;
         this._fitMonth();
         const g = this.$app?.querySelector(".tg-scroll");
         if (!g || !this._tgH) return;
@@ -431,7 +433,8 @@ class SkylightPanel extends HTMLElement {
   // Days shown on the Today screen; remembered per device (tablet vs phone).
   get homeAgenda() {
     if (this._homeAgenda === undefined) {
-      try { this._homeAgenda = localStorage.getItem("skylight.homeView") === "agenda"; } catch (e) { this._homeAgenda = false; }
+      // First visit on a phone: Agenda reads best on a narrow screen.
+      try { const v = localStorage.getItem("skylight.homeView"); this._homeAgenda = v ? v === "agenda" : this.isPhone; } catch (e) { this._homeAgenda = false; }
     }
     return this._homeAgenda;
   }
@@ -451,8 +454,12 @@ class SkylightPanel extends HTMLElement {
     if (!this._homeDays) {
       try { this._homeDays = Number(localStorage.getItem("skylight.homeDays")) || 3; } catch (e) { this._homeDays = 3; }
     }
-    return this._homeDays;
+    return this.isPhone ? Math.min(this._homeDays, 3) : this._homeDays;
   }
+  // Phone-width screens (e.g. the Home Assistant app on a phone) get a compact layout.
+  get isPhone() { return !!window.matchMedia?.("(max-width: 600px)").matches; }
+  // 5- and 7-day grids don't fit on a phone: show 3 days there (the saved choice is kept for bigger screens).
+  get calView() { const v = this.ui.view; return this.isPhone && (v === "5day" || v === "7day") ? "3day" : v; }
   set homeDays(n) {
     this._homeDays = n;
     try { localStorage.setItem("skylight.homeDays", String(n)); } catch (e) { /* private mode */ }
@@ -526,14 +533,14 @@ class SkylightPanel extends HTMLElement {
   _range() {
     if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, this.homeAgenda ? 14 : this.homeDays)]; }
     const a = this.ui.anchor;
-    switch (this.ui.view) {
+    switch (this.calView) {
       case "month": {
         const first = new Date(a.getFullYear(), a.getMonth(), 1);
         const start = this.weekStart(first);
         return [start, addDays(start, 42)];
       }
       case "agenda": return [a, addDays(a, 14)];
-      default: return [a, addDays(a, viewDays(this.ui.view) || 7)];
+      default: return [a, addDays(a, viewDays(this.calView) || 7)];
     }
   }
 
@@ -952,8 +959,8 @@ class SkylightPanel extends HTMLElement {
         const dir = action === "next" ? 1 : -1;
         const a = this.ui.anchor;
         if (this.ui.tab === "meals") { this.ui.anchor = addDays(a, dir * 7); this.render(); break; }
-        this.ui.anchor = this.ui.view === "month" ? new Date(a.getFullYear(), a.getMonth() + dir, 1)
-          : addDays(a, dir * (this.ui.view === "agenda" ? 14 : viewDays(this.ui.view) || 7));
+        this.ui.anchor = this.calView === "month" ? new Date(a.getFullYear(), a.getMonth() + dir, 1)
+          : addDays(a, dir * (this.calView === "agenda" ? 14 : viewDays(this.calView) || 7));
         this.render(); this._loadEvents(); break;
       }
       case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.ui.tab = "calendar"; this.render(); this._loadEvents(); break;
@@ -2625,7 +2632,7 @@ class SkylightPanel extends HTMLElement {
   }
 
   renderCalendar() {
-    const v = this.ui.view, a = this.ui.anchor;
+    const v = this.calView, a = this.ui.anchor;
     let title;
     // Short titles so the toolbar never wraps; year only when it isn't this year.
     const thisYear = new Date().getFullYear();
@@ -2643,7 +2650,7 @@ class SkylightPanel extends HTMLElement {
     const toolbar = `<div class="toolbar caltool">
       <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button></div>
       <h1>${title}</h1>
-      <div class="seg">${CAL_VIEWS.map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
+      <div class="seg">${CAL_VIEWS.filter(([x]) => !this.isPhone || (x !== "5day" && x !== "7day")).map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
       <button class="icon searchbtn" data-action="search-open" title="Search events">🔍</button>
       <button class="primary fab" data-action="new-event">+ Event</button>
     </div>`;
@@ -3051,7 +3058,7 @@ class SkylightPanel extends HTMLElement {
     const noCals = !this.shownCalendars().length;
     const label = (d) => this.dayLabel(d, n);
     const agenda = this.homeAgenda;
-    const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${[1, 3, 5, 7].map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
+    const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${(this.isPhone ? [1, 3] : [1, 3, 5, 7]).map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
     const cal = noCals
       ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
       : agenda ? `<div class="hagenda">${this.renderSchedule()}</div>`
@@ -3206,6 +3213,7 @@ class SkylightPanel extends HTMLElement {
     this._loadMealie();
     const [s] = [this.weekStart(this.ui.anchor)];
     const days = [...Array(7)].map((_, i) => addDays(s, i));
+    if (this.isPhone) return this.renderMealsPhone(days, toggle);
     return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
       <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div>
       ${toggle}</div>
@@ -3227,6 +3235,27 @@ class SkylightPanel extends HTMLElement {
           }).join("")}
         </div>`).join("")}
       </div>`;
+  }
+
+  // Phone: one card per day with its meals listed, instead of the 7-column grid.
+  renderMealsPhone(days, toggle) {
+    const s = days[0];
+    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
+      <h1>${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div>${toggle}</div>
+      ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
+      <div class="pmeals">${days.map((d) => `<section class="pmday ${sameDay(d, new Date()) ? "today" : ""}">
+        <h3>${d.toLocaleDateString([], { weekday: "long" })} <small>${d.toLocaleDateString([], { month: "short", day: "numeric" })}</small></h3>
+        ${MEAL_SLOTS.map(([slot, label, icon]) => {
+          const t = this.mealieOn ? "" : this.data.meals?.[ymd(d)]?.[slot];
+          const synced = this.syncedMeals(d, slot);
+          const mm = this.mealieOn ? this.mealieFor(ymd(d), slot) : [];
+          const img = mm.find((m) => m.recipe?.image)?.recipe.image;
+          const names = [...mm.map((m) => esc(this.mealieName(m))), ...synced.map((e) => esc(this.mealTitle(e))), ...(t ? [esc(t)] : [])];
+          return `<button class="pmslot ${names.length ? "" : "empty"}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">
+            <span class="pmicon">${img ? `<img src="${esc(img)}" alt="" onerror="this.replaceWith('${icon}')">` : icon}</span>
+            <span class="pmtext"><small>${label}</small>${names.length ? `<b>${names.join(" · ")}</b>` : `<b class="add">+ Add</b>`}</span></button>`;
+        }).join("")}
+      </section>`).join("")}</div>`;
   }
 
   renderLists() {
@@ -3903,6 +3932,7 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#2d2a26; color:#fff; padding:12px 20px; border-radius:14px; z-index:1000; max-width:90vw; }
 @media (max-width: 900px) {
   .app { flex-direction:column-reverse; }
+  main { min-height:0; } /* let .content scroll instead of pushing the header off the top */
   .rail { width:100%; flex-direction:row; justify-content:space-around; padding:4px; border-right:0; border-top:1px solid var(--line); overflow-x:auto; }
   .logo { display:none; }
   .tab { width:auto; flex:1; font-size:10px; padding:6px 2px; }
@@ -3914,6 +3944,52 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .meals { overflow-x:auto; }
   .lists { flex-direction:column; }
   .lists aside { width:100%; }
+}
+
+/* ---------- phone (e.g. the Home Assistant app on a phone); tablets are unaffected ---------- */
+@media (max-width: 600px) {
+  .app { height:100vh; height:100dvh; } /* iPhone: exclude the browser/app toolbars */
+  .rail { padding:2px 2px calc(2px + env(safe-area-inset-bottom)); gap:0; justify-content:stretch; }
+  .tab { flex:1 1 0; min-width:0; padding:5px 0; gap:1px; font-size:9.5px; border-radius:10px; }
+  .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tab ha-icon { --mdc-icon-size:22px; }
+  header { padding:8px 12px 2px; gap:6px; }
+  .clock { font-size:26px; } .date { font-size:13px; }
+  header .members { order:3; flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; padding-bottom:2px; }
+  header .mchip { flex:none; padding:4px 10px 4px 4px; font-size:14px; }
+  header .mchip .av { width:26px; height:26px; font-size:15px; }
+  header .weather { font-size:22px; margin-left:auto; }
+  .alertbar { margin:4px 12px 0; padding:6px 10px; font-size:13px; }
+  .content { padding:6px 10px 14px; }
+  .toolbar h1 { font-size:20px; }
+  .caltool { grid-template-columns:auto 1fr auto; grid-template-areas:"nav search fab" "title title title" "seg seg seg"; row-gap:8px; }
+  .caltool .searchbtn { grid-area:search; justify-self:end; }
+  .caltool h1 { font-size:19px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .caltool .nav button { padding:8px 10px; }
+  .caltool .seg { justify-self:stretch; }
+  .caltool .seg button, .daypick button { padding:8px 9px; font-size:14px; }
+  .hometool { flex-wrap:wrap; gap:8px; }
+  .home { gap:12px; }
+  .hside { position:static; max-height:none; overflow:visible; }
+  .tonight img, .tnoimg { width:64px; height:64px; }
+  .hintrow p { font-size:14px; }
+  .pmeals { display:flex; flex-direction:column; gap:10px; }
+  .pmday { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .pmday.today { outline:3px solid var(--accent); }
+  .pmday h3 { margin:2px 0 6px; font-size:17px; } .pmday h3 small { color:var(--muted); font-weight:600; }
+  .pmslot { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:6px 4px; background:none; box-shadow:none; border-top:1px solid var(--line); border-radius:0; }
+  .pmicon { width:40px; height:40px; flex:none; display:grid; place-items:center; font-size:24px; }
+  .pmicon img { width:40px; height:40px; border-radius:10px; object-fit:cover; }
+  .pmtext { display:flex; flex-direction:column; min-width:0; } .pmtext small { color:var(--muted); font-weight:700; font-size:12px; }
+  .pmtext b { font-size:15px; } .pmslot.empty .add { color:var(--muted); font-weight:600; }
+  .mealsview button { padding:8px 10px; font-size:14px; }
+  .rbgrid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .rbar select { flex:1 1 40%; }
+  .backdrop { padding:0; place-items:end center; }
+  .dialog { width:100%; max-width:100%; max-height:92vh; border-radius:20px 20px 0 0; padding-bottom:calc(16px + env(safe-area-inset-bottom)); }
+  .cktop { padding:10px 12px; gap:8px; } .ckserv span { min-width:74px; }
+  .cknav { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); }
+  .apcard .aphead { font-size:20px; } .apbody { font-size:15px; }
 }
 `;
 

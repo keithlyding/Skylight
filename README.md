@@ -23,6 +23,8 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
+**On a phone** (e.g. the Home Assistant app on an iPhone, open ☰ → Skylight) the layout switches automatically below 600px width: a bottom tab bar, a scrollable row of family chips, calendar views up to 3 days (5/7-day choices are kept for bigger screens), Agenda by default on the Today screen, meals as one card per day, 2-column recipes, and dialogs as bottom sheets. Tablets and PCs are unchanged.
+
 ## Install
 
 ### Option A: HACS (recommended)
