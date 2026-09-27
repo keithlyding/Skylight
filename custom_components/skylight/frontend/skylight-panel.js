@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.15.1";
+const PANEL_VERSION = "1.16.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -1894,9 +1894,11 @@ class SkylightPanel extends HTMLElement {
       ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
       : this.renderTimeGrid(days, { labels: label });
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
+    const free = [];
     const chores = members.map((m) => {
       const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
       const done = list.filter((c) => choreDone(c, today)).length;
+      if (!list.length) { free.push(m); return ""; } // summarized in one line below
       return `<div class="hchores" style="--c:${m.color}">
         <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
           <span class="hint">${done}/${list.length} · ⭐ ${this.data.stars?.[m.id] || 0}</span></div>
@@ -1913,7 +1915,9 @@ class SkylightPanel extends HTMLElement {
       <section class="hcal">${cal}</section>
       <aside class="hside">
         ${meals.length ? `<div class="hmeals">🍽️ ${meals.map((m) => `<b>${esc(this.mealieName(m))}</b>`).join(" · ")}</div>` : ""}
-        ${chores || `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
+        ${chores ? `<div class="hcols">${chores}</div>` : ""}
+        ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
+        ${this.members.length ? "" : `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
       </aside></div>`;
   }
 
@@ -2475,11 +2479,19 @@ label.check input { width:22px; height:22px; }
 
 .three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; height:100%; }
 .three .dn { font-size:15px; }
-.hside { display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
-.hchores { background:var(--card); border-radius:var(--radius); padding:12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:6px; }
+.hside { display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+/* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
+.hcols { column-width:250px; column-gap:10px; }
+.hchores { background:var(--card); border-radius:var(--radius); padding:10px 12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:5px;
+  break-inside:avoid; margin-bottom:10px; }
+.hchores .chore .ctoggle { padding:6px 10px; font-size:15px; border-radius:12px; }
+.hchores .ci { font-size:19px; }
+.hchores .box { width:24px; height:24px; }
+.nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
+.av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }
 .hhead .hint { margin-left:auto; font-weight:700; }
-.hchores .ctoggle { padding:8px 10px; }
+
 .hmeals { background:var(--card); border-radius:var(--radius); padding:12px 14px; }
 @media (max-width: 900px) { .home, .home.wide, .three { grid-template-columns:1fr; } .tg-dh .wx { display:none; } }
 .emoji.sel { outline:3px solid var(--accent); }
