@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.11.0";
+const PANEL_VERSION = "1.12.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -517,6 +517,7 @@ class SkylightPanel extends HTMLElement {
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
         this.renderDialog(); break;
       }
+      case "ev-shift": this._shiftEnd(); break;
       case "event-allday": this.shadowRoot.querySelectorAll(".timefield").forEach((x) => { x.hidden = el.checked; }); break;
 
       // members
@@ -801,8 +802,8 @@ class SkylightPanel extends HTMLElement {
         <p class="hint whohint" ${dlg.who.size ? "" : "hidden"}>Saved to each person's calendar${dlg.who.size > 1 ? " and shown once, in everyone's colors" : ""}.</p>
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
         <div class="row">
-          <label>Starts<input type="date" id="ev-date" value="${dateStr}"></label>
-          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-start" value="${startT}"></label>
+          <label>Starts<input type="date" id="ev-date" value="${dateStr}" data-change="ev-shift"></label>
+          <label class="timefield" ${allDayNow() ? "hidden" : ""}>&nbsp;<input type="time" id="ev-start" value="${startT}" data-change="ev-shift"></label>
         </div>
         <div class="row">
           <label>Ends<input type="date" id="ev-enddate" value="${endDate}"></label>
@@ -824,6 +825,7 @@ class SkylightPanel extends HTMLElement {
         </div>`,
     };
     this._openDialog(dlg);
+    dlg.prevStart = this._formTimes().start;
   }
 
   // ---------- location lookup ----------
@@ -861,6 +863,31 @@ class SkylightPanel extends HTMLElement {
     if (!m) return null;
     return (m.calendars || []).find((e) => this._hass.states[e] && !this.infoCal(e) &&
       this.calInfo?.[e]?.integration !== "remote_calendar") || null;
+  }
+
+  // Current start/end from the form fields.
+  _formTimes() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const at = (dateId, timeId) => {
+      const v = $(dateId)?.value; if (!v) return null;
+      const d = parseYmd(v);
+      const t = $(timeId)?.value;
+      if (t) { const [h, m] = t.split(":").map(Number); d.setHours(h, m); }
+      return d;
+    };
+    return { start: at("ev-date", "ev-start"), end: at("ev-enddate", "ev-end") };
+  }
+  // Moving the start moves the end by the same amount, keeping the event's length.
+  _shiftEnd() {
+    const dlg = this.ui.dialog;
+    const { start, end } = this._formTimes();
+    if (!start || !end) return;
+    const prev = dlg.prevStart || start;
+    const moved = new Date(end.getTime() + (start - prev));
+    dlg.prevStart = start;
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    $("ev-enddate").value = ymd(moved);
+    $("ev-end").value = `${pad(moved.getHours())}:${pad(moved.getMinutes())}`;
   }
 
   _isRecurring(ev) { return !!(ev && (ev.rrule || ev.recurrence_id)); }
@@ -902,7 +929,7 @@ class SkylightPanel extends HTMLElement {
   }
 
   // Ask "this / this and following / all" for a repeating event. Resolves to the scope or null.
-  _askScope(verb) {
+  _askScope(verb, { seriesOk = true } = {}) {
     return new Promise((resolve) => {
       this._scopeResolver = resolve;
       const layer = document.createElement("div");
@@ -911,9 +938,10 @@ class SkylightPanel extends HTMLElement {
         <h2>${verb === "delete" ? "Delete" : "Save"} repeating event</h2>
         <div class="scopes">
           <button data-action="scope" data-scope="this">This event</button>
-          <button data-action="scope" data-scope="future">This and following events</button>
-          <button data-action="scope" data-scope="all">All events</button>
+          <button data-action="scope" data-scope="future" ${seriesOk ? "" : "disabled"}>This and following events</button>
+          <button data-action="scope" data-scope="all" ${seriesOk ? "" : "disabled"}>All events</button>
         </div>
+        ${seriesOk ? "" : `<p class="hint">This calendar (e.g. Google) doesn't let Skylight edit the whole series. Change the series in Google Calendar, or edit just this event here.</p>`}
         <div class="actions"><span class="spacer"></span><button data-action="scope" data-scope="cancel">Cancel</button></div>
       </div></div>`;
       this.$dialog.appendChild(layer);
@@ -951,7 +979,15 @@ class SkylightPanel extends HTMLElement {
       if (t && !copies.some((c) => c.entity === t)) create.add(t);
       else if (t) keep.push(copies.find((c) => c.entity === t));
     }
-    const remove = copies.filter((c) => !keep.includes(c));
+    // Only delete a copy that sits on the calendar of someone who was un-selected (and no one still selected).
+    // Anything else (e.g. an event assigned by title prefix on a parent's calendar) is kept and updated.
+    const dropped = new Set((ev?.members || []).filter((id) => !who.has(id)));
+    const remove = copies.filter((c) => {
+      if (keep.includes(c)) return false;
+      const owners = this.calendarOwners(c.entity);
+      return owners.some((m) => dropped.has(m.id)) && !owners.some((m) => who.has(m.id));
+    });
+    for (const c of copies) if (!keep.includes(c) && !remove.includes(c)) keep.push(c);
     return { keep, create: [...create], remove, moveFrom: null };
   }
 
@@ -963,7 +999,9 @@ class SkylightPanel extends HTMLElement {
     if (!ev) {
       for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
     } else if (this._isRecurring(ev)) {
-      const scope = await this._askScope("save");
+      // Series edits on calendars without update support need the repeat rule to recreate the series.
+      const seriesOk = plan.keep.every((c) => this._canUpdate(c.entity) || c.rrule || ev.rrule);
+      const scope = await this._askScope("save", { seriesOk });
       if (!scope) return;
       for (const c of plan.keep) await this._updateCopy(c, ev, form, scope);
       for (const entity of plan.create) {
@@ -973,14 +1011,24 @@ class SkylightPanel extends HTMLElement {
       }
       for (const c of plan.remove) await this._deleteCopy(c, scope);
     } else {
-      for (const c of plan.keep) await this._ws({ type: "calendar/event/update", entity_id: c.entity, uid: c.uid, event: this._eventPayload(form, { rrule: "" }) });
+      for (const c of plan.keep) {
+        if (this._canUpdate(c.entity)) await this._ws({ type: "calendar/event/update", entity_id: c.entity, uid: c.uid, event: this._eventPayload(form, { rrule: "" }) });
+        else { // e.g. Google Calendar in Home Assistant: no edit support, so replace the event
+          await this._ws({ type: "calendar/event/create", entity_id: c.entity, event: this._eventPayload(form, { rrule: "" }) });
+          await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
+        }
+      }
       for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
       for (const c of plan.remove) await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
     }
     this.closeDialog(); this._eventsKey = ""; this._mealKey = ""; this._loadEvents();
   }
 
+  // CalendarEntityFeature.UPDATE_EVENT = 4 (create = 1, delete = 2).
+  _canUpdate(entity) { return ((this._hass.states[entity]?.attributes?.supported_features || 0) & 4) !== 0; }
+
   async _updateCopy(c, ev, form, scope) {
+    if (!this._canUpdate(c.entity)) return this._replaceCopy(c, ev, form, scope);
     const base = { type: "calendar/event/update", entity_id: c.entity, uid: c.uid };
     if (scope === "this") {
       await this._ws({ ...base, recurrence_id: c.recurrence_id, event: this._eventPayload(form, { rrule: "" }) });
@@ -992,6 +1040,25 @@ class SkylightPanel extends HTMLElement {
       const shiftDays = Math.round((startOfDay(first) - startOfDay(ev.start)) / 86400000);
       await this._ws({ ...base, event: this._eventPayload(form, { shiftDays, rrule: c.rrule || ev.rrule }) });
     }
+  }
+
+  // Edit a repeating event on a calendar that can't update: create the new version, then delete the old part.
+  async _replaceCopy(c, ev, form, scope) {
+    const rrule = c.rrule || ev.rrule;
+    if (scope !== "this" && !rrule) {
+      this._toast("This calendar can't edit repeating events here. Change it in Google Calendar instead.");
+      throw new Error("no rrule");
+    }
+    let created;
+    if (scope === "this") created = this._eventPayload(form, { rrule: "" });
+    else if (scope === "future") created = this._eventPayload(form, { rrule });
+    else {
+      const first = await this._seriesStart({ ...ev, entity: c.entity, uid: c.uid });
+      const shiftDays = Math.round((startOfDay(first) - startOfDay(ev.start)) / 86400000);
+      created = this._eventPayload(form, { shiftDays, rrule });
+    }
+    await this._ws({ type: "calendar/event/create", entity_id: c.entity, event: created });
+    await this._deleteCopy(c, scope === "all" ? null : scope);
   }
 
   async _deleteCopy(c, scope) {
