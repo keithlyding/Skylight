@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.6.3";
+const PANEL_VERSION = "1.7.0";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -21,6 +21,11 @@ const AVATARS = [
 ];
 const MEAL_SLOTS = [["breakfast", "Breakfast", "🥞"], ["lunch", "Lunch", "🥪"], ["dinner", "Dinner", "🍝"], ["snack", "Snack", "🍎"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// Calendar tab views, in display order. N-day views start on the selected day, like the Today screen.
+const CAL_VIEWS = [["agenda", "Agenda"], ["day", "Day"], ["3day", "3 days"], ["5day", "5 days"], ["7day", "7 days"], ["month", "Month"]];
+const LEGACY_VIEWS = { schedule: "agenda", week: "7day" };
+const viewDays = (v) => ({ day: 1, "3day": 3, "5day": 5, "7day": 7 }[v] || 0);
+
 const TABS = [
   ["home", "Today", "mdi:view-dashboard"],
   ["calendar", "Calendar", "mdi:calendar-month"],
@@ -129,6 +134,7 @@ class SkylightPanel extends HTMLElement {
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
     if (!this._onResize) {
       this._onResize = () => {
+        this._fitMonth();
         const g = this.$app?.querySelector(".tg-scroll");
         if (!g || !this._tgH) return;
         const hours = g.scrollTop / this._tgH;
@@ -151,7 +157,10 @@ class SkylightPanel extends HTMLElement {
   _onData(data) {
     const firstLoad = !this.data;
     this.data = data;
-    if (firstLoad) this.ui.view = data.settings.default_view || "week";
+    if (firstLoad) {
+      const v = data.settings.default_view || "7day";
+      this.ui.view = LEGACY_VIEWS[v] || v;
+    }
     if (this.ui.filter && !data.members.find((m) => m.id === this.ui.filter)) this.ui.filter = null;
     this.render();
     this._loadEvents();
@@ -272,9 +281,8 @@ class SkylightPanel extends HTMLElement {
         const start = this.weekStart(first);
         return [start, addDays(start, 42)];
       }
-      case "day": return [a, addDays(a, 1)];
-      case "schedule": return [a, addDays(a, 14)];
-      default: { const s = this.weekStart(a); return [s, addDays(s, 7)]; }
+      case "agenda": return [a, addDays(a, 14)];
+      default: return [a, addDays(a, viewDays(this.ui.view) || 7)];
     }
   }
 
@@ -371,7 +379,7 @@ class SkylightPanel extends HTMLElement {
         const a = this.ui.anchor;
         if (this.ui.tab === "meals") { this.ui.anchor = addDays(a, dir * 7); this.render(); break; }
         this.ui.anchor = this.ui.view === "month" ? new Date(a.getFullYear(), a.getMonth() + dir, 1)
-          : addDays(a, dir * (this.ui.view === "day" ? 1 : this.ui.view === "schedule" ? 14 : 7));
+          : addDays(a, dir * (this.ui.view === "agenda" ? 14 : viewDays(this.ui.view) || 7));
         this.render(); this._loadEvents(); break;
       }
       case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.ui.tab = "calendar"; this.render(); this._loadEvents(); break;
@@ -1090,6 +1098,16 @@ class SkylightPanel extends HTMLElement {
   }
 
   // ---------- screensaver ----------
+  // Month grid fills the remaining space so all six weeks are visible.
+  _fitMonth() {
+    const m = this.$app?.querySelector(".month");
+    if (!m || window.innerWidth <= 900) return;
+    const content = this.$app.querySelector(".content");
+    const bottom = content.getBoundingClientRect().bottom - parseFloat(getComputedStyle(content).paddingBottom || 0);
+    m.style.height = `${Math.max(420, Math.floor(bottom - m.getBoundingClientRect().top - content.scrollTop - 2))}px`;
+    m.style.minHeight = "0";
+  }
+
   // Size the grid to the space left on screen so the day window (6am-9pm) fits exactly.
   _fitGrid() {
     const tg = this.$app?.querySelector(".tg");
@@ -1210,9 +1228,12 @@ class SkylightPanel extends HTMLElement {
         <div class="content">${body}</div>
       </main>`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    this._fitMonth();
+    if (this.$app.querySelector(".month")) requestAnimationFrame(() => this._fitMonth());
     const grid = this.$app.querySelector(".tg-scroll");
     if (grid) {
       this._fitGrid();
+      requestAnimationFrame(() => this._onResize?.()); // settle once layout above the grid is final
       // Re-fit if anything above the grid changes size after this render (fonts, chips, weather).
       if (this._ro) {
         this._ro.disconnect();
@@ -1251,11 +1272,13 @@ class SkylightPanel extends HTMLElement {
     const noCals = !this.shownCalendars().length;
     const toolbar = `<div class="toolbar">
       <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button><h1>${title}</h1></div>
-      <div class="seg">${["day", "week", "month", "schedule"].map((x) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${x[0].toUpperCase() + x.slice(1)}</button>`).join("")}</div>
+      <div class="seg">${CAL_VIEWS.map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
       <button class="primary fab" data-action="new-event">+ Event</button>
     </div>`;
     if (noCals) return toolbar + `<div class="empty"><h2>No calendars connected yet</h2><p>Open <b>Settings</b> to add family members and create or link calendars.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
-    const body = { month: () => this.renderMonth(), week: () => this.renderWeek(), day: () => this.renderDay(), schedule: () => this.renderSchedule() }[v]();
+    const body = v === "month" ? this.renderMonth()
+      : v === "agenda" ? this.renderSchedule()
+      : this.renderTimeGrid([...Array(viewDays(v) || 7)].map((_, i) => addDays(a, i)), { labels: (d) => this.dayLabel(d, viewDays(v)) });
     return toolbar + body;
   }
 
@@ -1274,9 +1297,34 @@ class SkylightPanel extends HTMLElement {
       <span class="dn">${d.toLocaleDateString([], { weekday: "short" })}</span><span class="dd">${d.getDate()}</span>${wx}</div>`;
   }
 
+  // "Today" / "Tomorrow" / weekday, shared by the Today screen and the Calendar tab.
+  dayLabel(d, n) {
+    const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000);
+    if (diff === 0) return "Today";
+    if (diff === 1 && n <= 3) return "Tomorrow";
+    return d.toLocaleDateString([], { weekday: n >= 5 ? "short" : "long" });
+  }
+
   renderWeek() {
     const [st] = this._range();
     return this.renderTimeGrid([...Array(7)].map((_, i) => addDays(st, i)));
+  }
+
+  renderMonth() {
+    const [s] = this._range();
+    const month = this.ui.anchor.getMonth();
+    const heads = [...Array(7)].map((_, i) => addDays(s, i).toLocaleDateString([], { weekday: "short" }));
+    const cells = [...Array(42)].map((_, i) => {
+      const d = addDays(s, i);
+      const evs = this.eventsOn(d);
+      return `<div class="cell ${d.getMonth() !== month ? "other" : ""} ${sameDay(d, new Date()) ? "today" : ""}" >
+        <div class="cn" data-action="goto-day" data-date="${ymd(d)}">${d.getDate()}</div>
+        ${evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => this.evPill(e, d, true)).join("")}
+        ${evs.length > 3 ? `<button class="more" data-action="goto-day" data-date="${ymd(d)}">+${evs.length - 2} more</button>` : ""}
+        <button class="celladd" data-action="new-event" data-date="${ymd(d)}"></button>
+      </div>`;
+    }).join("");
+    return `<div class="month"><div class="mh">${heads.map((h) => `<div>${h}</div>`).join("")}</div><div class="mg">${cells}</div></div>`;
   }
 
   renderDay() { return this.renderTimeGrid([this.ui.anchor]); }
@@ -1367,7 +1415,7 @@ class SkylightPanel extends HTMLElement {
     const n = this.homeDays;
     const days = [...Array(n)].map((_, i) => addDays(today, i));
     const noCals = !this.shownCalendars().length;
-    const label = (d, i) => (i === 0 ? "Today" : i === 1 && n <= 3 ? "Tomorrow" : d.toLocaleDateString([], { weekday: n >= 5 ? "short" : "long" }));
+    const label = (d) => this.dayLabel(d, n);
     const picker = `<div class="seg daypick">${[1, 3, 5, 7].map((k) => `<button class="${k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
     const cal = noCals
       ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
@@ -1635,7 +1683,7 @@ class SkylightPanel extends HTMLElement {
         <h2>Display</h2>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
         <label class="inline">Week starts on <select data-change="setting" data-key="week_start" data-num="1"><option value="0" ${Number(s.week_start) === 0 ? "selected" : ""}>Sunday</option><option value="1" ${Number(s.week_start) === 1 ? "selected" : ""}>Monday</option></select></label>
-        <label class="inline">Default calendar view <select data-change="setting" data-key="default_view">${["day", "week", "month", "schedule"].map((v) => `<option ${v === s.default_view ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="inline">Default calendar view <select data-change="setting" data-key="default_view">${CAL_VIEWS.map(([v, label]) => `<option value="${v}" ${v === (LEGACY_VIEWS[s.default_view] || s.default_view || "7day") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <label class="inline">24-hour clock <input type="checkbox" ${s.clock_24h ? "checked" : ""} data-change="setting" data-key="clock_24h"></label>
         <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
         <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
@@ -1713,7 +1761,7 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 /* month */
 .month { display:flex; flex-direction:column; height:calc(100vh - 190px); min-height:520px; }
 .mh { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; color:var(--muted); font-weight:700; font-size:13px; text-transform:uppercase; padding-bottom:6px; }
-.mg { flex:1; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); grid-auto-rows:1fr; gap:6px; }
+.mg { flex:1; min-height:0; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); grid-template-rows:repeat(6,minmax(0,1fr)); gap:6px; }
 .cell { position:relative; background:var(--card); border-radius:12px; padding:4px 5px; display:flex; flex-direction:column; gap:3px; overflow:hidden; }
 .cell.other { opacity:.45; }
 .cell.today { outline:3px solid var(--accent); }

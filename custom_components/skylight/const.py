@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.6.3"
+VERSION = "1.7.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -44,7 +44,7 @@ DEFAULT_DATA = {
         "screensaver_minutes": 10,
         "photo_seconds": 15,
         "family_color": "#ff9f43",
-        "default_view": "week",
+        "default_view": "7day",
         "mealie_entry": None,
     },
 }
