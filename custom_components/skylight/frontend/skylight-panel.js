@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.6.2";
+const PANEL_VERSION = "1.6.3";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -113,6 +113,7 @@ class SkylightPanel extends HTMLElement {
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
     clearInterval(this._refreshTimer);
     if (this._onResize) { window.removeEventListener("resize", this._onResize); this._onResize = null; }
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
     for (const u of Object.values(this._todoSubs)) u.then((f) => f && f()).catch(() => {});
     this._todoSubs = {};
   }
@@ -127,8 +128,18 @@ class SkylightPanel extends HTMLElement {
     this._lastActivity = Date.now();
     this._idleTimer = setInterval(() => this._checkIdle(), 15000);
     if (!this._onResize) {
-      this._onResize = () => { const g = this.$app?.querySelector(".tg-scroll"); if (!g) return; this._fitGrid(); this._scrollGridHome(g); };
+      this._onResize = () => {
+        const g = this.$app?.querySelector(".tg-scroll");
+        if (!g || !this._tgH) return;
+        const hours = g.scrollTop / this._tgH;
+        this._fitGrid();
+        g.scrollTop = hours * this._tgH;
+      };
       window.addEventListener("resize", this._onResize);
+      if (window.ResizeObserver) {
+        this._ro = new ResizeObserver(() => this._onResize());
+        this._ro.observe(this.$app);
+      }
     }
   }
 
@@ -1084,8 +1095,17 @@ class SkylightPanel extends HTMLElement {
     const tg = this.$app?.querySelector(".tg");
     if (!tg) return;
     const narrow = window.innerWidth <= 900;
-    if (!narrow) tg.style.height = `${Math.max(360, window.innerHeight - tg.getBoundingClientRect().top - 26)}px`;
-    else tg.style.height = `${Math.max(420, window.innerHeight * 0.75)}px`;
+    if (!narrow) {
+      // Fill exactly the space left inside Skylight's scroll area (not the whole browser window).
+      const content = this.$app.querySelector(".content");
+      const cs = getComputedStyle(content);
+      const bottom = content.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom || 0);
+      const top = tg.getBoundingClientRect().top + content.scrollTop;
+      tg.style.height = `${Math.max(360, Math.floor(bottom - top - 2))}px`;
+    } else tg.style.height = `${Math.max(420, window.innerHeight * 0.75)}px`;
+    // Chores column on the Today screen matches the calendar height and scrolls by itself.
+    const side = this.$app.querySelector(".hside");
+    if (side) side.style.maxHeight = narrow ? "" : tg.style.height;
     const scroll = tg.querySelector(".tg-scroll");
     const [a, b] = this._tgWindow || [7, 20];
     this._tgH = Math.max(24, scroll.clientHeight / (b - a));
@@ -1095,8 +1115,8 @@ class SkylightPanel extends HTMLElement {
   _scrollGridHome(grid = this.$app?.querySelector(".tg-scroll")) {
     if (!grid) return;
     const [a] = this._tgWindow || [7, 20];
+    this._tgScroll = a; // hours
     grid.scrollTop = a * (this._tgH || 40);
-    this._tgScroll = grid.scrollTop;
   }
 
   _checkIdle() {
@@ -1172,7 +1192,7 @@ class SkylightPanel extends HTMLElement {
     this._resetScroll = false;
     const focusId = this.shadowRoot.activeElement?.id;
     const tg = this.$app.querySelector(".tg-scroll");
-    if (tg) this._tgScroll = tg.scrollTop;
+    if (tg && this._tgH) this._tgScroll = tg.scrollTop / this._tgH; // hours
     const prevKey = this._tgKey;
     const tab = this.ui.tab;
     const body = {
@@ -1193,9 +1213,14 @@ class SkylightPanel extends HTMLElement {
     const grid = this.$app.querySelector(".tg-scroll");
     if (grid) {
       this._fitGrid();
+      // Re-fit if anything above the grid changes size after this render (fonts, chips, weather).
+      if (this._ro) {
+        this._ro.disconnect();
+        for (const n of [this.$app, this.$app.querySelector("header"), this.$app.querySelector(".content > .toolbar")]) if (n) this._ro.observe(n);
+      }
       // Same days as before: keep where the user scrolled. New days: jump to "now" (or morning).
       if (this._tgKeyNext !== prevKey || this._tgScroll === undefined) this._scrollGridHome(grid);
-      else grid.scrollTop = this._tgScroll;
+      else grid.scrollTop = this._tgScroll * this._tgH;
       this._tgKey = this._tgKeyNext;
     }
     if (focusId === "newitem" || focusId === "newcal") this.shadowRoot.getElementById(focusId)?.focus();
