@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.16.0";
+const PANEL_VERSION = "1.17.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -583,6 +583,16 @@ class SkylightPanel extends HTMLElement {
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
       case "icon-open": this.ui.dialog.iconOpen = !this.ui.dialog.iconOpen; this.renderDialog(); break;
       case "icon-pick": this.ui.dialog.icon = d.icon; this.ui.dialog.iconOpen = false; this.renderDialog(); break;
+      case "member-today": this.ui.dialog.today = el.value; this.renderDialog(); break;
+      case "home-item": await this._listToggle(d.list, d.item); break;
+      case "home-add": {
+        const input = this.shadowRoot.querySelector(`input.hadd[data-list="${CSS.escape(d.list)}"]`);
+        const text = input?.value.trim(); if (!text) return;
+        input.value = "";
+        await this._listAdd(d.list, text);
+        this.shadowRoot.querySelector(`input.hadd[data-list="${CSS.escape(d.list)}"]`)?.focus();
+        break;
+      }
       case "who": {
         const w = this.ui.dialog.who;
         w.has(d.member) ? w.delete(d.member) : w.add(d.member);
@@ -734,6 +744,7 @@ class SkylightPanel extends HTMLElement {
       case "add-item": if (this._isTodo()) { await this._todoAction("add"); break; } {
         const input = this.shadowRoot.getElementById("newitem");
         const text = input.value.trim(); if (!text) return;
+        input.value = "";
         await this._updateList(this.ui.list, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
         this.shadowRoot.getElementById("newitem")?.focus(); break;
       }
@@ -1175,7 +1186,7 @@ class SkylightPanel extends HTMLElement {
   openMemberDialog(m) {
     const used = new Set(this.members.map((x) => x.color));
     const dlg = {
-      type: "member", member: m,
+      type: "member", member: m, today: m?.today || "chores", todayList: m?.today_list || "",
       color: m?.color || PALETTE.find((c) => !used.has(c)) || PALETTE[0],
       avatar: m?.avatar || AVATARS[this.members.length % AVATARS.length],
       tone: m?.avatar ? toneOf(m.avatar) : "",
@@ -1200,6 +1211,16 @@ class SkylightPanel extends HTMLElement {
         <div class="tones">Skin tone: ${SKIN_TONES.map(([t, name]) => `<button class="tone ${t === dlg.tone ? "sel" : ""}" title="${name}" data-action="pick-tone" data-tone="${t}">👋${t}</button>`).join("")}</div>
         <input class="emojisearch" id="avatar-q" data-fresh="1" autocomplete="off" placeholder="🔍 Search all emoji (bear, guitar, dad…)" data-emoji-search="avatar">
         <div class="swatches" id="avatar-grid">${this._emojiButtons(AVATARS.map((a0) => withTone(a0, dlg.tone)), "avatar")}</div>
+        <div class="label">Today screen shows</div>
+        <div class="row">
+          <label><select id="m-today" data-change="member-today">
+            <option value="chores" ${dlg.today === "chores" ? "selected" : ""}>✅ Chores</option>
+            <option value="list" ${dlg.today === "list" ? "selected" : ""}>📝 A list (to-do / honey-do)</option>
+            <option value="none" ${dlg.today === "none" ? "selected" : ""}>Nothing</option></select></label>
+          <label ${dlg.today === "list" ? "" : "hidden"}><select id="m-todaylist">
+            ${this.allLists().map((l) => `<option value="${esc(l.id)}" ${l.id === dlg.todayList ? "selected" : ""}>${l.linked ? "🔗 " : ""}${esc(l.name)}</option>`).join("")}
+            <option value="__new__" ${!dlg.todayList ? "selected" : ""}>＋ New list for ${esc(m?.name || "this person")}</option></select></label>
+        </div>
         <div class="label">Calendars</div>
         <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
         <div class="actions">
@@ -1219,7 +1240,16 @@ class SkylightPanel extends HTMLElement {
     if (!name) { this._toast("Please enter a name"); return; }
     const calendars = [...this.shadowRoot.querySelectorAll(".m-cal:checked")].map((i) => i.value);
     const prefixes = this.shadowRoot.getElementById("m-prefix").value.split(",").map((x) => x.trim()).filter(Boolean);
-    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes };
+    const today = this.shadowRoot.getElementById("m-today").value;
+    let todayList = this.shadowRoot.getElementById("m-todaylist")?.value || "";
+    if (today === "list" && (todayList === "__new__" || !todayList)) {
+      // Create a personal list, e.g. "Alex's To-Do"
+      const list = { id: uid(), name: `${name}'s To-Do`, color: dlg.color, items: [] };
+      await this._set("lists", [...(this.data.lists || []), list]);
+      todayList = list.id;
+    }
+    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes,
+      today, today_list: today === "list" ? todayList : "" };
     const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
     await this._set("members", members);
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
@@ -1474,6 +1504,26 @@ class SkylightPanel extends HTMLElement {
       };
     });
   }
+  allLists() { return [...(this.data.lists || []), ...this.linkedLists()]; }
+  async _listToggle(listId, itemId) {
+    if (listId.startsWith("todo:")) {
+      const entity_id = listId.slice(5);
+      const it = (this.todoItems[entity_id] || []).find((t) => t.uid === itemId);
+      try { await this._hass.callService("todo", "update_item", { item: itemId, status: it?.status === "completed" ? "needs_action" : "completed" }, { entity_id }); }
+      catch (e) { this._toast(e?.message || String(e)); }
+    } else {
+      await this._updateList(listId, (l) => { l.items = l.items.map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)); });
+    }
+  }
+  async _listAdd(listId, text) {
+    if (listId.startsWith("todo:")) {
+      try { await this._hass.callService("todo", "add_item", { item: text }, { entity_id: listId.slice(5) }); }
+      catch (e) { this._toast(e?.message || String(e)); }
+    } else {
+      await this._updateList(listId, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
+    }
+  }
+
   async _todoAction(kind, itemId) {
     const entity_id = this._todoEntity();
     const target = { entity_id };
@@ -1671,7 +1721,11 @@ class SkylightPanel extends HTMLElement {
     if (!this.$app || !this.data) return;
     const scroll = this._resetScroll ? 0 : this.$app.querySelector(".content")?.scrollTop || 0;
     this._resetScroll = false;
-    const focusId = this.shadowRoot.activeElement?.id;
+    const active = this.shadowRoot.activeElement;
+    const focusId = active?.id;
+    // Keep text being typed in the main screen (not dialogs) across re-renders.
+    const typing = active && active.tagName === "INPUT" && active.id && this.$app.contains(active)
+      ? { id: active.id, value: active.value, pos: active.selectionStart } : null;
     const tg = this.$app.querySelector(".tg-scroll");
     if (tg && this._tgH) this._tgScroll = tg.scrollTop / this._tgH; // hours
     const prevKey = this._tgKey;
@@ -1707,7 +1761,13 @@ class SkylightPanel extends HTMLElement {
       else grid.scrollTop = this._tgScroll * this._tgH;
       this._tgKey = this._tgKeyNext;
     }
-    if (focusId === "newitem" || focusId === "newcal") this.shadowRoot.getElementById(focusId)?.focus();
+    if (typing) {
+      const el = this.shadowRoot.getElementById(typing.id);
+      if (el) {
+        el.value = typing.value; el.focus();
+        try { el.setSelectionRange(typing.pos, typing.pos); } catch (e) { /* not a text input */ }
+      }
+    } else if (focusId === "newitem" || focusId === "newcal") this.shadowRoot.getElementById(focusId)?.focus();
     this._tickClock();
   }
 
@@ -1895,7 +1955,10 @@ class SkylightPanel extends HTMLElement {
       : this.renderTimeGrid(days, { labels: label });
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
     const free = [];
+    const lists = this.allLists();
     const chores = members.map((m) => {
+      if (m.today === "none") return "";
+      if (m.today === "list") return this.renderHomeList(m, lists.find((l) => l.id === m.today_list));
       const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
       const done = list.filter((c) => choreDone(c, today)).length;
       if (!list.length) { free.push(m); return ""; } // summarized in one line below
@@ -1919,6 +1982,23 @@ class SkylightPanel extends HTMLElement {
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
       </aside></div>`;
+  }
+
+  // A person's to-do / honey-do list on the Today screen.
+  renderHomeList(m, list) {
+    if (!list) return `<div class="hchores" style="--c:${m.color}"><div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
+      <p class="hint">List not found. Pick one in Settings → Family members.</p></div>`;
+    const open = list.items.filter((i) => !i.done), done = list.items.filter((i) => i.done);
+    const shown = [...open, ...done.slice(0, 2)]; // keep a couple of recent check-offs visible
+    return `<div class="hchores hlist" style="--c:${m.color}">
+      <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
+        <span class="hint">📝 ${esc(list.name)} · ${open.length} left</span></div>
+      ${shown.map((i) => `<div class="chore ${i.done ? "done" : ""}">
+        <button class="ctoggle" data-action="home-item" data-list="${esc(list.id)}" data-item="${esc(i.id)}">
+          <span class="ct">${esc(i.text)}</span><span class="box">${i.done ? "✓" : ""}</span></button></div>`).join("")
+        || `<p class="hint">Nothing on the list 🎉</p>`}
+      <input class="hadd" id="hadd-${esc(list.id)}" data-list="${esc(list.id)}" data-enter="home-add" placeholder="＋ Add to ${esc(list.name)}">
+    </div>`;
   }
 
   renderChores() {
@@ -2487,6 +2567,8 @@ label.check input { width:22px; height:22px; }
 .hchores .chore .ctoggle { padding:6px 10px; font-size:15px; border-radius:12px; }
 .hchores .ci { font-size:19px; }
 .hchores .box { width:24px; height:24px; }
+.hadd { padding:6px 10px; font-size:14px; border-radius:10px; background:var(--bg); }
+.hlist .hint { font-size:12px; }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }
