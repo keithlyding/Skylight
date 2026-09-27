@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.22.0";
+const PANEL_VERSION = "1.23.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -103,6 +103,30 @@ const REWARD_ICONS = [
   "🏊", "⚽", "🛝", "🎢", "🎡", "🏕️", "🚲", "🛹", "🎳", "⛳", "🎟️", "🎉",
   "💵", "🪙", "🏆", "⭐", "👑", "🛍️", "🌙", "😴", "🐶", "🦄", "❤️", "✨",
 ];
+
+// Sunrise/sunset for a date and location (NOAA "Almanac for Computers" method, ~1-2 min accuracy).
+const sunTimes = (date, lat, lon) => {
+  const rad = Math.PI / 180, day = Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 86400000);
+  const calc = (rising) => {
+    const lngHour = lon / 15, t = day + ((rising ? 6 : 18) - lngHour) / 24;
+    const M = 0.9856 * t - 3.289;
+    let L = (M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634 + 360) % 360;
+    let RA = (Math.atan(0.91764 * Math.tan(L * rad)) / rad + 360) % 360;
+    RA += Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90;
+    RA /= 15;
+    const sinDec = 0.39782 * Math.sin(L * rad), cosDec = Math.cos(Math.asin(sinDec));
+    const cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null; // polar day/night
+    const H = (rising ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad) / 15;
+    const UT = ((H + RA - 0.06571 * t - 6.622 - lngHour) % 24 + 24) % 24;
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    return new Date(d.getTime() + UT * 3600000);
+  };
+  let rise = calc(true), set = calc(false);
+  // UTC day boundary: keep both on the local calendar day asked for.
+  const fix = (x) => { if (!x) return x; while (ymd(x) < ymd(date)) x = new Date(x.getTime() + 86400000); while (ymd(x) > ymd(date)) x = new Date(x.getTime() - 86400000); return x; };
+  return { rise: fix(rise), set: fix(set) };
+};
 
 // Moon phase from the mean synodic month, measured from the new moon of 2000-01-06 18:14 UTC.
 const moonPhase = (d) => {
@@ -298,6 +322,7 @@ class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
     this.shadowRoot.addEventListener("input", (e) => {
       if (e.target.id === "ev-loc") this._locSearch(e.target.value);
+      if (e.target.id === "search-q") { clearTimeout(this._searchTimer); this._searchTimer = setTimeout(() => this._runSearch(), 200); }
       if (e.target.classList?.contains("tinput")) { // typing: jump the list to the matching time
         const t = this._parseTime(e.target.value, Number((e.target.dataset.hm || "12").split(":")[0]));
         const list = e.target.parentElement.querySelector(".tlist");
@@ -761,6 +786,12 @@ class SkylightPanel extends HTMLElement {
         this._setTime(el.id, t[0], t[1]);
         if (wasStart) this._shiftEnd();
         break; // the list stays open: a tap on it arrives after this (blur fires first)
+      }
+      case "search-open": this.openSearch(); break;
+      case "search-go": {
+        this.closeDialog();
+        this.ui.tab = "calendar"; this.ui.view = "day"; this.ui.anchor = parseYmd(d.date);
+        this.render(); this._loadEvents(); break;
       }
       case "who": {
         const w = this.ui.dialog.who;
@@ -2120,6 +2151,7 @@ class SkylightPanel extends HTMLElement {
       <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button></div>
       <h1>${title}</h1>
       <div class="seg">${CAL_VIEWS.map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
+      <button class="icon searchbtn" data-action="search-open" title="Search events">🔍</button>
       <button class="primary fab" data-action="new-event">+ Event</button>
     </div>`;
     if (noCals) return toolbar + `<div class="empty"><h2>No calendars connected yet</h2><p>Open <b>Settings</b> to add family members and create or link calendars.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
@@ -2262,6 +2294,8 @@ class SkylightPanel extends HTMLElement {
         ${a.apparent_temperature !== undefined ? `<div class="hint">Feels like ${round(a.apparent_temperature)}${tu}</div>` : ""}</div>
       <div class="wstats">
         ${stat("Humidity", a.humidity !== undefined ? `${round(a.humidity)}%` : null)}
+        ${stat("Wind gust", a.wind_gust_speed !== undefined && a.wind_gust_speed !== null ? `${round(a.wind_gust_speed)} ${wu}` : null)}
+        ${stat("Visibility", a.visibility !== undefined && a.visibility !== null ? `${Number(a.visibility).toFixed(a.visibility < 10 ? 1 : 0)} ${a.visibility_unit || ""}` : null)}
         ${stat("Wind", a.wind_speed !== undefined ? `${round(a.wind_speed)} ${wu} ${compass(a.wind_bearing)}` : null)}
         ${stat("UV index", a.uv_index)}
         ${stat("Dew point", a.dew_point !== undefined ? `${round(a.dew_point)}${tu}` : null)}
@@ -2306,6 +2340,7 @@ class SkylightPanel extends HTMLElement {
           <span>${WEATHER_ICONS[h.condition] || ""}</span><b>${Math.round(Number(h.temperature))}°</b>
           <small class="rain">${precip(h) || "&nbsp;"}</small>
           <small>${new Date(h.datetime).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h })}</small></div>`).join("")}</div>
+        ${this._hourlyTable(hours, { tu, wu, pu, pressureUnit: a.pressure_unit || "", compass })}
       </div></section>`;
     } else if (this.wx.hourlyMissing) {
       hourly = `<p class="hint">This weather source doesn't provide an hourly forecast.</p>`;
@@ -2324,7 +2359,12 @@ class SkylightPanel extends HTMLElement {
         const detail = [["Day", p.day], ["Night", p.night]].filter(([, x]) => x && (x.detailed_description || x.short_description));
         const open = this.ui.wxOpen === key;
         return `<div class="wday ${detail.length ? "tap" : ""}" ${detail.length ? `data-action="wx-day" data-day="${key}"` : ""}>
-          <span class="wdn">${i === 0 ? "Today" : date.toLocaleDateString([], { weekday: "short" })}</span>
+          <span class="wdn">${i === 0 ? "Today" : date.toLocaleDateString([], { weekday: "short" })}${(() => {
+            const lat = this._hass.config?.latitude, lon = this._hass.config?.longitude;
+            if (lat === undefined || lon === undefined) return "";
+            const st = sunTimes(parseYmd(ymd(date)), lat, lon);
+            return st.rise && st.set ? `<small class="wsun">☀ ${this.fmtTime(st.rise)} · ☾ ${this.fmtTime(st.set)}</small>` : "";
+          })()}</span>
           <span class="wdi">${WEATHER_ICONS[d.condition] || ""}</span>
           <span class="rain">${rain}</span>
           <span class="wlo">${Math.round(lo)}°</span>
@@ -2347,6 +2387,80 @@ class SkylightPanel extends HTMLElement {
     }).join("")}</div></section>` : "";
     return `<div class="wxtab">${this.renderAlertCards()}${current}${hourly}${radar}${extras}${daily}
       <p class="hint center">Source: ${esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
+  }
+
+  // One row per metric the weather service provides, aligned under the hourly chart.
+  _hourlyTable(hours, { tu, wu, pu, pressureUnit, compass }) {
+    const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+    const deg = (v) => (num(v) === null ? null : `${Math.round(num(v))}°`);
+    const rows = [
+      ["Real feel", (h) => deg(h.apparent_temperature)],
+      ["Rain chance", (h) => (num(h.precipitation_probability) === null ? null : `${Math.round(num(h.precipitation_probability))}%`)],
+      [`Rain (${pu || "amt"})`, (h) => (num(h.precipitation) === null ? null : num(h.precipitation).toFixed(pu === "in" ? 2 : 1))],
+      [`Wind (${wu})`, (h) => (num(h.wind_speed) === null ? null : `${Math.round(num(h.wind_speed))} ${compass(h.wind_bearing)}`)],
+      [`Gust (${wu})`, (h) => (num(h.wind_gust_speed) === null ? null : `${Math.round(num(h.wind_gust_speed))}`)],
+      [`Pressure${pressureUnit ? ` (${pressureUnit})` : ""}`, (h) => (num(h.pressure) === null ? null : num(h.pressure).toFixed(/hg/i.test(pressureUnit) ? 2 : 0))],
+      ["Clouds", (h) => (num(h.cloud_coverage) === null ? null : `${Math.round(num(h.cloud_coverage))}%`)],
+      ["Humidity", (h) => (num(h.humidity) === null ? null : `${Math.round(num(h.humidity))}%`)],
+      ["Dew point", (h) => deg(h.dew_point)],
+      ["UV index", (h) => (num(h.uv_index) === null ? null : `${Math.round(num(h.uv_index) * 10) / 10}`)],
+    ].filter(([, get]) => hours.some((h) => get(h) !== null));
+    if (!rows.length) return "";
+    void tu;
+    return `<table class="wtable" style="width:${44 * hours.length + 104}px">${rows.map(([label, get]) =>
+      `<tr><th>${esc(label)}</th>${hours.map((h) => `<td>${get(h) ?? "–"}</td>`).join("")}</tr>`).join("")}</table>`;
+  }
+
+  // ---------- event search ----------
+  openSearch() {
+    this._openDialog({
+      type: "search",
+      html: () => `<h2>🔍 Search events</h2>
+        <input id="search-q" autocomplete="off" autofocus placeholder="Title, place or notes (e.g. dentist, soccer, Grandma)">
+        <p class="hint">Searches ${this._searchRangeText()} on every calendar shown in Skylight.</p>
+        <div id="search-results" class="sresults"></div>
+        <div class="actions"><span class="spacer"></span><button data-action="close">Close</button></div>`,
+    });
+    this._loadSearchEvents();
+  }
+  _searchRange() { const t = startOfDay(new Date()); return [addDays(t, -180), addDays(t, 366)]; }
+  _searchRangeText() { const [a, b] = this._searchRange(); return `${a.toLocaleDateString([], { month: "short", year: "numeric" })} – ${b.toLocaleDateString([], { month: "short", year: "numeric" })}`; }
+  async _loadSearchEvents() {
+    if (this._searchCache && Date.now() - this._searchCache.at < 5 * 60000) return this._searchCache.events;
+    const [start, end] = this._searchRange();
+    const box = this.shadowRoot.getElementById("search-results");
+    if (box) box.innerHTML = `<p class="hint">Loading events…</p>`;
+    const lists = await Promise.all(this.shownCalendars().map(async (entity) => {
+      try {
+        const evs = await this._hass.callApi("GET", `calendars/${entity}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+        return evs.map((ev) => this._normalizeEvent(ev, entity));
+      } catch (e) { return []; }
+    }));
+    const events = this._mergeShared(lists.flat()).sort((a, b) => a.start - b.start);
+    this._searchCache = { at: Date.now(), events };
+    this._runSearch();
+    return events;
+  }
+  _runSearch() {
+    const box = this.shadowRoot.getElementById("search-results");
+    const input = this.shadowRoot.getElementById("search-q");
+    if (!box || !input || !this._searchCache) return;
+    const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) { box.innerHTML = ""; return; }
+    const hits = this._searchCache.events.filter((e) => {
+      const text = `${e.raw} ${e.location} ${e.description} ${(e.members || []).map((id) => this.member(id)?.name || "").join(" ")}`.toLowerCase();
+      return words.every((w) => text.includes(w));
+    });
+    const today = startOfDay(new Date());
+    // Upcoming first (soonest first), then past (most recent first).
+    const upcoming = hits.filter((e) => e.end > today), past = hits.filter((e) => e.end <= today).reverse();
+    const row = (e) => `<button class="srow ${e.stripes ? "multi" : ""}" style="--c:${e.color};${e.stripes}" data-action="search-go" data-date="${ymd(e.start)}">
+        <span class="st">${e.start.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}<br><small>${e.allDay ? "All day" : this.fmtTime(e.start)}</small></span>
+        <span class="bar"></span><span class="av">${e.avatar}</span>
+        <span class="sm"><b>${esc(e.summary)}</b>${e.location ? `<small>📍 ${esc(e.location)}</small>` : ""}</span></button>`;
+    box.innerHTML = !hits.length ? `<p class="hint">No events match “${esc(input.value.trim())}”.</p>`
+      : `${upcoming.length ? `<div class="label">Upcoming (${upcoming.length})</div>${upcoming.slice(0, 50).map(row).join("")}` : ""}
+         ${past.length ? `<div class="label">Past (${past.length})</div>${past.slice(0, 30).map(row).join("")}` : ""}`;
   }
 
   renderSchedule() {
@@ -2689,9 +2803,9 @@ class SkylightPanel extends HTMLElement {
         <label class="inline">Weather alerts (US National Weather Service) <input type="checkbox" ${s.weather_alerts !== false ? "checked" : ""} data-change="setting" data-key="weather_alerts"></label>
         <label class="inline">Weather radar map <select data-change="setting" data-key="weather_radar">
           ${[["windy", "Windy (default)"], ["rainviewer", "RainViewer"], ["off", "Off"]].map(([v, l]) => `<option value="${v}" ${(s.weather_radar || "windy") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-        <div class="label">Extra weather sensors (air quality, pollen, UV…)</div>
-        <div class="checklist">${Object.keys(this._hass.states).filter((e) => e.startsWith("sensor.") && (/aqi|air_quality|pollen|uv|pm2|pm10|ozone|lightning|rain|precip|smoke/.test(e) ||
-            ["aqi", "pm25", "pm10", "ozone", "precipitation", "precipitation_intensity"].includes(this._hass.states[e].attributes.device_class))).sort()
+        <div class="label">Extra weather sensors (air quality, pollen, UV, solar radiation…)</div>
+        <div class="checklist">${Object.keys(this._hass.states).filter((e) => e.startsWith("sensor.") && (/aqi|air_quality|pollen|uv|pm2|pm10|ozone|lightning|rain|precip|smoke|solar|radiation|irradiance|visibility|illuminance/.test(e) ||
+            ["aqi", "pm25", "pm10", "ozone", "precipitation", "precipitation_intensity", "irradiance", "illuminance", "distance"].includes(this._hass.states[e].attributes.device_class))).sort()
           .map((e) => `<label class="check"><input type="checkbox" data-change="wx-sensor" data-entity="${e}" ${(s.weather_sensors || []).includes(e) ? "checked" : ""}> ${esc(this.entityName(e))}</label>`).join("")
           || `<p class="hint">No air quality / pollen / UV sensors found in Home Assistant.</p>`}</div>
         <label class="inline">Week starts on <select data-change="setting" data-key="week_start" data-num="1"><option value="0" ${Number(s.week_start) === 0 ? "selected" : ""}>Sunday</option><option value="1" ${Number(s.week_start) === 1 ? "selected" : ""}>Monday</option></select></label>
@@ -2756,7 +2870,7 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .caltool .seg, .caltool .fab { flex:none; }
 /* Narrower screens: two fixed rows (same in every view, so nothing jumps) */
 @media (max-width: 1100px) {
-  .caltool { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"nav title fab" "seg seg seg"; row-gap:10px; }
+  .caltool { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; grid-template-areas:"nav title search fab" "seg seg seg seg"; column-gap:8px; row-gap:10px; }
   .caltool .nav { grid-area:nav; } .caltool h1 { grid-area:title; } .caltool .fab { grid-area:fab; }
   .caltool .seg { grid-area:seg; justify-self:start; max-width:100%; overflow-x:auto; }
 }
@@ -3015,7 +3129,12 @@ label.check input { width:22px; height:22px; }
 .wcard { background:var(--card); border-radius:var(--radius); padding:14px 18px; }
 .wcard h3 { margin:0 0 8px; }
 .whourly { overflow-x:auto; padding-bottom:6px; }
-.whourly svg { display:block; }
+.whourly svg { display:block; margin-left:104px; }
+.whourly .whrow { margin-left:104px; }
+.wtable { border-collapse:collapse; margin-top:10px; font-size:13px; table-layout:fixed; }
+.wtable th { position:sticky; left:0; z-index:1; width:104px; min-width:104px; text-align:left; background:var(--card); color:var(--muted); font-weight:700; font-size:12px; padding:5px 6px 5px 0; }
+.wtable td { width:44px; min-width:44px; text-align:center; padding:5px 0; border-top:1px solid var(--line); font-variant-numeric:tabular-nums; }
+.wtable tr:nth-child(even) td { background:color-mix(in srgb, var(--bg) 60%, transparent); }
 .wradar { width:100%; height:440px; border:0; border-radius:12px; background:var(--bg); }
 .wlab { font-size:12px; font-weight:700; fill:var(--ink); }
 .wpt:hover circle { r:5; }
@@ -3025,7 +3144,8 @@ label.check input { width:22px; height:22px; }
 .wh small { color:var(--muted); font-size:11px; }
 .rain { color:#2f6fb3; font-weight:700; font-size:12px; }
 .wdaily { display:flex; flex-direction:column; }
-.wday { display:grid; grid-template-columns:70px 36px 48px 40px 1fr 40px; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:16px; }
+.wsun { display:block; font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; }
+.wday { display:grid; grid-template-columns:130px 36px 48px 40px 1fr 40px; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:16px; }
 .wday:last-child { border-bottom:0; }
 .wdn { font-weight:700; } .wdi { font-size:22px; } .wlo { color:var(--muted); text-align:right; } .whi { font-weight:800; }
 .wrange { position:relative; height:8px; background:var(--bg); border-radius:4px; }
@@ -3056,6 +3176,11 @@ label.check input { width:22px; height:22px; }
 .tlist button { flex:none; height:36px; text-align:left; padding:0 14px; border-radius:0; box-shadow:none; background:none; font-weight:600; }
 .tlist button.on { background:color-mix(in srgb, var(--accent) 18%, var(--card)); color:var(--accent); }
 .tlist button:hover { background:var(--bg); }
+.sresults { max-height:55vh; overflow-y:auto; display:flex; flex-direction:column; }
+.sresults .srow { width:100%; }
+.sresults .st { width:110px; }
+.searchbtn { flex:none; }
+@media (max-width: 1100px) { .caltool .searchbtn { grid-area:search; } }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }
