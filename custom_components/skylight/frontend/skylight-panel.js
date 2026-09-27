@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.5.0";
+const PANEL_VERSION = "1.5.1";
 const PALETTE = [
   "#ff6b6b", "#ff9f43", "#feca57", "#2ecc71", "#1abc9c", "#48dbfb",
   "#4a7dff", "#a66bff", "#f368e0", "#8d6e63", "#607d8b", "#222f3e",
@@ -1074,7 +1074,22 @@ class SkylightPanel extends HTMLElement {
   }
 
   // ---------- screensaver ----------
+  // Put the current time about a third of the way down; otherwise start at the morning.
+  _scrollGridHome(grid = this.$app?.querySelector(".tg-scroll")) {
+    if (!grid) return;
+    const H = this._tgH || 52, now = new Date();
+    grid.scrollTop = this._tgHasToday
+      ? Math.max(0, (now.getHours() + now.getMinutes() / 60) * H - grid.clientHeight / 3)
+      : Math.max(0, this._tgFirstHour * H - 10);
+    this._tgScroll = grid.scrollTop;
+  }
+
   _checkIdle() {
+    // On a wall display, drift back to "now" after 3 minutes without touches.
+    if (!this.ui.dialog && Date.now() - this._lastActivity > 180000 && Date.now() - (this._lastSnap || 0) > 180000) {
+      this._lastSnap = Date.now();
+      this._scrollGridHome();
+    }
     const mins = Number(this.settings.screensaver_minutes || 0);
     if (!mins || this.ui.saver || this.ui.dialog || !this._hasPhotoSource()) return;
     if (Date.now() - this._lastActivity > mins * 60000) this.startSaver();
@@ -1126,6 +1141,8 @@ class SkylightPanel extends HTMLElement {
     const now = new Date();
     const t = this.fmtTime(now);
     const dt = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    const H = this._tgH || 52;
+    this.shadowRoot.querySelectorAll(".tg-now").forEach((l) => { l.style.top = `${(now.getHours() + now.getMinutes() / 60) * H}px`; });
     for (const [id, v] of [["clock", t], ["date", dt], ["sv-time", t], ["sv-date", dt]]) {
       const el = this.shadowRoot.getElementById(id); if (el) el.textContent = v;
     }
@@ -1142,6 +1159,7 @@ class SkylightPanel extends HTMLElement {
     const focusId = this.shadowRoot.activeElement?.id;
     const tg = this.$app.querySelector(".tg-scroll");
     if (tg) this._tgScroll = tg.scrollTop;
+    const prevKey = this._tgKey;
     const tab = this.ui.tab;
     const body = {
       home: () => this.renderHome(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
@@ -1159,7 +1177,12 @@ class SkylightPanel extends HTMLElement {
       </main>`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
     const grid = this.$app.querySelector(".tg-scroll");
-    if (grid) grid.scrollTop = this._tgScroll ?? this._tgDefaultScroll ?? 0;
+    if (grid) {
+      // Same days as before: keep where the user scrolled. New days: jump to "now" (or morning).
+      if (this._tgKeyNext !== prevKey || this._tgScroll === undefined) this._scrollGridHome(grid);
+      else grid.scrollTop = this._tgScroll;
+      this._tgKey = this._tgKeyNext;
+    }
     if (focusId === "newitem" || focusId === "newcal") this.shadowRoot.getElementById(focusId)?.focus();
     this._tickClock();
   }
@@ -1276,7 +1299,10 @@ class SkylightPanel extends HTMLElement {
     const hours = [...Array(24)].map((_, hr) => `<div class="tg-hr" style="top:${hr * H}px">${hr ? new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h }) : ""}</div>`).join("");
     // Initial scroll: an hour before the earliest event, but no later than 7am.
     const firstHour = Math.max(0, Math.min(7, Math.floor(earliest) - 1));
-    this._tgDefaultScroll = Math.max(0, firstHour * H - 10);
+    this._tgH = H;
+    this._tgHasToday = days.some((d) => sameDay(d, now));
+    this._tgFirstHour = firstHour;
+    this._tgKeyNext = `${this.ui.tab}|${days.map(ymd).join(",")}`;
     return `<div class="tg" style="--n:${days.length};--h:${H}px">
       <div class="tg-row tg-head"><div class="tg-gutter"></div>${head}</div>
       ${hasAllDay ? `<div class="tg-row tg-allday"><div class="tg-gutter">all-day</div>${allDayCells.map((c, i) => `<div class="tg-adcell">${c.map((e) => this.evPill(e, days[i], true)).join("")}</div>`).join("")}</div>` : ""}
