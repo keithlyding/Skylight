@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.19.1";
+const PANEL_VERSION = "1.20.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -289,6 +289,10 @@ class SkylightPanel extends HTMLElement {
     this.$dialog = this.shadowRoot.getElementById("dialog");
     this.$saver = this.shadowRoot.getElementById("saver");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
+    // Swipe left/right to go forward/back on Calendar, Chores and Meals.
+    this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
+    this.shadowRoot.addEventListener("pointerup", (e) => this._swipeEnd(e), { passive: true });
+    this.shadowRoot.addEventListener("pointercancel", () => { this._swipe = null; }, { passive: true });
     this.shadowRoot.addEventListener("change", (e) => this._onChange(e));
     this.shadowRoot.addEventListener("input", (e) => {
       if (e.target.id === "ev-loc") this._locSearch(e.target.value);
@@ -302,7 +306,31 @@ class SkylightPanel extends HTMLElement {
     }
   }
 
+  _swipeStart(e) {
+    this._swipe = null;
+    if (!["calendar", "chores", "meals"].includes(this.ui.tab) || this.ui.dialog || this.ui.saver) return;
+    if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const t = e.target;
+    if (!this.$app.contains(t) || !t.closest(".content") || t.closest("input, select, textarea, .seg, .whourly")) return;
+    this._swipe = { x: e.clientX, y: e.clientY, t: Date.now() };
+  }
+  _swipeEnd(e) {
+    const sw = this._swipe;
+    this._swipe = null;
+    if (!sw) return;
+    const dx = e.clientX - sw.x, dy = e.clientY - sw.y, dt = Date.now() - sw.t;
+    // A deliberate sideways flick: far enough, mostly horizontal, not a slow drag.
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || dt > 800) return;
+    const forward = dx < 0;
+    this._suppressClickUntil = Date.now() + 400; // don't open the event the swipe started on
+    if (this.ui.tab === "chores") this._action("chore-day", { dataset: { dir: forward ? "1" : "-1" } });
+    else this._action(forward ? "next" : "prev", { dataset: {} });
+    const c = this.$app.querySelector(".content");
+    if (c) { c.classList.remove("swipe-l", "swipe-r"); void c.offsetWidth; c.classList.add(forward ? "swipe-l" : "swipe-r"); }
+  }
+
   _onClick(e) {
+    if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) { e.stopPropagation(); e.preventDefault(); return; }
     const el = e.target.closest("[data-action]");
     if (!el) return;
     if (el.classList.contains("backdrop") && e.target !== el) return;
@@ -2860,6 +2888,11 @@ label.check input { width:22px; height:22px; }
 .wday.tap { cursor:pointer; }
 .wdetail { background:var(--bg); border-radius:12px; padding:6px 14px; margin:2px 0 8px; font-size:15px; line-height:1.4; }
 .wdetail p { margin:6px 0; }
+@keyframes swl { from { transform:translateX(40px); opacity:.4; } to { transform:none; opacity:1; } }
+@keyframes swr { from { transform:translateX(-40px); opacity:.4; } to { transform:none; opacity:1; } }
+.content.swipe-l { animation:swl .22s ease-out; }
+.content.swipe-r { animation:swr .22s ease-out; }
+.content { touch-action:pan-y; }
 .nochores { margin:0; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:0 4px; }
 .av.sm { width:22px; height:22px; font-size:13px; }
 .hhead { display:flex; align-items:center; gap:8px; }
