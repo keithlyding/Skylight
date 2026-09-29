@@ -110,6 +110,15 @@ Skylight → Settings → **Set a settings PIN** (4–8 digits, entered twice). 
 - The check happens on the Home Assistant server, not just on screen. The PIN is stored only as a salted hash and is never sent to any screen.
 - **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Skylight** → **Configure** and ticks *Remove the settings PIN*.
 
+## Look and night mode
+
+Settings → **Look & night mode**:
+
+- **Theme:** Warm (default), Cool, Slate (dark neutral) or High contrast. Each has a light and a dark version. Only surfaces, text and the accent color change; family members keep their own colors.
+- **Seasonal accents** (off by default): a different accent color and a small emoji by the clock for spring, summer, July 4th (Jul 1–5), fall, Halloween (Oct 15–31), Thanksgiving week, Christmas (Dec 1–26) and winter.
+- **Dark mode:** Follow tablet, Always light, Always dark, Scheduled (start and end times; can cross midnight) or Sunset to sunrise (from Home Assistant's `sun.sun`).
+- **Dim the screen at night:** pick a **screen brightness entity** and Home Assistant sets it to your day or night level whenever night starts or ends. With Fully Kiosk Browser, add its Home Assistant integration and choose its "Screen brightness" entity; lights and `input_number` entities work too. A manual brightness change stays until the next switch. Without an entity, Skylight darkens the picture with an overlay instead; that dims pixels, not the backlight. Night hours are the dark-mode schedule (or sunset to sunrise), and the photo screensaver is dimmed too.
+
 ## Birthdays and anniversaries
 
 - **Family members' birthdays:** in each person's editor (month and day; the year is optional).
@@ -154,7 +163,7 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 73 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 79 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

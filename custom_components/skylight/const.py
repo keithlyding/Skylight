@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.31.0"
+VERSION = "1.32.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -64,5 +64,15 @@ DEFAULT_DATA = {
         # Today screen "Upcoming" card: how many occasions, and how far ahead (days).
         "upcoming_count": 3,
         "upcoming_days": 60,
+        # Look: theme preset, seasonal accents, dark mode and night dimming.
+        "theme": "warm",            # warm | cool | slate | contrast
+        "seasonal": False,
+        "dark_mode": "follow",      # follow | light | dark | scheduled | sun
+        "night_start": "21:00",
+        "night_end": "06:30",
+        "night_dim": False,
+        "brightness_entity": None,  # e.g. number.<tablet>_screen_brightness (Fully Kiosk)
+        "day_brightness": 80,
+        "night_brightness": 20,
     },
 }

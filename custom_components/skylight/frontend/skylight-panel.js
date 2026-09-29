@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.31.0";
+const PANEL_VERSION = "1.32.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -212,6 +212,49 @@ const localIso = (d) => {
   return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
 };
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+// ---------- look: theme presets, seasonal accents, night hours ----------
+// Every preset defines every variable in THEME_VARS for both light and dark. Member colors are never touched.
+const THEME_VARS = ["--bg", "--card", "--ink", "--muted", "--line", "--accent", "--chip"];
+const THEMES = {
+  warm: { label: "Warm (default)",
+    light: { "--bg": "#f7f4ef", "--card": "#ffffff", "--ink": "#2d2a26", "--muted": "#8a8378", "--line": "rgba(0,0,0,.07)", "--accent": "#4a7dff", "--chip": "rgba(127,127,127,.1)" },
+    dark: { "--bg": "#1b1a18", "--card": "#282724", "--ink": "#f1ede6", "--muted": "#a59f94", "--line": "rgba(255,255,255,.08)", "--accent": "#6b93ff", "--chip": "rgba(255,255,255,.08)" } },
+  cool: { label: "Cool",
+    light: { "--bg": "#eef3f8", "--card": "#ffffff", "--ink": "#1f2a37", "--muted": "#6b7a8c", "--line": "rgba(20,40,80,.09)", "--accent": "#0f8b8d", "--chip": "rgba(40,90,140,.08)" },
+    dark: { "--bg": "#0f1720", "--card": "#18232f", "--ink": "#e6eef6", "--muted": "#8fa3b8", "--line": "rgba(200,220,255,.09)", "--accent": "#3cc2c4", "--chip": "rgba(200,220,255,.08)" } },
+  slate: { label: "Slate (dark neutral)",
+    light: { "--bg": "#e9eaec", "--card": "#f7f7f8", "--ink": "#23262b", "--muted": "#6d737c", "--line": "rgba(0,0,0,.09)", "--accent": "#5b6cff", "--chip": "rgba(0,0,0,.06)" },
+    dark: { "--bg": "#16181c", "--card": "#212429", "--ink": "#e8e9ec", "--muted": "#9aa0a9", "--line": "rgba(255,255,255,.08)", "--accent": "#8a96ff", "--chip": "rgba(255,255,255,.07)" } },
+  contrast: { label: "High contrast",
+    light: { "--bg": "#ffffff", "--card": "#ffffff", "--ink": "#000000", "--muted": "#2b2b2b", "--line": "rgba(0,0,0,.55)", "--accent": "#0040c1", "--chip": "rgba(0,0,0,.08)" },
+    dark: { "--bg": "#000000", "--card": "#0b0b0b", "--ink": "#ffffff", "--muted": "#e0e0e0", "--line": "rgba(255,255,255,.6)", "--accent": "#7fb2ff", "--chip": "rgba(255,255,255,.12)" } },
+};
+const THEME_CSS = Object.entries(THEMES).map(([name, t]) => ["light", "dark"].map((mode) =>
+  `:host([data-theme="${name}"][data-scheme="${mode}"]) { ${Object.entries(t[mode]).map(([k, v]) => `${k}:${v};`).join(" ")} }`).join("\n")).join("\n");
+
+// Seasonal accent + header emoji for a date (holidays first, then seasons).
+const thanksgiving = (y) => { const first = new Date(y, 10, 1).getDay(); return new Date(y, 10, 1 + ((4 - first + 7) % 7) + 21); };
+const seasonFor = (d) => {
+  const m = d.getMonth() + 1, day = d.getDate(), md = m * 100 + day, t = startOfDay(d);
+  const tg = thanksgiving(d.getFullYear());
+  if (md >= 701 && md <= 705) return { key: "july4", emoji: "🎆", accent: "#c62828" };
+  if (md >= 1015 && md <= 1031) return { key: "halloween", emoji: "🎃", accent: "#e8710a" };
+  if (t >= addDays(tg, -3) && t <= addDays(tg, 3)) return { key: "thanksgiving", emoji: "🦃", accent: "#a0522d" };
+  if (md >= 1201 && md <= 1226) return { key: "christmas", emoji: "🎄", accent: "#1f8a4c" };
+  if (md >= 320 && md <= 620) return { key: "spring", emoji: "🌷", accent: "#d25b9a" };
+  if (md >= 621 && md <= 921) return { key: "summer", emoji: "☀️", accent: "#f39c12" };
+  if (md >= 922 && md <= 1220) return { key: "fall", emoji: "🍂", accent: "#c0632b" };
+  return { key: "winter", emoji: "❄️", accent: "#3b82c4" };
+};
+
+// Night hours: same rules as nightmode.py on the server (kept in step by tests).
+const parseHM = (v, dflt) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(v || "")); if (!m) return dflt; const x = Number(m[1]) * 60 + Number(m[2]); return x < 1440 ? x : dflt; };
+const inWindow = (now, start, end) => (start === end ? false : start < end ? now >= start && now < end : now >= start || now < end);
+const sunIsDown = (rise, set) => (rise && set ? rise < set : null);
+const isNightAt = (settings, now, rise = null, set = null) => (settings?.dark_mode === "sun"
+  ? !!sunIsDown(rise, set)
+  : inWindow(now.getHours() * 60 + now.getMinutes(), parseHM(settings?.night_start, 21 * 60), parseHM(settings?.night_end, 6 * 60 + 30)));
+
 // ---------- birthdays, anniversaries and other yearly dates ----------
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const OCCASION_EMOJI = { birthday: "🎂", anniversary: "💍", other: "📅" };
@@ -384,7 +427,11 @@ class SkylightPanel extends HTMLElement {
   _buildShadow() {
     if (this._shadowBuilt) return;
     this._shadowBuilt = true;
-    this.shadowRoot.innerHTML = `<style>${STYLES}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="saver"></div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLES}\n${THEME_CSS}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="saver"></div><div id="dim" aria-hidden="true"></div>`;
+    this.$dim = this.shadowRoot.getElementById("dim");
+    // "Follow tablet" dark mode: react when the device switches.
+    this._mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    this._mq?.addEventListener?.("change", () => this._applyLook());
     this.$app = this.shadowRoot.getElementById("app");
     this.$dialog = this.shadowRoot.getElementById("dialog");
     this.$saver = this.shadowRoot.getElementById("saver");
@@ -2318,6 +2365,31 @@ class SkylightPanel extends HTMLElement {
         <span class="utext"><b>${esc(u.title)}</b><small>${esc(occasionText(u).split(" — ")[1] || "")}</small></span></div>`).join("")}</div>`;
   }
 
+  // ---------- Settings: theme, dark mode, night dimming ----------
+  renderLookCard() {
+    const s = this.settings, mode = s.dark_mode || "follow";
+    const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
+    const showTimes = mode === "scheduled" || (s.night_dim && mode !== "sun");
+    return `<section class="card">
+      <h2>Look &amp; night mode</h2>
+      <label class="inline">Theme <select data-change="setting" data-key="theme">${Object.entries(THEMES).map(([k, t]) => `<option value="${k}" ${(s.theme || "warm") === k ? "selected" : ""}>${t.label}</option>`).join("")}</select></label>
+      <label class="inline">Seasonal accents ${s.seasonal ? seasonFor(new Date()).emoji : ""} <input type="checkbox" ${s.seasonal ? "checked" : ""} data-change="setting" data-key="seasonal"></label>
+      <p class="hint">Changes the accent color and adds a small emoji by the clock for spring, summer, July 4th, fall, Halloween, Thanksgiving week, Christmas and winter.</p>
+      <label class="inline">Dark mode <select data-change="setting" data-key="dark_mode">${[["follow", "Follow tablet"], ["light", "Always light"], ["dark", "Always dark"], ["scheduled", "Scheduled"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${mode === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      ${showTimes ? `<div class="row"><label class="inline">Night starts <input type="time" value="${esc(s.night_start || "21:00")}" data-change="setting" data-key="night_start"></label>
+        <label class="inline">ends <input type="time" value="${esc(s.night_end || "06:30")}" data-change="setting" data-key="night_end"></label></div>` : ""}
+      <label class="inline">Dim the screen at night <input type="checkbox" ${s.night_dim ? "checked" : ""} data-change="setting" data-key="night_dim"></label>
+      ${s.night_dim ? `
+        <label class="inline">Screen brightness entity <select data-change="setting" data-key="brightness_entity"><option value="">None (dim with an overlay)</option>${bright.map((e) => `<option value="${e}" ${e === s.brightness_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
+        <div class="row"><label class="inline">Day brightness % <input type="number" min="1" max="100" value="${Number(s.day_brightness ?? 80)}" data-change="setting" data-key="day_brightness" data-num="1"></label>
+          <label class="inline">Night brightness % <input type="number" min="1" max="100" value="${Number(s.night_brightness ?? 20)}" data-change="setting" data-key="night_brightness" data-num="1"></label></div>
+        <p class="hint">${s.brightness_entity
+          ? "Home Assistant sets this entity to the day or night level when night starts and ends (a manual change stays until the next switch). With Fully Kiosk Browser, use its integration's “Screen brightness” entity."
+          : "No brightness entity: Skylight darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}
+          Night hours ${mode === "sun" ? "follow sunset and sunrise" : "use the times above"}; the photo screensaver is dimmed too.</p>` : ""}
+    </section>`;
+  }
+
   // ---------- Settings: birthdays & anniversaries ----------
   _dateFields(prefix, v) {
     return `<div class="row datefields">
@@ -2873,7 +2945,28 @@ class SkylightPanel extends HTMLElement {
     return parts.join("");
   }
 
+  // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
+  _applyLook() {
+    if (!this.data) return;
+    const s = this.settings, now = new Date();
+    const sun = this._hass.states["sun.sun"]?.attributes || {};
+    const rise = sun.next_rising ? new Date(sun.next_rising) : null, set = sun.next_setting ? new Date(sun.next_setting) : null;
+    const night = isNightAt(s, now, rise, set);
+    const mode = s.dark_mode || "follow";
+    const dark = mode === "dark" || ((mode === "scheduled" || mode === "sun") && night) || (mode === "follow" && !!this._mq?.matches);
+    const theme = THEMES[s.theme] ? s.theme : "warm";
+    if (this.dataset.theme !== theme) this.dataset.theme = theme;
+    if (this.dataset.scheme !== (dark ? "dark" : "light")) this.dataset.scheme = dark ? "dark" : "light";
+    const accent = s.seasonal ? seasonFor(now).accent : "";
+    if (accent) this.style.setProperty("--accent", accent); else this.style.removeProperty("--accent");
+    // Without a brightness entity, dim pixels with an overlay at night (also over the photo screensaver).
+    const overlay = s.night_dim && !s.brightness_entity && isNightAt({ ...s, dark_mode: mode === "sun" ? "sun" : "scheduled" }, now, rise, set);
+    const level = Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
+    if (this.$dim) this.$dim.style.opacity = overlay ? String(level) : "0";
+  }
+
   _tickClock() {
+    this._applyLook();
     const now = new Date();
     const t = this.fmtTime(now);
     const dt = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
@@ -2905,6 +2998,7 @@ class SkylightPanel extends HTMLElement {
       meals: () => this.renderMeals(), lists: () => this.renderLists(), photos: () => this.renderPhotos(),
       settings: () => this.renderSettings(),
     }[tab]();
+    this._applyLook();
     this.$app.innerHTML = `
       <nav class="rail">
         <div class="logo">☀︎</div>
@@ -2949,7 +3043,7 @@ class SkylightPanel extends HTMLElement {
     const weather = w ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(Number(w.attributes.temperature))}°</b></div>` : "";
     const showChips = ["calendar", "home"].includes(this.ui.tab);
     return `<header>
-      <div class="when"><div id="clock" class="clock"></div><div id="date" class="date"></div></div>
+      <div class="when"><div id="clock" class="clock"></div><div id="date" class="date"></div>${this.settings.seasonal ? `<span class="season" title="Seasonal accent">${seasonFor(new Date()).emoji}</span>` : ""}</div>
       ${showChips ? `<div class="chips members">${this.members.map((m) => `
         <button class="mchip ${this.ui.filter === m.id ? "on" : this.ui.filter ? "dim" : ""}" style="--c:${m.color}" data-action="filter" data-member="${m.id}">
           <span class="av" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}</button>`).join("")}
@@ -3782,6 +3876,8 @@ class SkylightPanel extends HTMLElement {
           ${this.data.places?.has_google_key ? `<button data-action="places-clear">Remove</button>` : ""}</div>
       </section>
 
+      ${this.renderLookCard()}
+
       <section class="card">
         <h2>Display</h2>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
@@ -4200,6 +4296,8 @@ label.check input { width:22px; height:22px; }
   .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
   .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
 }
+#dim { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:950; transition:opacity 2s; }
+.season { margin-left:6px; font-size:20px; }
 .upcoming { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:10px; }
 .uhead { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:4px; }
 .urow { display:flex; align-items:center; gap:10px; padding:6px 4px; border-left:4px solid var(--c); padding-left:10px; margin:4px 0; border-radius:4px; }

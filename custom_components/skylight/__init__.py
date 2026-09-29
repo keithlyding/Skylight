@@ -10,7 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from . import mealie, places, security, weather_alerts, weather_extra, websocket_api
+from . import mealie, nightmode, places, security, weather_alerts, weather_extra, websocket_api
 from .const import (
     DOMAIN,
     PANEL_ELEMENT,
@@ -63,6 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = SkylightStore(hass)
     await store.async_load()
     hass.data[DOMAIN] = {"store": store}
+    entry.async_on_unload(nightmode.async_start(hass))
 
     await _async_register_once(hass)
     await panel_custom.async_register_panel(
