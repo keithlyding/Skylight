@@ -127,6 +127,10 @@ class SkylightStore:
             }
             self._changed()
 
+    async def async_flush(self) -> None:
+        """Write now (a pending delayed save would be lost on an integration reload)."""
+        await self._store.async_save(self.data)
+
     @callback
     def _changed(self) -> None:
         self._store.async_delay_save(lambda: self.data, 1)
@@ -150,6 +154,34 @@ class SkylightStore:
                 self.data["lists"] = clean_list_owners(self.data["lists"], adults)
                 self.data["todo_owners"] = {e: o for e, o in self.data.get("todo_owners", {}).items() if o in adults}
             self._changed()
+
+    async def async_move_list_item(
+        self, list_id: str, item_id: str, to_index: int | None = None, direction: str | None = None
+    ) -> int:
+        """Reorder an open item within its list, atomically. Returns its new index among open items.
+
+        Open items keep their order at the top of `items`; done items stay after them untouched.
+        """
+        async with self._lock:
+            lst = next((l for l in self.data["lists"] if l.get("id") == list_id), None)
+            if lst is None:
+                raise KeyError(f"list {list_id}")
+            open_items = [i for i in lst["items"] if not i.get("done")]
+            done_items = [i for i in lst["items"] if i.get("done")]
+            idx = next((n for n, i in enumerate(open_items) if i.get("id") == item_id), None)
+            if idx is None:
+                raise KeyError(f"open item {item_id}")
+            if direction is not None:
+                target = idx + (-1 if direction == "up" else 1)
+            else:
+                target = int(to_index)
+            target = max(0, min(len(open_items) - 1, target))
+            if target != idx:
+                item = open_items.pop(idx)
+                open_items.insert(target, item)
+                lst["items"] = open_items + done_items
+                self._changed()
+            return target
 
     async def async_toggle_chore(self, chore_id: str, on: date) -> bool:
         async with self._lock:

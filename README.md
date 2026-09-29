@@ -17,7 +17,7 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 | **Chores** | One column per **kid** with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays, every N weeks, weekly or once. You can page back and forth by day. |
 | **Progress** | Read-only: one row per kid with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, view ingredients and steps, and send ingredients to a shopping list. Other meal apps can be shown read-only through their calendar feed. |
-| **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. |
+| **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items with the **▲ / ▼** buttons; checked-off items move to the bottom in the order they were checked. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
 | **Settings** | Add, edit and reorder family members (name, **Adult/Kid**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
 
@@ -138,13 +138,14 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 - **No Google Photos or iCloud album sync** (Immich and uploads only).
 - **"All events" on a repeating event** looks back up to 3 years to find the series start. Events that repeat "forever" and began earlier than that may be re-anchored.
 - **Repeating-event choices depend on the calendar.** Local Calendar supports all three; Google Calendar may reject edits, and subscribed feeds are read-only.
-- **Concurrent edits: the last save wins.** If two people edit the *same* list on two devices at the exact same moment, one change can be lost. Chore check-offs are atomic on the server.
+- **Concurrent edits: the last save wins.** If two people add, check or delete items on the *same* list on two devices at the exact same moment, one change can be lost. Reordering items and chore check-offs are done atomically on the server, so they don't clash.
+- **Reordering is buttons only** (no drag and drop), because dragging isn't reliable in Android kiosk browsers. Home Assistant to-do lists show the arrows only when their integration supports reordering (for example, the built-in Local To-do and Shopping List do; many others don't).
 
 ## Development
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 64 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 67 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

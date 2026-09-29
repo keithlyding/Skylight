@@ -28,6 +28,7 @@ def async_register(hass: HomeAssistant) -> None:
         ws_subscribe,
         ws_set,
         ws_toggle_chore,
+        ws_move_list_item,
         ws_delete_photo,
         ws_create_calendar,
         ws_subscribe_calendar,
@@ -73,6 +74,30 @@ async def ws_set(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         return
     await _store(hass).async_set(msg["key"], msg["value"])
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/list/move",
+        vol.Required("list_id"): str,
+        vol.Required("item_id"): str,
+        vol.Exclusive("to_index", "where"): vol.All(int, vol.Range(min=0)),
+        vol.Exclusive("direction", "where"): vol.In(["up", "down"]),
+    }
+)
+@websocket_api.async_response
+async def ws_move_list_item(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Move a list item up/down or to a position; done on the server so two screens can't clash."""
+    if "to_index" not in msg and "direction" not in msg:
+        connection.send_error(msg["id"], "invalid", "Give to_index or direction")
+        return
+    try:
+        index = await _store(hass).async_move_list_item(
+            msg["list_id"], msg["item_id"], msg.get("to_index"), msg.get("direction"))
+    except KeyError as err:
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
+    connection.send_result(msg["id"], {"index": index})
 
 
 @websocket_api.websocket_command(

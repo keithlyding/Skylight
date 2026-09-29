@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.29.0";
+const PANEL_VERSION = "1.30.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -173,6 +173,17 @@ const pad = (n) => String(n).padStart(2, "0");
 // Adults and kids: only kids have chores; only adults own lists.
 const kidsOf = (members) => (members || []).filter((m) => m.role === "kid");
 const adultsOf = (members) => (members || []).filter((m) => m.role !== "kid");
+// Check/uncheck a list item, remembering when it was checked (done items are shown in that order).
+const toggleItem = (i) => {
+  if (i.done) { const { done_at, ...rest } = i; return { ...rest, done: false }; }
+  return { ...i, done: true, done_at: new Date().toISOString() };
+};
+// Open items in list order, then done items oldest check-off first (older items without a time keep list order).
+const orderItems = (items) => [
+  ...(items || []).filter((i) => !i.done),
+  ...(items || []).map((i, n) => [i, n]).filter(([i]) => i.done)
+    .sort(([a, na], [b, nb]) => (a.done_at || "").localeCompare(b.done_at || "") || na - nb).map(([i]) => i),
+];
 // Lists grouped for the Lists tab: Shared first, then each adult (in member order) who owns a list.
 const groupLists = (lists, members) => {
   const adults = adultsOf(members);
@@ -1257,7 +1268,24 @@ class SkylightPanel extends HTMLElement {
         await this._updateList(this.ui.list, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
         this.shadowRoot.getElementById("newitem")?.focus(); break;
       }
-      case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.map((i) => i.id === d.item ? { ...i, done: !i.done } : i); }); break;
+      case "item-move": {
+        if (this._isTodo()) {
+          // Home Assistant to-do: move after the item that should come before it (none = top).
+          const entity_id = this._todoEntity();
+          const open = (this.todoItems[entity_id] || []).filter((t) => t.status !== "completed");
+          const k = open.findIndex((t) => t.uid === d.item);
+          if (k < 0) break;
+          const target = d.dir === "up" ? k - 1 : k + 1;
+          if (target < 0 || target >= open.length) break;
+          const before = d.dir === "up" ? open[target - 1] : open[target];
+          try { await this._hass.callWS({ type: "todo/item/move", entity_id, uid: d.item, ...(before ? { previous_uid: before.uid } : {}) }); }
+          catch (e) { this._toast(e?.message || String(e)); }
+          break;
+        }
+        await this._ws({ type: "skylight/list/move", list_id: this.ui.list, item_id: d.item, direction: d.dir });
+        break;
+      }
+      case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.map((i) => (i.id === d.item ? toggleItem(i) : i)); }); break;
       case "delete-item": if (this._isTodo()) { await this._todoAction("delete", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => i.id !== d.item); }); break;
       case "clear-done": if (this._isTodo()) { await this._todoAction("clear"); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => !i.done); }); break;
       case "new-list": this.openListDialog(); break;
@@ -2449,7 +2477,7 @@ class SkylightPanel extends HTMLElement {
     return (this.data.linked_todos || []).filter((e) => this._hass.states[e]).map((e, i) => {
       this._subscribeTodo(e);
       return {
-        id: `todo:${e}`, linked: true, entity: e, owner: (this.data.todo_owners || {})[e], name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
+        id: `todo:${e}`, linked: true, entity: e, canMove: !!((this._hass.states[e]?.attributes?.supported_features || 0) & 8), // TodoListEntityFeature.MOVE_TODO_ITEM owner: (this.data.todo_owners || {})[e], name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
         items: (this.todoItems[e] || []).map((t) => ({ id: t.uid, text: t.summary, done: t.status === "completed" })),
       };
     });
@@ -2462,7 +2490,7 @@ class SkylightPanel extends HTMLElement {
       try { await this._hass.callService("todo", "update_item", { item: itemId, status: it?.status === "completed" ? "needs_action" : "completed" }, { entity_id }); }
       catch (e) { this._toast(e?.message || String(e)); }
     } else {
-      await this._updateList(listId, (l) => { l.items = l.items.map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)); });
+      await this._updateList(listId, (l) => { l.items = l.items.map((i) => (i.id === itemId ? toggleItem(i) : i)); });
     }
   }
   async _listAdd(listId, text) {
@@ -3245,8 +3273,9 @@ class SkylightPanel extends HTMLElement {
   renderHomeList(m, list) {
     if (!list) return `<div class="hchores" style="--c:${m.color}"><div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
       <p class="hint">List not found. Pick one in Settings → Family members.</p></div>`;
-    const open = list.items.filter((i) => !i.done), done = list.items.filter((i) => i.done);
-    const shown = [...open, ...done.slice(0, 2)]; // keep a couple of recent check-offs visible
+    const ordered = list.linked ? list.items : orderItems(list.items);
+    const open = ordered.filter((i) => !i.done), done = ordered.filter((i) => i.done);
+    const shown = [...open, ...done.slice(-2)]; // keep the two most recent check-offs visible
     return `<div class="hchores hlist" style="--c:${m.color}">
       <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
         <span class="hint">📝 ${esc(list.name)} · ${open.length} left</span></div>
@@ -3441,11 +3470,21 @@ class SkylightPanel extends HTMLElement {
             ? `<select class="ownerpick" data-change="todo-owner" data-entity="${esc(cur.entity)}" aria-label="Whose list"><option value="">👪 Shared</option>${adultsOf(this.members).map((m) => `<option value="${m.id}" ${cur.owner === m.id ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select>`
             : `<button data-action="edit-list" data-list="${cur.id}">Edit</button>`}</div></div>
         <div class="additem"><input id="newitem" data-fresh="1" placeholder="Add an item…" data-enter="add-item"><button class="primary" data-action="add-item">Add</button></div>
-        <div class="items">${[...cur.items.filter((i) => !i.done), ...cur.items.filter((i) => i.done)].map((i) => `
+        <div class="items">${(() => {
+          const ordered = orderItems(cur.items), open = ordered.filter((i) => !i.done);
+          const arrows = !cur.linked || cur.canMove;
+          return ordered.map((i) => {
+            const k = open.indexOf(i);
+            return `
           <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}">
-            <button class="box" data-action="toggle-item" data-item="${i.id}">${i.done ? "✓" : ""}</button>
-            <span data-action="toggle-item" data-item="${i.id}">${esc(i.text)}</span>
-            <button class="x" data-action="delete-item" data-item="${i.id}">✕</button></div>`).join("") || `<p class="hint">Empty list</p>`}
+            <button class="box" data-action="toggle-item" data-item="${esc(i.id)}">${i.done ? "✓" : ""}</button>
+            <span data-action="toggle-item" data-item="${esc(i.id)}">${esc(i.text)}</span>
+            ${!i.done && arrows && open.length > 1 ? `<span class="imove">
+              <button data-action="item-move" data-item="${esc(i.id)}" data-dir="up" ${k === 0 ? "disabled" : ""} aria-label="Move ${esc(i.text)} up">▲</button>
+              <button data-action="item-move" data-item="${esc(i.id)}" data-dir="down" ${k === open.length - 1 ? "disabled" : ""} aria-label="Move ${esc(i.text)} down">▼</button></span>` : ""}
+            <button class="x" data-action="delete-item" data-item="${esc(i.id)}">✕</button></div>`;
+          }).join("") || `<p class="hint">Empty list</p>`;
+        })()}
         </div>` : `<div class="empty"><h2>No lists</h2></div>`}</section></div>`;
   }
 
@@ -4001,6 +4040,9 @@ label.check input { width:22px; height:22px; }
   .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
   .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
 }
+.imove { display:flex; gap:4px; flex:none; }
+.imove button { width:48px; height:44px; padding:0; font-size:18px; border-radius:12px; }
+.imove button:disabled { opacity:.3; }
 .rolepick { width:fit-content; }
 .rolewarn { background:#fff4e0; color:#6b4300; border-radius:12px; padding:10px 12px; margin:8px 0; font-weight:600; }
 .rolewarn .row { margin-top:8px; align-items:center; }
