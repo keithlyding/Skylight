@@ -2477,7 +2477,7 @@ class SkylightPanel extends HTMLElement {
     return (this.data.linked_todos || []).filter((e) => this._hass.states[e]).map((e, i) => {
       this._subscribeTodo(e);
       return {
-        id: `todo:${e}`, linked: true, entity: e, canMove: !!((this._hass.states[e]?.attributes?.supported_features || 0) & 8), // TodoListEntityFeature.MOVE_TODO_ITEM owner: (this.data.todo_owners || {})[e], name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
+        id: `todo:${e}`, linked: true, entity: e, canMove: !!((this._hass.states[e]?.attributes?.supported_features || 0) & 8) /* TodoListEntityFeature.MOVE_TODO_ITEM */, owner: (this.data.todo_owners || {})[e], name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
         items: (this.todoItems[e] || []).map((t) => ({ id: t.uid, text: t.summary, done: t.status === "completed" })),
       };
     });

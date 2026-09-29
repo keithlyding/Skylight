@@ -35,3 +35,11 @@ def test_emoji_data_is_valid_module():
     assert len(rows) > 1800
     words = {e: w for e, w, _ in rows}
     assert "bear" in words["🐻"] and "mow" in words["🚜"] and "trash" in words["🗑️"]
+
+
+def test_linked_list_fields_not_commented_out():
+    """Regression (v1.30.0): a // comment mid-line hid name/owner/color of linked to-do lists."""
+    line = next(l for l in JS.splitlines() if "id: `todo:${e}`, linked: true" in l)
+    assert "//" not in line
+    for field in ("name: this.entityName(e)", "owner:", "color:", "canMove:"):
+        assert field in line
