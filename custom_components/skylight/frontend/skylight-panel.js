@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.28.0";
+const PANEL_VERSION = "1.29.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -170,6 +170,17 @@ const WEATHER_ICONS = {
 
 // ---------- date helpers (all local time) ----------
 const pad = (n) => String(n).padStart(2, "0");
+// Adults and kids: only kids have chores; only adults own lists.
+const kidsOf = (members) => (members || []).filter((m) => m.role === "kid");
+const adultsOf = (members) => (members || []).filter((m) => m.role !== "kid");
+// Lists grouped for the Lists tab: Shared first, then each adult (in member order) who owns a list.
+const groupLists = (lists, members) => {
+  const adults = adultsOf(members);
+  const ids = new Set(adults.map((m) => m.id));
+  const groups = [{ owner: null, lists: (lists || []).filter((l) => !ids.has(l.owner)) }];
+  for (const m of adults) groups.push({ owner: m, lists: (lists || []).filter((l) => l.owner === m.id) });
+  return groups.filter((g) => g.lists.length);
+};
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseYmd = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -1004,6 +1015,19 @@ class SkylightPanel extends HTMLElement {
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
       case "icon-open": this.ui.dialog.iconOpen = !this.ui.dialog.iconOpen; this.renderDialog(); break;
       case "icon-pick": this.ui.dialog.icon = d.icon; this.ui.dialog.iconOpen = false; this.renderDialog(); break;
+      case "member-role": this.ui.dialog.role = d.role; if (d.role === "adult" && this.ui.dialog.today === "chores") this.ui.dialog.today = "none"; this.renderDialog(); break;
+      case "move-chores": {
+        const m = this.ui.dialog.member, to = this.shadowRoot.getElementById("m-movechores")?.value;
+        if (!m || !to) break;
+        await this._set("chores", D.chores.map((c) => (c.member_id === m.id ? { ...c, member_id: to } : c)));
+        this._toast("Chores moved"); this.renderDialog(); break;
+      }
+      case "roles-reviewed": await this._set("settings", { roles_review: false }); break;
+      case "todo-owner": {
+        const owners = { ...(D.todo_owners || {}) };
+        if (el.value) owners[d.entity] = el.value; else delete owners[d.entity];
+        await this._set("todo_owners", owners); break;
+      }
       case "member-today": this.ui.dialog.today = el.value; this.renderDialog(); break;
       case "home-item": await this._listToggle(d.list, d.item); break;
       case "home-add": {
@@ -1801,7 +1825,8 @@ class SkylightPanel extends HTMLElement {
   openMemberDialog(m) {
     const used = new Set(this.members.map((x) => x.color));
     const dlg = {
-      type: "member", member: m, today: m?.today || "chores", todayList: m?.today_list || "",
+      type: "member", member: m, role: m?.role === "kid" ? "kid" : m ? "adult" : "kid",
+      today: m?.today || (m?.role === "adult" ? "none" : "chores"), todayList: m?.today_list || "",
       color: m?.color || PALETTE.find((c) => !used.has(c)) || PALETTE[0],
       avatar: m?.avatar || AVATARS[this.members.length % AVATARS.length],
       tone: m?.avatar ? toneOf(m.avatar) : "",
@@ -1812,6 +1837,16 @@ class SkylightPanel extends HTMLElement {
         <h2>${m ? "Edit" : "Add"} family member</h2>
         <div class="avatar-preview" style="background:${dlg.color}">${dlg.avatar}</div>
         <label>Name<input id="m-name" value="${esc(m?.name)}" autofocus placeholder="Name"></label>
+        <div class="label">This person is</div>
+        <div class="seg rolepick"><button class="${dlg.role === "adult" ? "on" : ""}" data-action="member-role" data-role="adult">🧑 Adult</button><button class="${dlg.role === "kid" ? "on" : ""}" data-action="member-role" data-role="kid">🧒 Kid</button></div>
+        <p class="hint" style="margin-top:4px">Kids get chores and show on the Chores and Progress tabs. Adults can own lists (like a honey-do list).</p>
+        ${(() => {
+          const theirs = m ? (this.data.chores || []).filter((c) => c.member_id === m.id) : [];
+          const kids = kidsOf(this.members).filter((k) => k.id !== m?.id);
+          if (dlg.role !== "adult" || !theirs.length) return "";
+          return `<div class="rolewarn">⚠️ ${esc(m.name)} has ${theirs.length} chore${theirs.length > 1 ? "s" : ""}. They're kept but hidden while ${esc(m.name)} is an adult.
+            ${kids.length ? `<div class="row"><select id="m-movechores">${kids.map((k) => `<option value="${k.id}">${k.avatar} ${esc(k.name)}</option>`).join("")}</select><button data-action="move-chores">Move chores to this kid</button></div>` : ""}</div>`;
+        })()}
         <label>Event title prefixes <small class="hint">(optional, comma-separated)</small>
           <input id="m-prefix" value="${esc((m?.prefixes || []).join(", "))}" placeholder="e.g. Z, Sam"></label>
         <p class="hint" style="margin-top:-4px">Events whose title starts with one of these, followed by "-", ":" or a space (like “Z- Soccer”), show in this person's color on any calendar.</p>
@@ -1835,7 +1870,7 @@ class SkylightPanel extends HTMLElement {
         <div class="label">Today screen shows</div>
         <div class="row">
           <label><select id="m-today" data-change="member-today">
-            <option value="chores" ${dlg.today === "chores" ? "selected" : ""}>✅ Chores</option>
+            ${dlg.role === "kid" ? `<option value="chores" ${dlg.today === "chores" ? "selected" : ""}>✅ Chores</option>` : ""}
             <option value="list" ${dlg.today === "list" ? "selected" : ""}>📝 A list (to-do / honey-do)</option>
             <option value="none" ${dlg.today === "none" ? "selected" : ""}>Nothing</option></select></label>
           <label ${dlg.today === "list" ? "" : "hidden"}><select id="m-todaylist">
@@ -1863,18 +1898,20 @@ class SkylightPanel extends HTMLElement {
     const defaultCal = this.shadowRoot.getElementById("m-default")?.value || "";
     if (defaultCal && !calendars.includes(defaultCal)) calendars.push(defaultCal); // their default is one of theirs
     const prefixes = this.shadowRoot.getElementById("m-prefix").value.split(",").map((x) => x.trim()).filter(Boolean);
-    const today = this.shadowRoot.getElementById("m-today").value;
+    let today = this.shadowRoot.getElementById("m-today").value;
+    if (dlg.role === "adult" && today === "chores") today = "none";
     let todayList = this.shadowRoot.getElementById("m-todaylist")?.value || "";
+    let newList = null;
     if (today === "list" && (todayList === "__new__" || !todayList)) {
-      // Create a personal list, e.g. "Alex's To-Do"
-      const list = { id: uid(), name: `${name}'s To-Do`, color: dlg.color, items: [] };
-      await this._set("lists", [...(this.data.lists || []), list]);
-      todayList = list.id;
+      // Create a personal list, e.g. "Alex's To-Do" (owned by them if they're an adult)
+      newList = { id: uid(), name: `${name}'s To-Do`, color: dlg.color, items: [] };
+      todayList = newList.id;
     }
-    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes,
+    const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes, role: dlg.role,
       today, today_list: today === "list" ? todayList : "", default_calendar: defaultCal };
     const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
-    await this._set("members", members);
+    await this._set("members", members); // members first, so the server knows the new owner is an adult
+    if (newList) await this._set("lists", [...(this.data.lists || []), { ...newList, ...(dlg.role === "adult" ? { owner: rec.id } : {}) }]);
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
   }
 
@@ -1946,7 +1983,7 @@ class SkylightPanel extends HTMLElement {
           <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
           <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
         </div>
-        <label>Who<select id="c-member">${this.members.map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Who<select id="c-member">${kidsOf(this.members).map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
         <label>Repeats<select id="c-repeat" data-change="chore-repeat">
           <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
           <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days</option>
@@ -2412,7 +2449,7 @@ class SkylightPanel extends HTMLElement {
     return (this.data.linked_todos || []).filter((e) => this._hass.states[e]).map((e, i) => {
       this._subscribeTodo(e);
       return {
-        id: `todo:${e}`, linked: true, name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
+        id: `todo:${e}`, linked: true, entity: e, owner: (this.data.todo_owners || {})[e], name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
         items: (this.todoItems[e] || []).map((t) => ({ id: t.uid, text: t.summary, done: t.status === "completed" })),
       };
     });
@@ -2483,6 +2520,7 @@ class SkylightPanel extends HTMLElement {
       html: () => `
         <h2>${l ? "Edit" : "New"} list</h2>
         <label>Name<input id="l-name" value="${esc(l?.name)}" autofocus placeholder="Packing list"></label>
+        <label>Whose list<select id="l-owner"><option value="">👪 Shared</option>${adultsOf(this.members).map((m) => `<option value="${m.id}" ${l?.owner === m.id ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
         <div class="label">Color</div>
         <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
         <div class="actions">
@@ -2498,7 +2536,9 @@ class SkylightPanel extends HTMLElement {
     const dlg = this.ui.dialog;
     const name = this.shadowRoot.getElementById("l-name").value.trim();
     if (!name) return;
+    const owner = this.shadowRoot.getElementById("l-owner")?.value || "";
     const rec = { ...(dlg.list || { id: uid(), items: [] }), name, color: dlg.color };
+    if (owner) rec.owner = owner; else delete rec.owner;
     const lists = dlg.list ? this.data.lists.map((x) => (x.id === rec.id ? rec : x)) : [...this.data.lists, rec];
     await this._set("lists", lists); this.ui.list = rec.id; this.closeDialog(); this.render();
   }
@@ -3174,6 +3214,7 @@ class SkylightPanel extends HTMLElement {
     const chores = ordered.map((m) => {
       if (m.today === "none") return "";
       if (m.today === "list") return this.renderHomeList(m, lists.find((l) => l.id === m.today_list));
+      if (m.role !== "kid") return ""; // chores are for kids only
       const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
       const done = list.filter((c) => choreDone(c, today)).length;
       if (!list.length) { free.push(m); return ""; } // summarized in one line below
@@ -3247,7 +3288,7 @@ class SkylightPanel extends HTMLElement {
 
   // Progress: last 4 weeks of chore completion per person with chores (read-only).
   renderProgress() {
-    const people = this.members.filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
+    const people = kidsOf(this.members).filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
     if (!people.length) return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
     const thisWeek = this.weekStart(new Date());
     const weeks = [3, 2, 1, 0].map((k) => addDays(thisWeek, -7 * k));
@@ -3267,8 +3308,9 @@ class SkylightPanel extends HTMLElement {
   renderChores() {
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
-    if (!this.members.length) return `<div class="empty"><h2>No family members yet</h2><button class="primary" data-action="tab" data-tab="settings">Add family in Settings</button></div>`;
-    const cols = this.members.map((m) => {
+    const kids = kidsOf(this.members);
+    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids. Mark someone as a Kid in Settings → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    const cols = kids.map((m) => {
       const chores = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, day));
       const done = chores.filter((c) => choreDone(c, day)).length;
       const pct = chores.length ? done / chores.length : 0;
@@ -3388,12 +3430,16 @@ class SkylightPanel extends HTMLElement {
     if (!this.ui.list || !lists.find((l) => l.id === this.ui.list)) this.ui.list = lists[0]?.id || null;
     const cur = lists.find((l) => l.id === this.ui.list);
     return `<div class="lists">
-      <aside>${lists.map((l) => `<button class="lname ${l.id === this.ui.list ? "on" : ""}" style="--c:${l.color}" data-action="pick-list" data-list="${l.id}">
-        <span class="dot"></span>${l.linked ? "🔗 " : ""}${esc(l.name)}<span class="count">${l.items.filter((i) => !i.done).length}</span></button>`).join("")}
+      <aside>${groupLists(lists, this.members).map((g) => `
+        <div class="lgroup" ${g.owner ? `style="--oc:${g.owner.color}"` : ""}>${g.owner ? `<span class="av sm" style="background:${g.owner.color}">${g.owner.avatar}</span>${esc(g.owner.name)}` : "👪 Shared"}</div>
+        ${g.lists.map((l) => `<button class="lname ${l.id === this.ui.list ? "on" : ""}" style="--c:${l.color}" data-action="pick-list" data-list="${l.id}">
+        <span class="dot"></span>${l.linked ? "🔗 " : ""}${esc(l.name)}<span class="count">${l.items.filter((i) => !i.done).length}</span></button>`).join("")}`).join("")}
         <button class="add wide" data-action="new-list">+ New list</button></aside>
       <section>${cur ? `
         <div class="toolbar"><div class="nav"><h1 style="color:${cur.color}">${esc(cur.name)}</h1></div>
-          <div><button data-action="clear-done">Clear completed</button> ${cur.linked ? "" : `<button data-action="edit-list" data-list="${cur.id}">Edit</button>`}</div></div>
+          <div><button data-action="clear-done">Clear completed</button> ${cur.linked
+            ? `<select class="ownerpick" data-change="todo-owner" data-entity="${esc(cur.entity)}" aria-label="Whose list"><option value="">👪 Shared</option>${adultsOf(this.members).map((m) => `<option value="${m.id}" ${cur.owner === m.id ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select>`
+            : `<button data-action="edit-list" data-list="${cur.id}">Edit</button>`}</div></div>
         <div class="additem"><input id="newitem" data-fresh="1" placeholder="Add an item…" data-enter="add-item"><button class="primary" data-action="add-item">Add</button></div>
         <div class="items">${[...cur.items.filter((i) => !i.done), ...cur.items.filter((i) => i.done)].map((i) => `
           <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}">
@@ -3473,12 +3519,13 @@ class SkylightPanel extends HTMLElement {
     const fam = new Set(this.data.family_calendars || []);
     return `<div class="settings">
       ${this.pinSet ? "" : `<div class="pinbanner">🔒 <b>Set a settings PIN</b> so kids can use the display without changing its setup. <button class="primary" data-action="pin-setup">Set PIN</button></div>`}
+      ${this.settings.roles_review ? `<div class="pinbanner">🧒 <b>Check each person's Adult/Kid setting.</b> People with chores were set to Kid, everyone else to Adult. <button class="primary" data-action="roles-reviewed">Looks right</button></div>` : ""}
       ${this.renderPinCard()}
       <section class="card">
         <div class="toolbar"><h2>Family members</h2><button class="primary" data-action="new-member">+ Add member</button></div>
         ${this.members.map((m, i) => `<div class="mrow2">
           <span class="av big" style="background:${m.color}">${m.avatar}</span>
-          <div class="grow"><b>${esc(m.name)}</b><small>${[...(m.prefixes || []).map((p) => `“${esc(p)}…”`), ...(m.calendars || []).map((c) => esc(this.calName(c)))].join(", ") || "No calendars"}</small></div>
+          <div class="grow"><b>${esc(m.name)} <span class="rolebadge">${m.role === "kid" ? "🧒 Kid" : "🧑 Adult"}</span></b><small>${[...(m.prefixes || []).map((p) => `“${esc(p)}…”`), ...(m.calendars || []).map((c) => esc(this.calName(c)))].join(", ") || "No calendars"}</small></div>
           <button class="icon sm" data-action="member-up" data-member="${m.id}" ${i === 0 ? "disabled" : ""}>↑</button>
           <button class="icon sm" data-action="member-down" data-member="${m.id}" ${i === this.members.length - 1 ? "disabled" : ""}>↓</button>
           <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar and chores.</p>`}
@@ -3954,6 +4001,14 @@ label.check input { width:22px; height:22px; }
   .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
   .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
 }
+.rolepick { width:fit-content; }
+.rolewarn { background:#fff4e0; color:#6b4300; border-radius:12px; padding:10px 12px; margin:8px 0; font-weight:600; }
+.rolewarn .row { margin-top:8px; align-items:center; }
+.rolebadge { display:inline-block; font-size:12px; font-weight:700; color:var(--muted); background:var(--bg); border-radius:999px; padding:2px 8px; margin-left:4px; }
+.lgroup { display:flex; align-items:center; gap:6px; margin:12px 4px 4px; font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--oc, var(--muted)); }
+.lgroup:first-child { margin-top:0; }
+.lgroup .av.sm { width:22px; height:22px; font-size:13px; }
+.ownerpick { width:auto; }
 .pinbanner { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-radius:16px; background:#fff4e0; color:#6b4300; margin-bottom:12px; }
 .pinbanner .primary { margin-left:auto; }
 .lockmark { font-style:normal; font-size:.9em; }

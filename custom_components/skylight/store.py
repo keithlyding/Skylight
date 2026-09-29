@@ -16,6 +16,7 @@ from . import chores, security
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
+ROLES = ("adult", "kid")
 
 
 def migrate(data: dict[str, Any]) -> bool:
@@ -34,7 +35,37 @@ def migrate(data: dict[str, Any]) -> bool:
         _LOGGER.info("Skylight: removed stars and rewards (%s; star values on %d chores). Chore history is kept.",
                      ", ".join(removed) or "no top-level keys", star_fields)
         changed = True
+    # v1.29: every member is an adult or a kid. Guess from chores; the user confirms in Settings.
+    members = data.get("members", [])
+    if any(m.get("role") not in ROLES for m in members):
+        with_chores = {c.get("member_id") for c in data.get("chores", [])}
+        for m in members:
+            if m.get("role") not in ROLES:
+                m["role"] = "kid" if m.get("id") in with_chores else "adult"
+        data.setdefault("settings", {})["roles_review"] = True
+        _LOGGER.info("Skylight: set Adult/Kid for %d members from their chores; please check in Settings.", len(members))
+        changed = True
     return changed
+
+
+def clean_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every member gets a valid role (new members default to adult)."""
+    return [{**m, "role": m.get("role") if m.get("role") in ROLES else "adult"} for m in members]
+
+
+def adult_ids(data: dict[str, Any]) -> set[str]:
+    return {m["id"] for m in data.get("members", []) if m.get("role") == "adult"}
+
+
+def clean_list_owners(lists: list[dict[str, Any]], adults: set[str]) -> list[dict[str, Any]]:
+    """Only adults can own a list; anything else becomes Shared (no owner)."""
+    out = []
+    for lst in lists:
+        lst = dict(lst)
+        if lst.get("owner") not in adults:
+            lst.pop("owner", None)
+        out.append(lst)
+    return out
 
 
 class SkylightStore:
@@ -105,7 +136,19 @@ class SkylightStore:
         async with self._lock:
             if key == "settings":
                 value = {**self.data["settings"], **value}
+            elif key == "members":
+                value = clean_members(value)
+            elif key == "lists":
+                value = clean_list_owners(value, adult_ids(self.data))
+            elif key == "todo_owners":
+                adults = adult_ids(self.data)
+                value = {e: o for e, o in value.items() if isinstance(e, str) and o in adults}
             self.data[key] = value
+            if key == "members":
+                # A person who is no longer an adult can't own lists.
+                adults = adult_ids(self.data)
+                self.data["lists"] = clean_list_owners(self.data["lists"], adults)
+                self.data["todo_owners"] = {e: o for e, o in self.data.get("todo_owners", {}).items() if o in adults}
             self._changed()
 
     async def async_toggle_chore(self, chore_id: str, on: date) -> bool:
