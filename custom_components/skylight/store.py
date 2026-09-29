@@ -48,9 +48,59 @@ def migrate(data: dict[str, Any]) -> bool:
     return changed
 
 
+OCCASION_TYPES = ("birthday", "anniversary", "other")
+DAYS_IN_MONTH = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)  # Feb 29 allowed (shown Feb 28 in other years)
+
+
+def clean_date(value: Any) -> dict[str, int] | None:
+    """{"month", "day", "year"?} if it's a real calendar day, else None."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        month, day = int(value["month"]), int(value["day"])
+        year = int(value["year"]) if value.get("year") not in (None, "") else None
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not 1 <= month <= 12 or not 1 <= day <= DAYS_IN_MONTH[month - 1]:
+        return None
+    if year is not None and not 1900 <= year <= 2200:
+        year = None
+    if year is not None and month == 2 and day == 29 and not (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)):
+        return None
+    return {"month": month, "day": day, **({"year": year} if year is not None else {})}
+
+
 def clean_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Every member gets a valid role (new members default to adult)."""
-    return [{**m, "role": m.get("role") if m.get("role") in ROLES else "adult"} for m in members]
+    """Every member gets a valid role (new members default to adult) and a valid or no birthday."""
+    out = []
+    for m in members:
+        m = {**m, "role": m.get("role") if m.get("role") in ROLES else "adult"}
+        bday = clean_date(m.get("birthday"))
+        if bday:
+            m["birthday"] = bday
+        else:
+            m.pop("birthday", None)
+        out.append(m)
+    return out
+
+
+def clean_occasions(occasions: list[Any], member_ids: set[str]) -> list[dict[str, Any]]:
+    out = []
+    for o in occasions:
+        if not isinstance(o, dict) or not str(o.get("title", "")).strip() or not o.get("id"):
+            continue
+        when = clean_date(o)
+        if not when:
+            continue
+        rec = {"id": str(o["id"]), "title": str(o["title"]).strip()[:80],
+               "type": o.get("type") if o.get("type") in OCCASION_TYPES else "other", **when}
+        members = [m for m in o.get("members") or [] if m in member_ids]
+        if members:
+            rec["members"] = members
+        if o.get("emoji"):
+            rec["emoji"] = str(o["emoji"])[:8]
+        out.append(rec)
+    return out
 
 
 def adult_ids(data: dict[str, Any]) -> set[str]:
@@ -144,6 +194,8 @@ class SkylightStore:
                 value = clean_members(value)
             elif key == "lists":
                 value = clean_list_owners(value, adult_ids(self.data))
+            elif key == "occasions":
+                value = clean_occasions(value, {m["id"] for m in self.data["members"]})
             elif key == "todo_owners":
                 adults = adult_ids(self.data)
                 value = {e: o for e, o in value.items() if isinstance(e, str) and o in adults}

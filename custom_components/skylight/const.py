@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.30.0"
+VERSION = "1.31.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -16,7 +16,7 @@ PANEL_ELEMENT = "skylight-panel"
 
 # Top-level keys the frontend may replace wholesale via skylight/set.
 EDITABLE_KEYS = (
-    "members", "chores", "meals", "todo_owners", "lists", "settings", "family_calendars", "meal_calendars", "linked_todos", "info_calendars",
+    "members", "chores", "meals", "todo_owners", "occasions", "lists", "settings", "family_calendars", "meal_calendars", "linked_todos", "info_calendars",
 )
 
 DEFAULT_DATA = {
@@ -37,6 +37,9 @@ DEFAULT_DATA = {
     "linked_todos": [],
     # Owner (an adult member id) for linked HA to-do lists: {entity_id: member_id}. Missing = Shared.
     "todo_owners": {},
+    # Birthdays of people who aren't members, anniversaries, other yearly dates:
+    # [{"id", "title", "type": "birthday"|"anniversary"|"other", "month", "day", "year"?, "members"?: [ids], "emoji"?}]
+    "occasions": [],
     # api_key is never sent to the browser (see SkylightStore.public).
     "immich": {"url": "", "api_key": "", "albums": [], "favorites": False},
     # Optional Google Places key for location lookup (never sent to the browser).
@@ -58,5 +61,8 @@ DEFAULT_DATA = {
         "unlock_minutes": 5,
         # Set by the v1.29 migration; the Settings banner asks to check Adult/Kid until dismissed.
         "roles_review": False,
+        # Today screen "Upcoming" card: how many occasions, and how far ahead (days).
+        "upcoming_count": 3,
+        "upcoming_days": 60,
     },
 }

@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.30.0";
+const PANEL_VERSION = "1.31.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -212,6 +212,51 @@ const localIso = (d) => {
   return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:00${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
 };
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+// ---------- birthdays, anniversaries and other yearly dates ----------
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const OCCASION_EMOJI = { birthday: "🎂", anniversary: "💍", other: "📅" };
+const isLeap = (y) => y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+// The day a yearly date falls on in `year`; Feb 29 shows on Feb 28 in other years.
+const occasionDay = (o, year) => new Date(year, o.month - 1, o.month === 2 && o.day === 29 && !isLeap(year) ? 28 : o.day);
+// Next time it happens, today included.
+const nextOccasion = (o, from) => {
+  const f = startOfDay(from);
+  const d = occasionDay(o, f.getFullYear());
+  return d < f ? occasionDay(o, f.getFullYear() + 1) : d;
+};
+const daysBetween = (a, b) => Math.round((startOfDay(b) - startOfDay(a)) / 86400000); // DST-safe
+// Members' birthdays plus stored occasions, as one list of yearly dates.
+const allOccasions = (members, occasions, familyColor) => {
+  const byId = Object.fromEntries((members || []).map((m) => [m.id, m]));
+  const out = [];
+  for (const m of members || []) {
+    if (m.birthday?.month && m.birthday?.day) {
+      out.push({ key: `m:${m.id}`, title: `${m.name}'s birthday`, type: "birthday", emoji: "🎂", ...m.birthday, color: m.color, member: m.id });
+    }
+  }
+  for (const o of occasions || []) {
+    const first = (o.members || []).map((id) => byId[id]).find(Boolean);
+    out.push({ key: `o:${o.id}`, id: o.id, title: o.title, type: o.type || "other", emoji: o.emoji || OCCASION_EMOJI[o.type] || "📅",
+      month: o.month, day: o.day, year: o.year, color: first ? first.color : familyColor, members: o.members || [] });
+  }
+  return out;
+};
+// The next `count` occasions within `days` days of `today`: [{...occasion, date, days, years}].
+const upcomingOccasions = (list, today, days = 60, count = 3) => list
+  .map((o) => {
+    const date = nextOccasion(o, today);
+    return { ...o, date, days: daysBetween(today, date), years: o.year ? date.getFullYear() - o.year : null };
+  })
+  .filter((o) => o.days <= days && (o.years === null || o.years >= 0))
+  .sort((a, b) => a.days - b.days || a.title.localeCompare(b.title))
+  .slice(0, count);
+// "🎂 Mom's birthday — 12 days (turning 38)"
+const occasionText = (u) => {
+  const when = u.days === 0 ? "Today! 🎉" : u.days === 1 ? "tomorrow" : `${u.days} days`;
+  const extra = u.years === null ? "" : u.type === "birthday" ? ` (${u.days === 0 ? "turns" : "turning"} ${u.years})` : ` (${u.years} year${u.years === 1 ? "" : "s"})`;
+  return `${u.emoji} ${u.title} — ${when}${extra}`;
+};
+
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // ---------- chore rules (mirror of chores.py) ----------
@@ -652,9 +697,37 @@ class SkylightPanel extends HTMLElement {
     return this.visibleEvents().filter((e) => e.start < de && e.end > ds)
       .sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
   }
+  // Birthdays/anniversaries as all-day markers for the dates on screen. Memoized so the same
+  // objects come back (event buttons are found again by identity).
+  occasionEvents() {
+    const [from, to] = this._range();
+    const key = `${ymd(from)}|${ymd(to)}`;
+    if (this._occCache?.data === this.data && this._occCache.key === key) return this._occCache.evs;
+    const evs = [];
+    for (const o of allOccasions(this.members, this.data.occasions, this.settings.family_color || "#ff9f43")) {
+      for (let y = from.getFullYear(); y <= to.getFullYear(); y++) {
+        const d = occasionDay(o, y);
+        if (d < startOfDay(from) || d >= to) continue;
+        const years = o.year ? y - o.year : null;
+        if (years !== null && years < 0) continue;
+        evs.push({ occasion: true, info: true, allDay: true, start: d, end: addDays(d, 1), members: [], member: null,
+          summary: `${o.title}${years === null ? "" : o.type === "birthday" ? ` (${years})` : ` (${years} yr${years === 1 ? "" : "s"})`}`,
+          raw: o.title, avatar: o.emoji, color: o.color, on: textOn(o.color), stripes: "", description: "", location: "", entity: null });
+      }
+    }
+    this._occCache = { data: this.data, key, evs };
+    return evs;
+  }
   visibleEvents() {
     let evs = this.events;
-    if (this.ui.tab === "home" && this.settings.info_on_today === false) evs = evs.filter((e) => !e.info);
+    const occ = this.occasionEvents();
+    if (occ.length) {
+      if (this._occMerged?.events !== this.events || this._occMerged.occ !== occ) {
+        this._occMerged = { events: this.events, occ, all: [...occ, ...this.events].sort((a, b) => a.start - b.start) };
+      }
+      evs = this._occMerged.all;
+    }
+    if (this.ui.tab === "home" && this.settings.info_on_today === false) evs = evs.filter((e) => !e.info || e.occasion);
     if (!this.ui.filter) return evs;
     return evs.filter((e) => e.info || (e.members || []).includes(this.ui.filter));
   }
@@ -1008,7 +1081,11 @@ class SkylightPanel extends HTMLElement {
         if (d.days === "agenda") this.homeAgenda = true;
         else { this.homeAgenda = false; this.homeDays = Number(d.days); }
         this.render(); this._loadEvents(); break;
-      case "open-event": this.openEventDialog(this.visibleEvents()[Number(d.idx)]); break;
+      case "open-event": {
+        const ev = this.visibleEvents()[Number(d.idx)];
+        if (ev?.occasion) { this._toast("Birthdays and anniversaries are changed in Settings → Birthdays & anniversaries"); break; }
+        this.openEventDialog(ev); break;
+      }
       case "save-event": await this.saveEvent(); break;
       case "delete-event": await this.deleteEvent(); break;
       case "scope": this._resolveScope(d.scope === "cancel" ? null : d.scope); break;
@@ -1026,6 +1103,11 @@ class SkylightPanel extends HTMLElement {
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
       case "icon-open": this.ui.dialog.iconOpen = !this.ui.dialog.iconOpen; this.renderDialog(); break;
       case "icon-pick": this.ui.dialog.icon = d.icon; this.ui.dialog.iconOpen = false; this.renderDialog(); break;
+      case "new-occasion": this.openOccasionDialog(); break;
+      case "edit-occasion": this.openOccasionDialog((D.occasions || []).find((o) => o.id === d.id)); break;
+      case "occ-kind": this.ui.dialog.kind = d.kind; this.renderDialog(); break;
+      case "save-occasion": await this.saveOccasion(); break;
+      case "delete-occasion": if (confirm(`Delete "${this.ui.dialog.occasion.title}"?`)) { await this._set("occasions", (D.occasions || []).filter((o) => o.id !== this.ui.dialog.occasion.id)); this.closeDialog(); } break;
       case "member-role": this.ui.dialog.role = d.role; if (d.role === "adult" && this.ui.dialog.today === "chores") this.ui.dialog.today = "none"; this.renderDialog(); break;
       case "move-chores": {
         const m = this.ui.dialog.member, to = this.shadowRoot.getElementById("m-movechores")?.value;
@@ -1865,6 +1947,8 @@ class SkylightPanel extends HTMLElement {
         <h2>${m ? "Edit" : "Add"} family member</h2>
         <div class="avatar-preview" style="background:${dlg.color}">${dlg.avatar}</div>
         <label>Name<input id="m-name" value="${esc(m?.name)}" autofocus placeholder="Name"></label>
+        <div class="label">Birthday <small class="hint">(optional; year optional too)</small></div>
+        ${this._dateFields("m-bday", m?.birthday)}
         <div class="label">This person is</div>
         <div class="seg rolepick"><button class="${dlg.role === "adult" ? "on" : ""}" data-action="member-role" data-role="adult">🧑 Adult</button><button class="${dlg.role === "kid" ? "on" : ""}" data-action="member-role" data-role="kid">🧒 Kid</button></div>
         <p class="hint" style="margin-top:4px">Kids get chores and show on the Chores and Progress tabs. Adults can own lists (like a honey-do list).</p>
@@ -1922,6 +2006,8 @@ class SkylightPanel extends HTMLElement {
     const dlg = this.ui.dialog;
     const name = this.shadowRoot.getElementById("m-name").value.trim();
     if (!name) { this._toast("Please enter a name"); return; }
+    const bday = this._readDate("m-bday");
+    if (bday.error) { this._toast(`Birthday: ${bday.error}`); return; }
     const calendars = [...this.shadowRoot.querySelectorAll(".m-cal:checked")].map((i) => i.value);
     const defaultCal = this.shadowRoot.getElementById("m-default")?.value || "";
     if (defaultCal && !calendars.includes(defaultCal)) calendars.push(defaultCal); // their default is one of theirs
@@ -1936,7 +2022,7 @@ class SkylightPanel extends HTMLElement {
       todayList = newList.id;
     }
     const rec = { id: dlg.member?.id || uid(), name, color: dlg.color, avatar: dlg.avatar, calendars, prefixes, role: dlg.role,
-      today, today_list: today === "list" ? todayList : "", default_calendar: defaultCal };
+      today, today_list: today === "list" ? todayList : "", default_calendar: defaultCal, ...(bday.none ? {} : { birthday: bday }) };
     const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
     await this._set("members", members); // members first, so the server knows the new owner is an adult
     if (newList) await this._set("lists", [...(this.data.lists || []), { ...newList, ...(dlg.role === "adult" ? { owner: rec.id } : {}) }]);
@@ -2220,6 +2306,77 @@ class SkylightPanel extends HTMLElement {
   }
   _refreshRecipeViews() {
     if (this.cook?.r) this.renderCook();
+  }
+
+  // ---------- Today screen: upcoming birthdays and anniversaries ----------
+  renderUpcoming() {
+    const list = upcomingOccasions(allOccasions(this.members, this.data.occasions, this.settings.family_color || "#ff9f43"),
+      new Date(), Number(this.settings.upcoming_days ?? 60), Number(this.settings.upcoming_count ?? 3));
+    if (!list.length) return "";
+    return `<div class="upcoming"><div class="uhead">Upcoming</div>${list.map((u) => `
+      <div class="urow ${u.days === 0 ? "today" : ""}" style="--c:${u.color}"><span class="uemoji">${u.emoji}</span>
+        <span class="utext"><b>${esc(u.title)}</b><small>${esc(occasionText(u).split(" — ")[1] || "")}</small></span></div>`).join("")}</div>`;
+  }
+
+  // ---------- Settings: birthdays & anniversaries ----------
+  _dateFields(prefix, v) {
+    return `<div class="row datefields">
+      <label>Month<select id="${prefix}-month"><option value="">—</option>${MONTHS.map((n, i) => `<option value="${i + 1}" ${v?.month === i + 1 ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label>Day<input id="${prefix}-day" type="number" min="1" max="31" inputmode="numeric" value="${v?.day ?? ""}"></label>
+      <label>Year <small class="hint">(optional)</small><input id="${prefix}-year" type="number" min="1900" max="2200" inputmode="numeric" value="${v?.year ?? ""}" placeholder="e.g. 1988"></label></div>`;
+  }
+  _readDate(prefix) {
+    const $ = (id) => this.shadowRoot.getElementById(`${prefix}-${id}`);
+    const month = Number($("month")?.value), day = Number($("day")?.value), year = Number($("year")?.value);
+    if (!month && !day) return { none: true };
+    const max = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    if (!month || !day || day < 1 || day > max) return { error: "Pick a month and a day that exists in it" };
+    if (year && month === 2 && day === 29 && !isLeap(year)) return { error: `${year} wasn't a leap year` };
+    return { month, day, ...(year ? { year } : {}) };
+  }
+  renderOccasionsCard() {
+    const list = [...(this.data.occasions || [])].sort((a, b) => a.month - b.month || a.day - b.day);
+    const bdays = this.members.filter((m) => m.birthday);
+    return `<section class="card">
+      <div class="toolbar"><h2>Birthdays &amp; anniversaries</h2><button class="primary" data-action="new-occasion">+ Add</button></div>
+      <p class="hint">Family members' birthdays are set in each person's editor${bdays.length ? ` (${bdays.map((m) => esc(m.name)).join(", ")})` : ""}. Add grandparents' birthdays, anniversaries and other yearly dates here. They show on the Today screen and the calendar.</p>
+      ${list.map((o) => `<div class="mrow2"><span class="av big" style="background:var(--bg)">${esc(o.emoji || OCCASION_EMOJI[o.type] || "📅")}</span>
+        <div class="grow"><b>${esc(o.title)}</b><small>${MONTHS[o.month - 1]} ${o.day}${o.year ? `, ${o.year}` : ""}</small></div>
+        <button data-action="edit-occasion" data-id="${esc(o.id)}">Edit</button></div>`).join("") || `<p class="hint">Nothing added yet.</p>`}
+      <div class="row">
+        <label class="inline">Show on Today <input type="number" min="1" max="10" value="${Number(this.settings.upcoming_count ?? 3)}" data-change="setting" data-key="upcoming_count" data-num="1"></label>
+        <label class="inline">within (days) <input type="number" min="1" max="366" value="${Number(this.settings.upcoming_days ?? 60)}" data-change="setting" data-key="upcoming_days" data-num="1"></label></div>
+    </section>`;
+  }
+  openOccasionDialog(o) {
+    const dlg = {
+      type: "occasion", occasion: o, kind: o?.type || "birthday",
+      html: () => `
+        <h2>${o ? "Edit" : "Add"} ${dlg.kind === "anniversary" ? "anniversary" : dlg.kind === "birthday" ? "birthday" : "date"}</h2>
+        <div class="seg"><button class="${dlg.kind === "birthday" ? "on" : ""}" data-action="occ-kind" data-kind="birthday">🎂 Birthday</button><button class="${dlg.kind === "anniversary" ? "on" : ""}" data-action="occ-kind" data-kind="anniversary">💍 Anniversary</button><button class="${dlg.kind === "other" ? "on" : ""}" data-action="occ-kind" data-kind="other">📅 Other</button></div>
+        <label>Title<input id="o-title" value="${esc(o?.title || "")}" placeholder="${dlg.kind === "anniversary" ? "Mom & Dad's anniversary" : dlg.kind === "birthday" ? "Grandma's birthday" : "Adoption day"}" autofocus></label>
+        ${this._dateFields("o", o)}
+        <p class="hint" style="margin-top:-4px">With a year, Skylight shows the age or number of years.</p>
+        <label>Emoji <small class="hint">(optional)</small><input id="o-emoji" value="${esc(o?.emoji || "")}" maxlength="8" placeholder="${OCCASION_EMOJI[dlg.kind]}"></label>
+        <div class="label">Whose ${dlg.kind === "birthday" ? "family is it (color)" : "is it"} <small class="hint">(optional)</small></div>
+        <div class="checklist">${this.members.map((m) => `<label class="check"><input type="checkbox" class="o-mem" value="${m.id}" ${(o?.members || []).includes(m.id) ? "checked" : ""}> ${m.avatar} ${esc(m.name)}</label>`).join("")}</div>
+        <div class="actions">
+          ${o ? `<button class="danger" data-action="delete-occasion">Delete</button>` : ""}
+          <span class="spacer"></span><button data-action="close">Cancel</button><button class="primary" data-action="save-occasion">Save</button></div>`,
+    };
+    this._openDialog(dlg);
+  }
+  async saveOccasion() {
+    const dlg = this.ui.dialog;
+    const title = this.shadowRoot.getElementById("o-title").value.trim();
+    if (!title) { this._toast("Please add a title"); return; }
+    const when = this._readDate("o");
+    if (when.none || when.error) { this._toast(when.error || "Pick a month and day"); return; }
+    const emoji = this.shadowRoot.getElementById("o-emoji").value.trim();
+    const members = [...this.shadowRoot.querySelectorAll(".o-mem:checked")].map((i) => i.value);
+    const rec = { id: dlg.occasion?.id || uid(), title, type: dlg.kind, ...when, ...(members.length ? { members } : {}), ...(emoji ? { emoji } : {}) };
+    const list = dlg.occasion ? (this.data.occasions || []).map((x) => (x.id === rec.id ? rec : x)) : [...(this.data.occasions || []), rec];
+    await this._set("occasions", list); this.closeDialog();
   }
 
   // ---------- Mealie: tonight's dinner on the Today screen ----------
@@ -3263,6 +3420,7 @@ class SkylightPanel extends HTMLElement {
       <aside class="hside">
         ${this.settings.weather_hints !== false ? this.renderHints(4) : ""}
         ${this.renderTonight()}
+        ${this.renderUpcoming()}
         ${chores ? `<div class="hcols">${chores}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
@@ -3569,6 +3727,8 @@ class SkylightPanel extends HTMLElement {
           <button class="icon sm" data-action="member-down" data-member="${m.id}" ${i === this.members.length - 1 ? "disabled" : ""}>↓</button>
           <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar and chores.</p>`}
       </section>
+
+      ${this.renderOccasionsCard()}
 
       <section class="card">
         <h2>Calendars</h2>
@@ -4040,6 +4200,16 @@ label.check input { width:22px; height:22px; }
   .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
   .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
 }
+.upcoming { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:10px; }
+.uhead { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:4px; }
+.urow { display:flex; align-items:center; gap:10px; padding:6px 4px; border-left:4px solid var(--c); padding-left:10px; margin:4px 0; border-radius:4px; }
+.urow .uemoji { font-size:24px; }
+.urow .utext { display:flex; flex-direction:column; } .urow small { color:var(--muted); font-weight:700; }
+.urow.today { background:color-mix(in srgb, var(--c) 22%, var(--card)); border-radius:12px; animation:uglow 2.4s ease-in-out infinite; }
+.urow.today small { color:var(--ink); }
+@keyframes uglow { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 35%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .urow.today { animation:none; } }
+.datefields label { flex:1 1 90px; }
 .imove { display:flex; gap:4px; flex:none; }
 .imove button { width:48px; height:44px; padding:0; font-size:18px; border-radius:12px; }
 .imove button:disabled { opacity:.3; }

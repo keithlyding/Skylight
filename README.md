@@ -110,6 +110,15 @@ Skylight → Settings → **Set a settings PIN** (4–8 digits, entered twice). 
 - The check happens on the Home Assistant server, not just on screen. The PIN is stored only as a salted hash and is never sent to any screen.
 - **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Skylight** → **Configure** and ticks *Remove the settings PIN*.
 
+## Birthdays and anniversaries
+
+- **Family members' birthdays:** in each person's editor (month and day; the year is optional).
+- **Everything else** (grandparents' birthdays, anniversaries, other yearly dates): Settings → **Birthdays & anniversaries**. Pick a type, a title, the date, an optional year and emoji, and optionally who it belongs to (for the color).
+- The **Today** screen shows an **Upcoming** card with the next 3 dates within 60 days (both adjustable), e.g. "🎂 Mom's birthday — 12 days (turning 38)" or "💍 Anniversary — 45 days (15 years)". On the day it says **Today! 🎉** and is highlighted. Ages and years only show when a year is set.
+- A **Feb 29** date shows on Feb 28 in years that aren't leap years.
+- The calendar shows them as all-day markers in every view, in the person's color (or the family color). Tapping one points you to Settings; they aren't calendar events and aren't written to any calendar.
+- Adding or changing them needs the settings PIN, like other setup.
+
 ## Adults and kids
 
 Every family member is an **Adult** or a **Kid** (Settings → family member → *This person is*).
@@ -126,7 +135,7 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 
 ## Where data lives
 
-- Family data (members, chores and their completion history, meals, lists, settings, settings-PIN hash): `config/.storage/skylight.data`. This is included in HA backups.
+- Family data (members and their birthdays, birthdays & anniversaries, chores and their completion history, meals, lists, settings, settings-PIN hash): `config/.storage/skylight.data`. This is included in HA backups.
 - Photos: `config/skylight_photos/`, also included in backups.
 - Calendar events: in the calendar integrations themselves.
 
@@ -145,7 +154,7 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 67 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 73 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
