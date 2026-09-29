@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from . import security
 from .const import DOMAIN
 
 MEALIE = "mealie"
@@ -415,6 +416,7 @@ async def ws_cook(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     {vol.Required("type"): "skylight/mealie/delete_recipe", vol.Required("recipe"): str}
 )
 @websocket_api.async_response
+@security.gated
 @_wrap
 async def ws_delete_recipe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Permanently delete a recipe from Mealie."""

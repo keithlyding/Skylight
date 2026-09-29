@@ -100,8 +100,9 @@ async def test_photo_upload_and_delete(hass: HomeAssistant, setup, hass_client, 
     name = (await resp.json())["name"]
     assert (tmp_path / "skylight_photos" / name).exists()
 
-    served = await http.get(f"/skylight_photos/{name}")
-    assert served.status == 200
+    served = await http.get(f"/api/skylight/photo_file/{name}")  # logged-in client
+    assert served.status == 200 and await served.read() == b"\xff\xd8fakejpeg"
+    assert (await http.get(f"/skylight_photos/{name}")).status == 404  # old public path is gone
 
     bad = aiohttp.FormData()
     bad.add_field("file", b"x", filename="evil.exe")

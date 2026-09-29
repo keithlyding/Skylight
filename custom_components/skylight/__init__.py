@@ -10,17 +10,16 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from . import mealie, places, weather_alerts, weather_extra, websocket_api
+from . import mealie, places, security, weather_alerts, weather_extra, websocket_api
 from .const import (
     DOMAIN,
     PANEL_ELEMENT,
     PANEL_PATH,
     URL_FRONTEND,
-    URL_PHOTOS,
     VERSION,
 )
 from .immich import SkylightImmichView
-from .photos import SkylightPhotoUploadView, photo_dir
+from .photos import SkylightPhotoFileView, SkylightPhotoUploadView, photo_dir
 from .store import SkylightStore
 
 PANEL_JS = pathlib.Path(__file__).parent / "frontend" / "skylight-panel.js"
@@ -42,13 +41,14 @@ async def _async_register_once(hass: HomeAssistant) -> None:
             StaticPathConfig(
                 URL_FRONTEND, str(pathlib.Path(__file__).parent / "frontend"), False
             ),
-            # Photo names are random 24-hex tokens, so they are unguessable.
-            StaticPathConfig(URL_PHOTOS, str(photo_dir(hass)), True),
+            # Uploaded photos are NOT a static path: SkylightPhotoFileView serves them with login.
         ]
     )
     hass.http.register_view(SkylightPhotoUploadView())
+    hass.http.register_view(SkylightPhotoFileView())
     hass.http.register_view(SkylightImmichView())
     websocket_api.async_register(hass)
+    security.async_register(hass)
     mealie.async_register(hass)
     places.async_register(hass)
     weather_alerts.async_register(hass)

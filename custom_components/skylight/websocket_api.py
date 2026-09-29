@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED
-from . import immich, photos
+from . import immich, photos, security
 from .photos import async_delete_photo
 
 
@@ -70,6 +70,9 @@ def ws_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 )
 @websocket_api.async_response
 async def ws_set(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    if msg["key"] in security.GATED_KEYS and not security.is_unlocked(hass, connection):
+        security.send_locked(connection, msg["id"])
+        return
     await _store(hass).async_set(msg["key"], msg["value"])
     connection.send_result(msg["id"])
 
@@ -125,6 +128,7 @@ async def ws_redeem(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
     {vol.Required("type"): "skylight/photo/delete", vol.Required("name"): str}
 )
 @websocket_api.async_response
+@security.gated
 async def ws_delete_photo(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     await async_delete_photo(hass, msg["name"])
     connection.send_result(msg["id"])
@@ -134,6 +138,7 @@ async def ws_delete_photo(hass: HomeAssistant, connection, msg: dict[str, Any]) 
     {vol.Required("type"): "skylight/calendar/create", vol.Required("name"): str}
 )
 @websocket_api.async_response
+@security.gated
 async def ws_create_calendar(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Create a Local Calendar so non-admin tablet users can add calendars."""
     name = msg["name"].strip()
@@ -165,6 +170,7 @@ async def ws_create_calendar(hass: HomeAssistant, connection, msg: dict[str, Any
     }
 )
 @websocket_api.async_response
+@security.gated
 async def ws_subscribe_calendar(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Subscribe to an iCal feed (Plan to Eat, school, sports...) via Remote Calendar."""
     name, url = msg["name"].strip(), msg["url"].strip()
@@ -191,7 +197,10 @@ async def ws_subscribe_calendar(hass: HomeAssistant, connection, msg: dict[str, 
 async def ws_photo_urls(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """All slideshow URLs: uploaded photos plus signed Immich proxy URLs."""
     store = _store(hass)
-    items = [{"url": f"/skylight_photos/{p}", **await photos.async_photo_meta(hass, p)} for p in store.data["photos"]]
+    items = [
+        {"url": photos.signed_photo_url(hass, p, connection.refresh_token_id), "name": p, **await photos.async_photo_meta(hass, p)}
+        for p in store.data["photos"]
+    ]
     error = None
     try:
         items += await immich.async_signed_items(hass, store, connection.refresh_token_id)
@@ -210,6 +219,10 @@ async def ws_photo_urls(hass: HomeAssistant, connection, msg: dict[str, Any]) ->
 )
 @websocket_api.async_response
 async def ws_immich_albums(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Listing the saved server's albums is harmless; trying a new URL/key is configuration.
+    if (msg.get("url") or msg.get("api_key")) and not security.is_unlocked(hass, connection):
+        security.send_locked(connection, msg["id"])
+        return
     cfg = _store(hass).data["immich"]
     url = (msg.get("url") or cfg["url"]).rstrip("/")
     key = msg.get("api_key") or cfg["api_key"]
@@ -231,6 +244,7 @@ async def ws_immich_albums(hass: HomeAssistant, connection, msg: dict[str, Any])
     }
 )
 @websocket_api.async_response
+@security.gated
 async def ws_immich_configure(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     store = _store(hass)
     await store.async_set_immich(msg["url"], msg.get("api_key") or None, msg["albums"], msg["favorites"])

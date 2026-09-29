@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import secrets
 from datetime import date
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
-from . import chores
+from . import chores, security
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
 
 
@@ -31,15 +32,28 @@ class SkylightStore:
                     stored[key] = copy.deepcopy(default)
             stored["settings"] = {**DEFAULT_DATA["settings"], **stored["settings"]}
             self.data = stored
+        if not self.data["security"].get("salt"):
+            # New install or upgrade from before the settings PIN: make the per-install salt.
+            self.data["security"] = {"salt": secrets.token_hex(16), "pin_hash": ""}
+            self._store.async_delay_save(lambda: self.data, 1)
 
     def public(self) -> dict[str, Any]:
-        """Data safe to send to any logged-in user (no Immich API key)."""
+        """Data safe to send to any logged-in user (no API keys, no PIN hash or salt)."""
         data = dict(self.data)
+        data["security"] = {"pin_set": bool(data["security"].get("pin_hash"))}
         immich = dict(data["immich"])
         immich["has_key"] = bool(immich.pop("api_key", ""))
         data["immich"] = immich
         data["places"] = {"has_google_key": bool(data["places"].get("google_key"))}
         return data
+
+    async def async_set_pin(self, pin: str | None) -> None:
+        """Store a new PIN hash, or clear the PIN with None."""
+        salt = self.data["security"]["salt"]
+        digest = await self.hass.async_add_executor_job(security.hash_pin, pin, salt) if pin else ""
+        async with self._lock:
+            self.data["security"] = {"salt": salt, "pin_hash": digest}
+            self._changed()
 
     async def async_set_places_key(self, key: str) -> None:
         async with self._lock:

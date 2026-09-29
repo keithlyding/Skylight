@@ -6,14 +6,17 @@ import pathlib
 import re
 import secrets
 
+from datetime import timedelta
+
 import aiohttp
 from aiohttp import web
 
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.http.auth import async_sign_path
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, PHOTO_DIR, VERSION
+from .const import DOMAIN, PHOTO_DIR, URL_PHOTO_FILE, VERSION
 from .immich import place_name
 
 ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic"}
@@ -33,6 +36,8 @@ class SkylightPhotoUploadView(HomeAssistantView):
 
     async def post(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
+        if hass.data[DOMAIN]["store"].data["settings"].get("allow_uploads") is False:
+            return self.json_message("Photo uploads are turned off in Skylight settings", 403)
         reader = await request.multipart()
         field = await reader.next()
         if field is None or field.name != "file":
@@ -48,6 +53,30 @@ class SkylightPhotoUploadView(HomeAssistantView):
         await hass.async_add_executor_job(_write, target, bytes(content))
         await hass.data[DOMAIN]["store"].async_add_photo(name)
         return self.json({"name": name})
+
+
+def signed_photo_url(hass: HomeAssistant, name: str, refresh_token_id: str | None) -> str:
+    """A 24-hour signed URL for an uploaded photo (same expiry as the Immich proxy)."""
+    return async_sign_path(hass, f"{URL_PHOTO_FILE}/{name}", timedelta(hours=24), refresh_token_id=refresh_token_id)
+
+
+class SkylightPhotoFileView(HomeAssistantView):
+    """Serve an uploaded photo. Needs login (a signed URL counts); replaces the old public static path."""
+
+    url = URL_PHOTO_FILE + "/{name}"
+    name = "api:skylight:photo_file"
+    requires_auth = True
+
+    async def get(self, request: web.Request, name: str) -> web.StreamResponse:
+        hass: HomeAssistant = request.app["hass"]
+        store = hass.data.get(DOMAIN, {}).get("store")
+        # Only names Skylight itself stored, never arbitrary paths.
+        if store is None or not SAFE_NAME.match(name) or name not in store.data["photos"]:
+            return web.Response(status=404)
+        path = photo_dir(hass) / name
+        if not await hass.async_add_executor_job(path.is_file):
+            return web.Response(status=404)
+        return web.FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
 
 
 def _write(target: pathlib.Path, content: bytes) -> None:

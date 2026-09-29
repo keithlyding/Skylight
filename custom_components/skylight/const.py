@@ -1,7 +1,7 @@
 """Constants for the Skylight integration."""
 
 DOMAIN = "skylight"
-VERSION = "1.26.1"
+VERSION = "1.27.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -9,7 +9,7 @@ STORAGE_VERSION = 1
 EVENT_UPDATED = "skylight_updated"
 
 URL_FRONTEND = "/skylight_static"
-URL_PHOTOS = "/skylight_photos"
+URL_PHOTO_FILE = "/api/skylight/photo_file"
 PHOTO_DIR = "skylight_photos"
 PANEL_PATH = "skylight"
 PANEL_ELEMENT = "skylight-panel"
@@ -41,6 +41,8 @@ DEFAULT_DATA = {
     "immich": {"url": "", "api_key": "", "albums": [], "favorites": False},
     # Optional Google Places key for location lookup (never sent to the browser).
     "places": {"google_key": ""},
+    # Settings PIN: salt + PBKDF2 hash only. Never sent to the browser (see SkylightStore.public).
+    "security": {"salt": "", "pin_hash": ""},
     "settings": {
         "weather_entity": None,
         "week_start": 0,
@@ -52,5 +54,7 @@ DEFAULT_DATA = {
         "mealie_entry": None,
         "info_on_today": True,
         "weather_alerts": True,
+        "allow_uploads": True,
+        "unlock_minutes": 5,
     },
 }

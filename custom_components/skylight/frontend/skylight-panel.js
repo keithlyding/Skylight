@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.26.1";
+const PANEL_VERSION = "1.27.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -365,6 +365,12 @@ class SkylightPanel extends HTMLElement {
       if (e.target.dataset.emojiSearch) this._emojiSearch(e.target);
     });
     this.shadowRoot.addEventListener("keydown", (e) => {
+      if (this.ui.dialog?.type === "pin") { // typing on a keyboard works on the PIN pad too
+        if (/^\d$/.test(e.key)) { e.preventDefault(); this._action("pin-key", { dataset: { k: e.key } }); return; }
+        if (e.key === "Backspace") { e.preventDefault(); this._action("pin-back", { dataset: {} }); return; }
+        if (e.key === "Enter") { e.preventDefault(); this._action("pin-ok", { dataset: {} }); return; }
+        if (e.key === "Escape") { e.preventDefault(); this._action("pin-cancel", { dataset: {} }); return; }
+      }
       if (e.key === "Enter" && e.target.dataset.enter) { e.preventDefault(); this._action(e.target.dataset.enter, e.target); }
       if ((e.key === "Enter" || e.key === "Escape" || e.key === "Tab") && e.target.classList?.contains("tinput")) this._closeTimeLists();
     });
@@ -409,17 +415,31 @@ class SkylightPanel extends HTMLElement {
     if (!el) return;
     if (el.classList.contains("backdrop") && e.target !== el) return;
     e.stopPropagation();
-    this._action(el.dataset.action, el);
+    this._run(el.dataset.action, el);
   }
+  // Errors are already shown as a toast by _ws (or were a cancelled PIN prompt).
+  _run(action, el) { Promise.resolve(this._action(action, el)).catch((err) => { if (err?.code !== "locked") console.debug("Skylight:", err); }); }
 
   _onChange(e) {
     const el = e.target;
-    if (el.dataset.change) this._action(el.dataset.change, el);
+    if (el.dataset.change) this._run(el.dataset.change, el);
   }
 
   async _ws(msg) {
     try { return await this._hass.callWS(msg); }
-    catch (err) { this._toast(err?.message || String(err)); throw err; }
+    catch (err) {
+      if (err?.code === "locked") {
+        // The server says this screen is locked: ask for the PIN, then try once more.
+        this._unlockUntil = 0;
+        if (await this.requestUnlock()) {
+          try { return await this._hass.callWS(msg); }
+          catch (err2) { this._toast(err2?.message || String(err2)); throw err2; }
+        }
+        this.render(); // undo the unsaved change on screen
+        throw err;
+      }
+      this._toast(err?.message || String(err)); throw err;
+    }
   }
   _set(key, value) { return this._ws({ type: "skylight/set", key, value }); }
 
@@ -951,7 +971,7 @@ class SkylightPanel extends HTMLElement {
     const D = this.data;
     switch (action) {
       // navigation
-      case "tab": if (d.tab === "settings") this._loadCalInfo(); this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
+      case "tab": if (d.tab === "settings") this._loadCalInfo(); if (this.ui.tab === "settings" && d.tab !== "settings") this.relock(); this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
       case "view": this.ui.view = d.view; this.render(); this._loadEvents(); break;
       case "filter": this.ui.filter = this.ui.filter === d.member ? null : d.member || null; this.render(); break;
       case "today": this.ui.anchor = startOfDay(new Date()); this.render(); this._loadEvents(); break;
@@ -964,7 +984,7 @@ class SkylightPanel extends HTMLElement {
         this.render(); this._loadEvents(); break;
       }
       case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.ui.tab = "calendar"; this.render(); this._loadEvents(); break;
-      case "close": this.closeDialog(); break;
+      case "close": if (this.ui.dialog?.type === "pin") this.ui.dialog.finish(null); else this.closeDialog(); break;
 
       // calendar events
       case "new-event": this.openEventDialog(null, d.date, d.hour !== undefined ? Number(d.hour) : undefined); break;
@@ -1245,6 +1265,15 @@ class SkylightPanel extends HTMLElement {
       }
 
       // photos
+      case "pin-key": { const g = this.ui.dialog; if (g?.type === "pin" && g.entry.length < 8) { g.entry += d.k; g.error = ""; this.renderDialog(); } break; }
+      case "pin-back": { const g = this.ui.dialog; if (g?.type === "pin") { g.entry = g.entry.slice(0, -1); this.renderDialog(); } break; }
+      case "pin-ok": if (this.ui.dialog?.type === "pin") await this.ui.dialog.submit(); break;
+      case "pin-cancel": if (this.ui.dialog?.type === "pin") this.ui.dialog.finish(null); break;
+      case "pin-unlock": await this.requestUnlock(); break;
+      case "pin-lock": this.relock(); this.render(); break;
+      case "pin-setup": await this.pinSetup(); break;
+      case "pin-change": await this.pinChange(); break;
+      case "pin-remove": await this.pinRemove(); break;
       case "upload-photos": await this.uploadPhotos(el); break;
       case "delete-photo": if (confirm("Delete this photo?")) await this._ws({ type: "skylight/photo/delete", name: d.name }); break;
       case "start-saver": await this.startSaver(); break;
@@ -2313,6 +2342,111 @@ class SkylightPanel extends HTMLElement {
     this.renderCook();
   }
 
+  // ---------- settings PIN ----------
+  get pinSet() { return !!this.data?.security?.pin_set; }
+  get unlocked() { return !this.pinSet || (this._unlockUntil || 0) > Date.now(); }
+  // PIN pad dialog. check(pin) returns an error message to stay open, or null to finish.
+  // Resolves with the entered PIN, or null if cancelled. Any dialog underneath is restored afterwards.
+  promptPin({ title, sub = "", check = null }) {
+    return new Promise((resolve) => {
+      const prev = this.ui.dialog;
+      const finish = (val) => {
+        if (this.ui.dialog !== dlg) return;
+        this.ui.dialog = prev || null;
+        prev ? this.renderDialog() : this.closeDialog();
+        resolve(val);
+      };
+      const dlg = {
+        type: "pin", entry: "", error: "", busy: false, finish,
+        submit: async () => {
+          if (dlg.entry.length < 4 || dlg.busy) { dlg.error = dlg.entry.length < 4 ? "At least 4 digits" : ""; this.renderDialog(); return; }
+          if (!check) { finish(dlg.entry); return; }
+          dlg.busy = true; this.renderDialog();
+          const err = await check(dlg.entry);
+          dlg.busy = false;
+          if (err) { dlg.error = err; dlg.entry = ""; this.renderDialog(); } else finish(dlg.entry);
+        },
+        html: () => `<div class="pinpad">
+          <h2>🔒 ${esc(title)}</h2>${sub ? `<p class="hint">${esc(sub)}</p>` : ""}
+          <div class="pindots" aria-label="${dlg.entry.length} digits entered">${[...Array(Math.max(4, dlg.entry.length))].map((_, i) => `<i class="${i < dlg.entry.length ? "on" : ""}"></i>`).join("")}</div>
+          <p class="pinerr" role="alert">${esc(dlg.error)}</p>
+          <div class="pinkeys">${["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((k) => `<button data-action="pin-key" data-k="${k}">${k}</button>`).join("")}
+            <button class="pinside" data-action="pin-back" aria-label="Delete">⌫</button><button data-action="pin-key" data-k="0">0</button>
+            <button class="primary pinside" data-action="pin-ok" ${dlg.busy ? "disabled" : ""}>${dlg.busy ? "…" : "OK"}</button></div>
+          <div class="actions"><span class="spacer"></span><button data-action="pin-cancel">Cancel</button></div></div>`,
+      };
+      this._openDialog(dlg);
+    });
+  }
+  // Ask for the PIN and unlock this screen. Resolves true when unlocked.
+  requestUnlock() {
+    if (this.unlocked) return Promise.resolve(true);
+    if (this._unlocking) return this._unlocking;
+    this._unlocking = this.promptPin({
+      title: "Enter settings PIN", sub: "Settings are locked so they can't be changed by accident.",
+      check: async (pin) => {
+        try {
+          const r = await this._hass.callWS({ type: "skylight/unlock", pin });
+          this._unlockUntil = Date.now() + (r.seconds_left || 300) * 1000;
+          return null;
+        } catch (e) { return e.message || "Wrong PIN"; }
+      },
+    }).then((pin) => { this._unlocking = null; this.render(); return pin !== null; });
+    return this._unlocking;
+  }
+  relock() {
+    if (!this.pinSet || !this._unlockUntil) return;
+    this._unlockUntil = 0;
+    this._hass.callWS({ type: "skylight/lock" }).catch(() => {});
+  }
+  async pinSetup() {
+    const first = await this.promptPin({ title: "Choose a settings PIN", sub: "4 to 8 digits. Needed to change Settings, family members and chores." });
+    if (first === null) return;
+    const second = await this.promptPin({ title: "Enter the PIN again", check: async (p) => (p === first ? null : "Those didn't match. Try again.") });
+    if (second === null) return;
+    try {
+      const r = await this._ws({ type: "skylight/pin/set", pin: first });
+      this._unlockUntil = Date.now() + (r.seconds_left || 300) * 1000;
+      this._toast("Settings PIN set");
+    } catch (e) { /* toast shown */ }
+    this.render();
+  }
+  async pinChange() {
+    const current = await this.promptPin({ title: "Current PIN" });
+    if (current === null) return;
+    const first = await this.promptPin({ title: "New PIN", sub: "4 to 8 digits" });
+    if (first === null) return;
+    const second = await this.promptPin({ title: "Enter the new PIN again", check: async (p) => (p === first ? null : "Those didn't match. Try again.") });
+    if (second === null) return;
+    try {
+      const r = await this._ws({ type: "skylight/pin/set", pin: first, current });
+      this._unlockUntil = Date.now() + (r.seconds_left || 300) * 1000;
+      this._toast("Settings PIN changed");
+    } catch (e) { /* toast shown */ }
+    this.render();
+  }
+  async pinRemove() {
+    const current = await this.promptPin({ title: "Current PIN", sub: "Removing the PIN leaves Settings open to everyone." });
+    if (current === null) return;
+    try { await this._ws({ type: "skylight/pin/clear", current }); this._unlockUntil = 0; this._toast("Settings PIN removed"); }
+    catch (e) { /* toast shown */ }
+    this.render();
+  }
+  renderPinCard() {
+    const s = this.settings;
+    return `<section class="card" id="pin-card">
+      <h2>Settings PIN</h2>
+      ${this.pinSet ? `
+        <p class="hint">${this.unlocked ? "🔓 Unlocked on this screen. It locks again when you leave Settings, when the photo screensaver starts, or after the time below." : "🔒 Locked. Changes ask for the PIN."}</p>
+        <div class="row">${this.unlocked ? `<button data-action="pin-lock">🔒 Lock now</button>` : `<button class="primary" data-action="pin-unlock">🔓 Unlock</button>`}
+          <button data-action="pin-change">Change PIN</button><button data-action="pin-remove">Remove PIN</button></div>
+        <label class="inline">Stay unlocked for (minutes) <input type="number" min="1" max="60" value="${Number(s.unlock_minutes) || 5}" data-change="setting" data-key="unlock_minutes"></label>
+        <p class="hint">Forgot it? A Home Assistant admin can remove it: Settings → Devices &amp; Services → Skylight → Configure.</p>`
+      : `<p class="hint">No PIN set: anyone using this display can change Settings, family members and chores.</p>
+        <button class="primary" data-action="pin-setup">Set a settings PIN</button>`}
+    </section>`;
+  }
+
   // ---------- linked HA to-do lists ----------
   _isTodo() { return String(this.ui.list || "").startsWith("todo:"); }
   _todoEntity() { return this.ui.list.slice(5); }
@@ -2517,6 +2651,7 @@ class SkylightPanel extends HTMLElement {
   }
   async startSaver() {
     if (this.ui.saver) return;
+    this.relock();
     this.ui.saver = true; // guard against double start while loading
     let photos = [];
     try { photos = await this._photoUrls(); } catch (e) { console.warn(e); }
@@ -2598,7 +2733,7 @@ class SkylightPanel extends HTMLElement {
     this.$app.innerHTML = `
       <nav class="rail">
         <div class="logo">☀︎</div>
-        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></button>`).join("")}
+        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
       </nav>
       <main>
         ${this.renderHeader()}
@@ -3298,16 +3433,25 @@ class SkylightPanel extends HTMLElement {
 
   renderPhotos() {
     const photos = this.data.photos || [];
+    // Uploaded photos need login: use the signed URLs the server hands out.
+    const signed = {};
+    for (const i of this._urlCache?.urls || []) if (i.name) signed[i.name] = i.url;
+    if (photos.some((p) => !signed[p]) && !this._photoUrlsLoading) {
+      this._photoUrlsLoading = true;
+      this._urlCache = null;
+      this._photoUrls().catch(() => {}).finally(() => { this._photoUrlsLoading = false; if (this.ui.tab === "photos") this.render(); });
+    }
+    const uploads = this.settings.allow_uploads !== false;
     return `<div class="toolbar"><div class="nav"><h1>Photos</h1></div>
-      <div><input type="file" id="photo-input" accept="image/*" multiple hidden data-change="upload-photos">
-        <button data-action="upload-photos">⬆ Upload</button>
+      <div>${uploads ? `<input type="file" id="photo-input" accept="image/*" multiple hidden data-change="upload-photos">
+        <button data-action="upload-photos">⬆ Upload</button>` : ""}
         <button class="primary" data-action="start-saver" ${this._hasPhotoSource() ? "" : "disabled"}>▶ Slideshow</button></div></div>
       ${this.data.immich?.url && this.data.immich?.has_key ? `<p class="hint">📷 Also showing ${[
         this.data.immich.albums?.length ? `${this.data.immich.albums.length} Immich album${this.data.immich.albums.length > 1 ? "s" : ""}` : "",
         this.data.immich.favorites ? "Immich favorites" : "",
       ].filter(Boolean).join(" + ") || "no Immich albums yet"}. Change in Settings → Photos from Immich.</p>` : ""}
-      ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph"><img loading="lazy" src="/skylight_photos/${esc(p)}"><button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
-        : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app). They play as a screensaver when nobody is using the display. Or connect Immich in Settings.</p></div>`}`;
+      ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph">${signed[p] ? `<img loading="lazy" src="${esc(signed[p])}">` : ""}<button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
+        : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>${uploads ? "Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app)." : "Photo uploads are turned off in Settings."} They play as a screensaver when nobody is using the display. Or connect Immich in Settings.</p></div>`}`;
   }
 
   renderMealieSettings() {
@@ -3356,6 +3500,8 @@ class SkylightPanel extends HTMLElement {
     const weathers = Object.keys(this._hass.states).filter((e) => e.startsWith("weather.")).sort();
     const fam = new Set(this.data.family_calendars || []);
     return `<div class="settings">
+      ${this.pinSet ? "" : `<div class="pinbanner">🔒 <b>Set a settings PIN</b> so kids can use the display without changing its setup. <button class="primary" data-action="pin-setup">Set PIN</button></div>`}
+      ${this.renderPinCard()}
       <section class="card">
         <div class="toolbar"><h2>Family members</h2><button class="primary" data-action="new-member">+ Add member</button></div>
         ${this.members.map((m, i) => `<div class="mrow2">
@@ -3440,6 +3586,7 @@ class SkylightPanel extends HTMLElement {
         <label class="inline">24-hour clock <input type="checkbox" ${s.clock_24h ? "checked" : ""} data-change="setting" data-key="clock_24h"></label>
         <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
         <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
+        <label class="inline">Allow photo uploads <input type="checkbox" ${s.allow_uploads !== false ? "checked" : ""} data-change="setting" data-key="allow_uploads"></label>
         <label class="inline">Show date &amp; place on photos <input type="checkbox" ${s.photo_captions !== false ? "checked" : ""} data-change="setting" data-key="photo_captions"></label>
       </section>
       <p class="hint center">Skylight v${PANEL_VERSION}</p>
@@ -3837,6 +3984,20 @@ label.check input { width:22px; height:22px; }
   .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
   .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
 }
+.pinbanner { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-radius:16px; background:#fff4e0; color:#6b4300; margin-bottom:12px; }
+.pinbanner .primary { margin-left:auto; }
+.lockmark { font-style:normal; font-size:.9em; }
+.pinpad { display:flex; flex-direction:column; align-items:center; text-align:center; }
+.pinpad h2 { margin:4px 0; }
+.pindots { display:flex; gap:12px; margin:14px 0 4px; min-height:22px; }
+.pindots i { width:18px; height:18px; border-radius:50%; border:2px solid var(--muted); }
+.pindots i.on { background:var(--ink); border-color:var(--ink); }
+.pinerr { color:#c62828; font-weight:700; min-height:1.3em; margin:4px 0 8px; }
+.pinkeys { display:grid; grid-template-columns:repeat(3, 96px); gap:14px; }
+.pinkeys button { height:84px; font-size:34px; font-weight:700; border-radius:22px; }
+.pinkeys .pinside { font-size:24px; }
+.pinpad .actions { width:100%; }
+@media (max-width: 600px) { .pinkeys { grid-template-columns:repeat(3, 76px); gap:10px; } .pinkeys button { height:68px; font-size:28px; } }
 .hints { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
 .hintrow { display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-radius:12px; background:var(--chip, rgba(127,127,127,.1)); }
 .hintrow span { font-size:20px; line-height:1.2; flex:none; }

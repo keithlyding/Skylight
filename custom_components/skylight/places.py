@@ -17,6 +17,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from . import security
 from .const import DOMAIN, VERSION
 
 PHOTON_URL = "https://photon.komoot.io/api/"
@@ -116,6 +117,7 @@ async def ws_search(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
     {vol.Required("type"): "skylight/places/configure", vol.Required("google_key"): str}
 )
 @websocket_api.async_response
+@security.gated
 async def ws_configure(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Set (or clear, with an empty string) the Google Places API key."""
     await hass.data[DOMAIN]["store"].async_set_places_key(msg["google_key"].strip())

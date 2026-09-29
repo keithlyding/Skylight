@@ -19,7 +19,7 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, view ingredients and steps, and send ingredients to a shopping list. Other meal apps can be shown read-only through their calendar feed. |
 | **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
-| **Settings** | Add, edit and reorder family members (name, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, and set the weather source, week start, 24-hour clock and screensaver timing. |
+| **Settings** | Add, edit and reorder family members (name, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
@@ -82,7 +82,9 @@ Recipe images are passed through Home Assistant, so the tablet never needs to re
 
 The slideshow shows each photo's **date taken and place** in the bottom-right corner (turn off under Settings → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
 
-The API key stays on your HA server and is never sent to the tablet. Images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
+The API key stays on your HA server and is never sent to the tablet.
+
+**Uploaded photos** need a Home Assistant login to view. Screens get signed links that expire after 24 hours, the same as Immich photos. Uploads can be switched off under Settings → Display → *Allow photo uploads*; photos already uploaded keep showing until you delete them. Images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
 
 ## Android tablet setup
 
@@ -97,6 +99,17 @@ Skylight's own photo screensaver runs inside the page, so Fully's screensaver is
 
 You can also place Skylight on any dashboard as a card (`type: custom:skylight-panel`). It is designed to fill the screen, so the sidebar panel works best.
 
+## Settings PIN (keeps kids out of the setup)
+
+Skylight → Settings → **Set a settings PIN** (4–8 digits, entered twice). After that:
+
+- **Needs the PIN:** changing Settings, adding/editing/removing family members, adding/editing/deleting chores, choosing calendars, creating or subscribing to calendars, connecting Immich or Google location lookup, deleting uploaded photos, and deleting a Mealie recipe.
+- **Never needs the PIN:** checking off chores, list items, adding/editing/deleting calendar events, meal planning, recipes and cook mode, and viewing photos.
+- Unlocking applies to **that screen only**, for 5 minutes (adjustable up to 60). It locks again when you leave Settings or when the photo screensaver starts.
+- After **5 wrong PINs**, unlocking is blocked for 5 minutes.
+- The check happens on the Home Assistant server, not just on screen. The PIN is stored only as a salted hash and is never sent to any screen.
+- **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Skylight** → **Configure** and ticks *Remove the settings PIN*.
+
 ## Where data lives
 
 - Family data (members, chores, stars, rewards, meals, lists, settings): `config/.storage/skylight.data`. This is included in HA backups.
@@ -105,9 +118,9 @@ You can also place Skylight on any dashboard as a card (`type: custom:skylight-p
 
 ## Known limitations
 
-- **Photos are served without login**, at `/skylight_photos/<random-24-hex-name>`. The names are unguessable, but anyone who has a link can view that photo. Don't upload anything you'd consider sensitive.
-- **Creating a calendar from the tablet bypasses HA's admin-only rule** for adding integrations (limited to Local Calendars). Leave the integration out if that matters in your setup.
-- **Any logged-in HA user can change Skylight data.** There are no per-person permissions or parent PINs yet.
+- **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the settings PIN. With no PIN set, anyone using Skylight can do it.
+- **One PIN for the whole family.** There are no per-person accounts or permissions inside Skylight; the PIN separates "can change the setup" from "everyday use".
+- **Photo links expire after 24 hours** (uploaded and Immich photos both need a Home Assistant login or a signed link). A screen left open for days gets fresh links automatically.
 - **No Google Photos or iCloud album sync** (Immich and uploads only).
 - **"All events" on a repeating event** looks back up to 3 years to find the series start. Events that repeat "forever" and began earlier than that may be re-anchored.
 - **Repeating-event choices depend on the calendar.** Local Calendar supports all three; Google Calendar may reject edits, and subscribed feeds are read-only.
@@ -117,7 +130,11 @@ You can also place Skylight on any dashboard as a card (`type: custom:skylight-p
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 52 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 58 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Keith Lyding.
