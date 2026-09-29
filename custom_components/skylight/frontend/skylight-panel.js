@@ -3745,8 +3745,9 @@ class SkylightPanel extends HTMLElement {
     // Uploaded photos need login: use the signed URLs the server hands out.
     const signed = {};
     for (const i of this._urlCache?.urls || []) if (i.name) signed[i.name] = i.url;
-    if (photos.some((p) => !signed[p]) && !this._photoUrlsLoading) {
-      this._photoUrlsLoading = true;
+    const stale = !this._urlCache || Date.now() - this._urlCache.at > 3600000; // signed links last 24 h; refresh hourly
+    if ((stale || photos.some((p) => !signed[p])) && photos.length && !this._photoUrlsLoading && Date.now() - (this._photoUrlsTried || 0) > 60000) {
+      this._photoUrlsLoading = true; this._photoUrlsTried = Date.now(); // at most one try a minute (no loop if it fails)
       this._urlCache = null;
       this._photoUrls().catch(() => {}).finally(() => { this._photoUrlsLoading = false; if (this.ui.tab === "photos") this.render(); });
     }

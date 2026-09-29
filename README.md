@@ -10,16 +10,16 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 
 | Tab | What it does |
 |---|---|
-| **Today** | Overview: a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather, each person's chores for today (tap to check off), and today's meals. Opens by default. |
+| **Today** | Overview: Agenda or a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather; plain-language weather tips; tonight's dinner (tap to cook); **Upcoming** birthdays and anniversaries; each kid's chores for today (tap to check off) and adults' to-do lists. Opens by default. |
 | **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), optional air-quality / pollen / UV sensors, and official **US National Weather Service alerts** (cards on the Weather tab plus a banner on every screen). Tap a forecast day for the written day/night forecast. Uses the weather integration chosen in Settings; the **NWS** integration is recommended in the US for rain chances and forecast text. |
 | **Weather extras** | **Today's tips** in plain language on the Today screen and Weather tab (umbrella for an outdoor event, jacket this morning, freeze tonight, gusty, high UV, poor air, high pollen, much colder than yesterday). **Rain in the next 2 hours** in 15-minute steps ("Rain starting in about 30 min"). **Alert pop-ups**: a new NWS warning covers the screen (and wakes the photo screensaver) with an optional chime until someone taps OK. **Radar layers** (radar, rain forecast, storms, wind, gusts, temperature, clouds, satellite), **air quality** (US AQI with a 24-hour outlook), **pollen**, **comparisons** (yesterday, this day last year, rain over the last 7/30 days) and a **moon** card with the next phases. Rain-soon, air quality and comparisons come from Open-Meteo (free, no key). US pollen uses the Google Pollen API with the Google key from Location lookup. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per **kid** with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays, every N weeks, weekly or once. You can page back and forth by day. |
 | **Progress** | Read-only: one row per kid with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
-| **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, view ingredients and steps, and send ingredients to a shopping list. Other meal apps can be shown read-only through their calendar feed. |
+| **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, and send ingredients to a shopping list. **📖 Recipes** browses your whole Mealie library, and **cook mode** shows a recipe full screen with scalable servings and a QR code for your phone. Other meal apps can be shown read-only through their calendar feed. |
 | **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items with the **▲ / ▼** buttons; checked-off items move to the bottom in the order they were checked. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
-| **Settings** | Add, edit and reorder family members (name, **Adult/Kid**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
+| **Settings** | Add, edit and reorder family members (name, **Adult/Kid**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
@@ -52,7 +52,7 @@ Skylight uses Home Assistant's built-in **Mealie** integration, so the tablet re
 
 **One-time setup (admin):**
 1. In Mealie: click your avatar, then **API Tokens**, create a token and copy it.
-2. In Home Assistant: **Settings → Devices & Services → Add Integration → Mealie**. Enter the Mealie URL as *Home Assistant* reaches it; with Docker that's usually `http://<server-ip>:9000`, not `localhost`. Paste the token.
+2. In Home Assistant: **Settings → Devices & Services → Add Integration → Mealie**. Enter the Mealie URL as *Home Assistant* reaches it; with Docker that's the port you published, often `http://<server-ip>:9925` (Mealie listens on 9000 inside its container), not `localhost`. Paste the token.
 3. Reload the Skylight page. Settings → **Mealie** should show ✅ Connected.
 4. Optional: in the same section, tick the **Mealie shopping list** (and HA's own Shopping list) to show them in the Lists tab.
 
@@ -82,9 +82,9 @@ Recipe images are passed through Home Assistant, so the tablet never needs to re
 
 The slideshow shows each photo's **date taken and place** in the bottom-right corner (turn off under Settings → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
 
-The API key stays on your HA server and is never sent to the tablet.
+The API key stays on your HA server and is never sent to the tablet. Immich images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
 
-**Uploaded photos** need a Home Assistant login to view. Screens get signed links that expire after 24 hours, the same as Immich photos. Uploads can be switched off under Settings → Display → *Allow photo uploads*; photos already uploaded keep showing until you delete them. Images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
+**Uploaded photos** need a Home Assistant login to view. Screens get signed links that expire after 24 hours, the same as Immich photos. Uploads can be switched off under Settings → Display → *Allow photo uploads*; photos already uploaded keep showing until you delete them.
 
 ## Android tablet setup
 
@@ -93,7 +93,7 @@ The API key stays on your HA server and is never sent to the tablet.
 3. Log in with a dedicated non-admin HA user, such as "kitchen". Tick *Keep me logged in*.
 4. Tap ☰ at the top of the HA sidebar to collapse it so Skylight fills the screen; Skylight has its own navigation rail. (A setting to hide the sidebar completely varies by HA version; check your user profile page.)
 5. In Fully Kiosk: **Keep screen on**, **Launch on boot**, and disable **Pull to refresh**.
-6. Optional: use Fully Kiosk's motion detection or its schedule to turn the screen off at night.
+6. Optional: add the **Fully Kiosk Browser** integration in Home Assistant and pick its *Screen brightness* entity in Skylight → Settings → Look & night mode to dim the screen at night. Fully Kiosk's motion detection or schedule can also turn the screen off.
 
 Skylight's own photo screensaver runs inside the page, so Fully's screensaver is not needed.
 
@@ -163,7 +163,7 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 79 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 79 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
