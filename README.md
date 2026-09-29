@@ -1,7 +1,7 @@
 # Skylight for Home Assistant
 
 A Skylight Calendar–style family display for Home Assistant, built for a wall-mounted Android tablet.
-**Everything is set up from the touchscreen**: family members, calendars, events, chores, rewards,
+**Everything is set up from the touchscreen**: family members, calendars, events, chores,
 meals, lists, photos and display settings. No YAML editing.
 
 ## What you get
@@ -14,8 +14,8 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 | **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), optional air-quality / pollen / UV sensors, and official **US National Weather Service alerts** (cards on the Weather tab plus a banner on every screen). Tap a forecast day for the written day/night forecast. Uses the weather integration chosen in Settings; the **NWS** integration is recommended in the US for rain chances and forecast text. |
 | **Weather extras** | **Today's tips** in plain language on the Today screen and Weather tab (umbrella for an outdoor event, jacket this morning, freeze tonight, gusty, high UV, poor air, high pollen, much colder than yesterday). **Rain in the next 2 hours** in 15-minute steps ("Rain starting in about 30 min"). **Alert pop-ups**: a new NWS warning covers the screen (and wakes the photo screensaver) with an optional chime until someone taps OK. **Radar layers** (radar, rain forecast, storms, wind, gusts, temperature, clouds, satellite), **air quality** (US AQI with a 24-hour outlook), **pollen**, **comparisons** (yesterday, this day last year, rain over the last 7/30 days) and a **moon** card with the next phases. Rain-soon, air quality and comparisons come from Open-Meteo (free, no key). US pollen uses the Google Pollen API with the Google key from Location lookup. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
-| **Chores** | One column per person with a progress ring. Tap a chore to check it off and earn stars. Chores repeat daily, on certain weekdays, weekly or once. You can page back and forth by day. |
-| **Rewards** | Star balances with manual +/−, and rewards with progress bars. **Redeem** spends the stars. |
+| **Chores** | One column per person with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays, every N weeks, weekly or once. You can page back and forth by day. |
+| **Progress** | Read-only: one row per person with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, view ingredients and steps, and send ingredients to a shopping list. Other meal apps can be shown read-only through their calendar feed. |
 | **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
@@ -110,9 +110,13 @@ Skylight → Settings → **Set a settings PIN** (4–8 digits, entered twice). 
 - The check happens on the Home Assistant server, not just on screen. The PIN is stored only as a salted hash and is never sent to any screen.
 - **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Skylight** → **Configure** and ticks *Remove the settings PIN*.
 
+## Upgrading from v1.27 or earlier
+
+v1.28 removes **stars and rewards**. On the first start after upgrading, Skylight deletes the saved star balances, the rewards and each chore's star value (logged once in the Home Assistant log). Chores and their completion history are kept, and the history now holds up to 400 check-offs per chore for the Progress view. Weeks before a chore was created don't count against it; for chores made before v1.28, the first check-off is used as the start.
+
 ## Where data lives
 
-- Family data (members, chores, stars, rewards, meals, lists, settings): `config/.storage/skylight.data`. This is included in HA backups.
+- Family data (members, chores and their completion history, meals, lists, settings, settings-PIN hash): `config/.storage/skylight.data`. This is included in HA backups.
 - Photos: `config/skylight_photos/`, also included in backups.
 - Calendar events: in the calendar integrations themselves.
 
@@ -124,13 +128,13 @@ Skylight → Settings → **Set a settings PIN** (4–8 digits, entered twice). 
 - **No Google Photos or iCloud album sync** (Immich and uploads only).
 - **"All events" on a repeating event** looks back up to 3 years to find the series start. Events that repeat "forever" and began earlier than that may be re-anchored.
 - **Repeating-event choices depend on the calendar.** Local Calendar supports all three; Google Calendar may reject edits, and subscribed feeds are read-only.
-- **Concurrent edits: the last save wins.** If two people edit the *same* list on two devices at the exact same moment, one change can be lost. Chore check-offs and star changes are atomic on the server.
+- **Concurrent edits: the last save wins.** If two people edit the *same* list on two devices at the exact same moment, one change can be lost. Chore check-offs are atomic on the server.
 
 ## Development
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 58 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
+pytest            # 59 tests: chore rules, integration, Immich, feeds, recurring edits, Mealie (real HA core)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

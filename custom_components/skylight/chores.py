@@ -48,14 +48,16 @@ def is_due(chore: dict, on: date) -> bool:
     return True
 
 
-def toggle(chore: dict, on: date, keep: int = 120) -> int:
-    """Toggle completion for `on`. Mutates chore; returns star delta."""
-    stars = int(chore.get("stars", 1))
+KEEP_COMPLETIONS = 400  # per chore: over a year of daily history for the Progress view
+
+
+def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS) -> bool:
+    """Toggle completion for `on`. Mutates chore; returns whether it is now done."""
     matches = matching_completions(chore, on)
     comps = [c for c in chore.get("completions", []) if c not in matches]
     if matches:
         chore["completions"] = comps
-        return -stars
+        return False
     comps.append(on.isoformat())
     chore["completions"] = sorted(comps)[-keep:]
-    return stars
+    return True

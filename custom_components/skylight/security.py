@@ -33,7 +33,7 @@ STATE_KEY = f"{DOMAIN}_security_state"
 
 # skylight/set keys that change configuration. Lists and meals are everyday use.
 GATED_KEYS = frozenset({
-    "members", "settings", "family_calendars", "meal_calendars", "info_calendars", "linked_todos", "chores", "rewards",
+    "members", "settings", "family_calendars", "meal_calendars", "info_calendars", "linked_todos", "chores",
 })
 
 

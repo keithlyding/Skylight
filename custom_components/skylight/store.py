@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import logging
 import secrets
 from datetime import date
 from typing import Any
@@ -13,6 +14,27 @@ from homeassistant.helpers.storage import Store
 
 from . import chores, security
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def migrate(data: dict[str, Any]) -> bool:
+    """Bring older stored data up to date in place. Returns True if anything changed."""
+    changed = False
+    # v1.28: stars and rewards were removed; chore completion history is kept.
+    removed = [k for k in ("stars", "rewards") if k in data]
+    for k in removed:
+        data.pop(k)
+    star_fields = 0
+    for chore in data.get("chores", []):
+        if "stars" in chore:
+            chore.pop("stars")
+            star_fields += 1
+    if removed or star_fields:
+        _LOGGER.info("Skylight: removed stars and rewards (%s; star values on %d chores). Chore history is kept.",
+                     ", ".join(removed) or "no top-level keys", star_fields)
+        changed = True
+    return changed
 
 
 class SkylightStore:
@@ -27,11 +49,14 @@ class SkylightStore:
     async def async_load(self) -> None:
         stored = await self._store.async_load()
         if stored:
+            migrated = migrate(stored)
             for key, default in DEFAULT_DATA.items():
                 if key not in stored:
                     stored[key] = copy.deepcopy(default)
             stored["settings"] = {**DEFAULT_DATA["settings"], **stored["settings"]}
             self.data = stored
+            if migrated:
+                self._store.async_delay_save(lambda: self.data, 1)
         if not self.data["security"].get("salt"):
             # New install or upgrade from before the settings PIN: make the per-install salt.
             self.data["security"] = {"salt": secrets.token_hex(16), "pin_hash": ""}
@@ -81,44 +106,16 @@ class SkylightStore:
             if key == "settings":
                 value = {**self.data["settings"], **value}
             self.data[key] = value
-            if key == "members":
-                ids = {m["id"] for m in value}
-                self.data["stars"] = {k: v for k, v in self.data["stars"].items() if k in ids}
             self._changed()
 
-    async def async_toggle_chore(self, chore_id: str, on: date) -> None:
+    async def async_toggle_chore(self, chore_id: str, on: date) -> bool:
         async with self._lock:
             chore = next((c for c in self.data["chores"] if c["id"] == chore_id), None)
             if chore is None:
                 raise KeyError(chore_id)
-            delta = chores.toggle(chore, on)
-            self._adjust(chore["member_id"], delta)
+            done = chores.toggle(chore, on)
             self._changed()
-
-    def _adjust(self, member_id: str, delta: int) -> None:
-        stars = self.data["stars"]
-        stars[member_id] = max(0, int(stars.get(member_id, 0)) + delta)
-
-    async def async_adjust_stars(self, member_id: str, delta: int) -> None:
-        async with self._lock:
-            self._adjust(member_id, delta)
-            self._changed()
-
-    async def async_redeem(self, reward_id: str, member_id: str) -> bool:
-        async with self._lock:
-            reward = next((r for r in self.data["rewards"] if r["id"] == reward_id), None)
-            if reward is None:
-                raise KeyError(reward_id)
-            cost = int(reward.get("cost", 0))
-            if int(self.data["stars"].get(member_id, 0)) < cost:
-                return False
-            self._adjust(member_id, -cost)
-            reward.setdefault("history", []).append(
-                {"member_id": member_id, "date": date.today().isoformat()}
-            )
-            reward["history"] = reward["history"][-50:]
-            self._changed()
-            return True
+            return done
 
     async def async_add_photo(self, name: str) -> None:
         async with self._lock:

@@ -183,3 +183,21 @@ async def test_salt_created_for_existing_install(hass, tmp_path, hass_storage):
     assert data["members"][0]["name"] == "Sam" and data["settings"]["clock_24h"] is True
     assert len(data["security"]["salt"]) == 32 and data["security"]["pin_hash"] == ""
     assert data["settings"]["allow_uploads"] is True
+
+
+# ---------------------------------------------------------------- Phase 2 migration
+async def test_migration_removes_stars_and_rewards(hass, tmp_path, hass_storage, caplog):
+    hass.config.config_dir = str(tmp_path)
+    hass_storage["skylight.data"] = {"version": 1, "key": "skylight.data", "data": {
+        "members": [{"id": "k1", "name": "Kid", "color": "#fff", "avatar": "🙂", "calendars": []}],
+        "chores": [{"id": "c1", "member_id": "k1", "title": "Bed", "stars": 2, "repeat": "daily", "completions": ["2026-09-01"]}],
+        "stars": {"k1": 12}, "rewards": [{"id": "r1", "title": "Movie", "cost": 5}]}}
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain=DOMAIN, data={})
+    e.add_to_hass(hass)
+    with caplog.at_level("INFO"):
+        assert await hass.config_entries.async_setup(e.entry_id)
+    data = hass.data[DOMAIN]["store"].data
+    assert "stars" not in data and "rewards" not in data
+    assert data["chores"][0] == {"id": "c1", "member_id": "k1", "title": "Bed", "repeat": "daily", "completions": ["2026-09-01"]}
+    assert sum("removed stars and rewards" in r.message for r in caplog.records) == 1

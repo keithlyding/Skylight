@@ -15,11 +15,11 @@ TUE = date(2026, 9, 22)
 NEXT_MON = date(2026, 9, 28)
 
 
-def test_daily_toggle_awards_and_removes_stars():
-    c = {"repeat": "daily", "stars": 2, "completions": []}
-    assert chores.toggle(c, MON) == 2
+def test_daily_toggle_reports_done_state():
+    c = {"repeat": "daily", "completions": []}
+    assert chores.toggle(c, MON) is True
     assert chores.is_done(c, MON) and not chores.is_done(c, TUE)
-    assert chores.toggle(c, MON) == -2
+    assert chores.toggle(c, MON) is False
     assert not chores.is_done(c, MON)
 
 
@@ -29,7 +29,7 @@ def test_weekly_done_for_whole_iso_week():
     assert chores.is_done(c, TUE)
     assert not chores.is_done(c, NEXT_MON)
     # untoggling on another day of the same week clears it
-    assert chores.toggle(c, TUE) == -1
+    assert chores.toggle(c, TUE) is False
     assert c["completions"] == []
 
 
@@ -49,9 +49,10 @@ def test_once_disappears_after_completion_day():
 
 def test_completion_history_is_capped():
     c = {"repeat": "daily", "stars": 1, "completions": []}
-    for i in range(200):
+    for i in range(450):
         chores.toggle(c, date.fromordinal(MON.toordinal() + i))
-    assert len(c["completions"]) == 120
+    assert len(c["completions"]) == 400
+    assert c["completions"][-1] == date.fromordinal(MON.toordinal() + 449).isoformat()  # newest kept
 
 
 FRI = date(2026, 10, 2)  # a recycling Friday
@@ -104,3 +105,4 @@ console.log(JSON.stringify(cases.map((c) => days.map((d) => choreDue({{...c, com
     js = json.loads(out)
     py = [[chores.is_due({**c, "completions": []}, date.fromisoformat(d)) for d in days] for c in cases]
     assert js == py
+

@@ -28,8 +28,6 @@ def async_register(hass: HomeAssistant) -> None:
         ws_subscribe,
         ws_set,
         ws_toggle_chore,
-        ws_adjust_stars,
-        ws_redeem,
         ws_delete_photo,
         ws_create_calendar,
         ws_subscribe_calendar,
@@ -87,41 +85,11 @@ async def ws_set(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 @websocket_api.async_response
 async def ws_toggle_chore(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        await _store(hass).async_toggle_chore(msg["chore_id"], date.fromisoformat(msg["date"]))
+        done = await _store(hass).async_toggle_chore(msg["chore_id"], date.fromisoformat(msg["date"]))
     except (KeyError, ValueError) as err:
         connection.send_error(msg["id"], "not_found", str(err))
         return
-    connection.send_result(msg["id"])
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "skylight/stars/adjust",
-        vol.Required("member_id"): str,
-        vol.Required("delta"): int,
-    }
-)
-@websocket_api.async_response
-async def ws_adjust_stars(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    await _store(hass).async_adjust_stars(msg["member_id"], msg["delta"])
-    connection.send_result(msg["id"])
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "skylight/reward/redeem",
-        vol.Required("reward_id"): str,
-        vol.Required("member_id"): str,
-    }
-)
-@websocket_api.async_response
-async def ws_redeem(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    try:
-        ok = await _store(hass).async_redeem(msg["reward_id"], msg["member_id"])
-    except KeyError as err:
-        connection.send_error(msg["id"], "not_found", str(err))
-        return
-    connection.send_result(msg["id"], {"redeemed": ok})
+    connection.send_result(msg["id"], {"done": done})
 
 
 @websocket_api.websocket_command(

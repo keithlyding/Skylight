@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.27.0";
+const PANEL_VERSION = "1.28.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -76,7 +76,7 @@ const baseOf = (emoji) => {
 const INFO_ICONS = ["🎂", "🎉", "🇺🇸", "🎄", "⛪", "🏫", "🏈", "⚽", "🗓️", "🌙", "✈️", "💼", "🗑️", "🌱", "📌"];
 const INFO_COLORS = ["#9e9e9e", "#b0a58f", "#c29fa3", "#9fb3c8", "#a8c3a0", "#c9b37e", "#b39ddb", "#80cbc4"];
 
-// Icon choices for chores and rewards (tap-to-pick instead of typing).
+// Icon choices for chores (tap-to-pick instead of typing).
 const CHORE_ICONS = [
   // trash & recycling
   "🗑️", "♻️", "🚮", "📦",
@@ -96,12 +96,6 @@ const CHORE_ICONS = [
   "📚", "✏️", "📝", "🧮", "💻", "🎹", "🎸", "🎻", "🥁", "🏃", "⚽", "🏀", "⚾", "🤸",
   // general
   "✅", "⭐", "💪", "❤️", "🙏", "📬", "🛒", "💵",
-];
-const REWARD_ICONS = [
-  "🎁", "🍦", "🍩", "🍪", "🍫", "🍭", "🧁", "🍕", "🍔", "🌮", "🍿", "🥤",
-  "🎬", "📺", "🎮", "📱", "💻", "🎧", "📚", "🎨", "🧸", "🪀", "🎲", "🧩",
-  "🏊", "⚽", "🛝", "🎢", "🎡", "🏕️", "🚲", "🛹", "🎳", "⛳", "🎟️", "🎉",
-  "💵", "🪙", "🏆", "⭐", "👑", "🛍️", "🌙", "😴", "🐶", "🦄", "❤️", "✨",
 ];
 
 // Sunrise/sunset for a date and location (NOAA "Almanac for Computers" method, ~1-2 min accuracy).
@@ -162,7 +156,7 @@ const TABS = [
   ["weather", "Weather", "mdi:weather-partly-cloudy"],
   ["calendar", "Calendar", "mdi:calendar-month"],
   ["chores", "Chores", "mdi:checkbox-marked-circle-outline"],
-  ["rewards", "Rewards", "mdi:star-circle"],
+  ["progress", "Progress", "mdi:chart-bar"],
   ["meals", "Meals", "mdi:silverware-fork-knife"],
   ["lists", "Lists", "mdi:format-list-checks"],
   ["photos", "Photos", "mdi:image-multiple"],
@@ -1145,19 +1139,6 @@ class SkylightPanel extends HTMLElement {
       case "save-chore": await this.saveChore(); break;
       case "delete-chore": await this._set("chores", D.chores.filter((c) => c.id !== this.ui.dialog.chore.id)); this.closeDialog(); break;
 
-      // stars & rewards
-      case "stars": await this._ws({ type: "skylight/stars/adjust", member_id: d.member, delta: Number(d.delta) }); break;
-      case "new-reward": this.openRewardDialog(); break;
-      case "edit-reward": this.openRewardDialog(D.rewards.find((r) => r.id === d.reward)); break;
-      case "save-reward": await this.saveReward(); break;
-      case "delete-reward": await this._set("rewards", D.rewards.filter((r) => r.id !== this.ui.dialog.reward.id)); this.closeDialog(); break;
-      case "redeem": {
-        const r = D.rewards.find((x) => x.id === d.reward); const m = this.member(d.member);
-        if (!confirm(`${m.name} spends ${r.cost} ⭐ on "${r.title}"?`)) return;
-        const res = await this._ws({ type: "skylight/reward/redeem", reward_id: d.reward, member_id: d.member });
-        if (res.redeemed) this._celebrate(el.getBoundingClientRect(), "🎉"); else this._toast("Not enough stars yet!");
-        break;
-      }
 
       // meals
       case "edit-meal": this.mealieOn ? this.openMealieDialog(d.date, d.slot) : this.openMealDialog(d.date, d.slot); break;
@@ -1344,7 +1325,7 @@ class SkylightPanel extends HTMLElement {
     await this._set("lists", lists);
   }
 
-  _celebrate(r, emoji = "⭐") {
+  _celebrate(r, emoji = "🎉") {
     for (let i = 0; i < 8; i++) {
       const s = document.createElement("div");
       s.className = "burst"; s.textContent = emoji;
@@ -1921,7 +1902,7 @@ class SkylightPanel extends HTMLElement {
     const dlg = this.ui.dialog;
     if (!grid || !dlg) return;
     const q = input.value.trim().toLowerCase();
-    const base = kind === "avatar" ? AVATARS : dlg.type === "reward" ? REWARD_ICONS : CHORE_ICONS;
+    const base = kind === "avatar" ? AVATARS : CHORE_ICONS;
     const tone = (e) => (kind === "avatar" ? withTone(e, dlg.tone) : e);
     if (!q) { grid.innerHTML = this._emojiButtons(base.map(tone), kind); return; }
     let data;
@@ -1945,7 +1926,7 @@ class SkylightPanel extends HTMLElement {
     grid.innerHTML = ranked.length ? this._emojiButtons(ranked.map(tone), kind) : `<p class="hint">No emoji match “${esc(q)}”.</p>`;
   }
 
-  // Big icon button + expandable grid of choices (used by chores and rewards).
+  // Big icon button + expandable grid of choices (used by chores).
   iconPicker(dlg, icons) {
     return `<div class="iconpick">
       <button type="button" class="iconbtn" data-action="icon-open" title="Choose an icon">${dlg.icon}<small>▾</small></button>
@@ -1966,7 +1947,6 @@ class SkylightPanel extends HTMLElement {
           <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
         </div>
         <label>Who<select id="c-member">${this.members.map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
-        <label>Stars earned<input type="number" id="c-stars" min="0" max="20" value="${c?.stars ?? 1}"></label>
         <label>Repeats<select id="c-repeat" data-change="chore-repeat">
           <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
           <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days</option>
@@ -1999,45 +1979,15 @@ class SkylightPanel extends HTMLElement {
     const title = $("c-title").value.trim();
     if (!title) { this._toast("Please name the chore"); return; }
     const rec = {
-      ...(c || { id: uid(), completions: [] }),
+      ...(c || { id: uid(), completions: [], created: ymd(new Date()) }),
       title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value,
-      stars: Math.max(0, Number($("c-stars").value) || 0), repeat: $("c-repeat").value,
+      repeat: $("c-repeat").value,
       days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
       every_weeks: Number($("c-every").value) || 1,
       start: $("c-start").value || ymd(new Date()),
     };
     const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
     await this._set("chores", chores); this.closeDialog();
-  }
-
-  openRewardDialog(r) {
-    const dlg = {
-      type: "reward", reward: r, icon: r?.icon || "🎁", iconOpen: false,
-      html: () => `
-        <h2>${r ? "Edit" : "New"} reward</h2>
-        <div class="row">
-          <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, REWARD_ICONS)}</label>
-          <label>Reward<input id="r-title" value="${esc(r?.title)}" autofocus placeholder="Movie night pick"></label>
-        </div>
-        <label>Cost (stars)<input type="number" id="r-cost" min="1" value="${r?.cost ?? 20}"></label>
-        <label>For<select id="r-member"><option value="">Everyone</option>${this.members.map((m) => `<option value="${m.id}" ${m.id === r?.member_id ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
-        <div class="actions">
-          ${r ? `<button class="danger" data-action="delete-reward">Delete</button>` : ""}
-          <span class="spacer"></span>
-          <button data-action="close">Cancel</button>
-          <button class="primary" data-action="save-reward">Save</button>
-        </div>`,
-    };
-    this._openDialog(dlg);
-  }
-  async saveReward() {
-    const $ = (id) => this.shadowRoot.getElementById(id);
-    const r = this.ui.dialog.reward;
-    const title = $("r-title").value.trim();
-    if (!title) { this._toast("Please name the reward"); return; }
-    const rec = { ...(r || { id: uid() }), title, icon: this.ui.dialog.icon || "🎁", cost: Math.max(1, Number($("r-cost").value) || 1), member_id: $("r-member").value || null };
-    const rewards = r ? this.data.rewards.map((x) => (x.id === r.id ? rec : x)) : [...this.data.rewards, rec];
-    await this._set("rewards", rewards); this.closeDialog();
   }
 
   // ---------- Mealie ----------
@@ -2726,7 +2676,7 @@ class SkylightPanel extends HTMLElement {
     const prevKey = this._tgKey;
     const tab = this.ui.tab;
     const body = {
-      home: () => this.renderHome(), weather: () => this.renderWeather(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), rewards: () => this.renderRewards(),
+      home: () => this.renderHome(), weather: () => this.renderWeather(), calendar: () => this.renderCalendar(), chores: () => this.renderChores(), progress: () => this.renderProgress(),
       meals: () => this.renderMeals(), lists: () => this.renderLists(), photos: () => this.renderPhotos(),
       settings: () => this.renderSettings(),
     }[tab]();
@@ -3229,7 +3179,7 @@ class SkylightPanel extends HTMLElement {
       if (!list.length) { free.push(m); return ""; } // summarized in one line below
       return `<div class="hchores" style="--c:${m.color}">
         <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
-          <span class="hint">${done}/${list.length} · ⭐ ${this.data.stars?.[m.id] || 0}</span></div>
+          <span class="hint">${done}/${list.length}</span></div>
         ${list.map((c) => { const dn = choreDone(c, today); return `<div class="chore ${dn ? "done" : ""}">
           <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}" data-date="${ymd(today)}">
             <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
@@ -3267,6 +3217,53 @@ class SkylightPanel extends HTMLElement {
     </div>`;
   }
 
+  // Chore completion between two days (inclusive, never past today): {due, done}.
+  // Days before a chore existed don't count against it. "Weekly" chores count once per week.
+  completionStats(memberId, from, to) {
+    const today = startOfDay(new Date());
+    const end = startOfDay(to) > today ? today : startOfDay(to);
+    let due = 0, done = 0;
+    for (const c of (this.data.chores || []).filter((x) => x.member_id === memberId)) {
+      const firstDone = (c.completions || [])[0];
+      const began = c.created || firstDone || c.start;
+      let d = startOfDay(from);
+      if (began && parseYmd(began) > d) d = parseYmd(began);
+      if (!began && d < this.weekStart(today)) d = this.weekStart(today); // no history: count from this week
+      if (c.repeat === "weekly") {
+        for (let w = this.weekStart(d); w <= end; w = addDays(w, 7)) {
+          due++;
+          if ([...Array(7)].some((_, i) => addDays(w, i) <= end && choreDone(c, addDays(w, i)))) done++;
+        }
+        continue;
+      }
+      for (; d <= end; d = addDays(d, 1)) {
+        if (!choreDue(c, d)) continue;
+        due++;
+        if (choreDone(c, d)) done++;
+      }
+    }
+    return { due, done };
+  }
+
+  // Progress: last 4 weeks of chore completion per person with chores (read-only).
+  renderProgress() {
+    const people = this.members.filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
+    if (!people.length) return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
+    const thisWeek = this.weekStart(new Date());
+    const weeks = [3, 2, 1, 0].map((k) => addDays(thisWeek, -7 * k));
+    const label = (w, k) => (k === 3 ? "This week" : w.toLocaleDateString([], { month: "short", day: "numeric" }));
+    return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div><span class="hint">Chores done, last 4 weeks</span></div>
+      <div class="progress">${people.map((m) => `<div class="prow" style="--c:${m.color}">
+        <div class="pwho"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
+        <div class="pbars">${weeks.map((w, k) => {
+          const st = this.completionStats(m.id, w, addDays(w, 6));
+          const pct = st.due ? Math.round((st.done / st.due) * 100) : null;
+          return `<div class="pbar" title="${st.done} of ${st.due} chores">
+            <div class="pcol"><i style="height:${pct === null ? 0 : Math.max(3, pct)}%"></i></div>
+            <b>${pct === null ? "–" : `${pct}%`}</b><small>${label(w, k)}</small></div>`;
+        }).join("")}</div></div>`).join("")}</div>`;
+  }
+
   renderChores() {
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
@@ -3278,14 +3275,14 @@ class SkylightPanel extends HTMLElement {
       return `<div class="ccol" style="--c:${m.color}">
         <div class="chead">
           <div class="ring" style="--p:${pct * 360}deg"><span class="av" style="background:${m.color}">${m.avatar}</span></div>
-          <div><div class="cname">${esc(m.name)}</div><div class="cstars">⭐ ${this.data.stars?.[m.id] || 0} · ${done}/${chores.length}</div></div>
+          <div><div class="cname">${esc(m.name)}</div><div class="cstars">${done}/${chores.length} today${(() => { const w = this.completionStats(m.id, this.weekStart(day), day); return w.due ? ` · ${Math.round((w.done / w.due) * 100)}% this week` : ""; })()}</div></div>
         </div>
         <div class="clist">${chores.map((c) => {
           const dn = choreDone(c, day);
           return `<div class="chore ${dn ? "done" : ""}">
             <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}">
               <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}</span>
-              <span class="cs">${c.stars ? `+${c.stars}⭐` : ""}</span><span class="box">${dn ? "✓" : ""}</span></button>
+<span class="box">${dn ? "✓" : ""}</span></button>
             <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`;
         }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? "No chores" : ""}</p>`}
         ${chores.length && done === chores.length ? `<div class="alldone">All done! 🎉</div>` : ""}
@@ -3299,31 +3296,6 @@ class SkylightPanel extends HTMLElement {
         <button class="icon" data-action="chore-day" data-dir="1">›</button>
         <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div></div>
       <div class="chores">${cols}</div>`;
-  }
-
-  renderRewards() {
-    if (!this.members.length) return `<div class="empty"><h2>No family members yet</h2><button class="primary" data-action="tab" data-tab="settings">Add family in Settings</button></div>`;
-    const rewards = this.data.rewards || [];
-    return `<div class="toolbar"><div class="nav"><h1>Rewards</h1></div><button class="primary" data-action="new-reward">+ Reward</button></div>
-      <div class="rewards">${this.members.map((m) => {
-        const stars = this.data.stars?.[m.id] || 0;
-        const mine = rewards.filter((r) => !r.member_id || r.member_id === m.id);
-        return `<div class="rcard" style="--c:${m.color}">
-          <div class="rhead"><span class="av big" style="background:${m.color}">${m.avatar}</span>
-            <div class="rname">${esc(m.name)}</div>
-            <div class="rstars"><button class="icon sm" data-action="stars" data-member="${m.id}" data-delta="-1">−</button>
-              <span>⭐ ${stars}</span><button class="icon sm" data-action="stars" data-member="${m.id}" data-delta="1">+</button></div></div>
-          ${mine.map((r) => {
-            const pct = Math.min(100, (stars / r.cost) * 100);
-            return `<div class="reward">
-              <span class="ri">${esc(r.icon)}</span>
-              <div class="rb"><div class="rt" data-action="edit-reward" data-reward="${r.id}">${esc(r.title)}</div>
-                <div class="prog"><div style="width:${pct}%"></div></div><small>${Math.min(stars, r.cost)} / ${r.cost} ⭐</small></div>
-              <button class="${stars >= r.cost ? "primary" : ""}" ${stars >= r.cost ? "" : "disabled"} data-action="redeem" data-reward="${r.id}" data-member="${m.id}">Redeem</button>
-            </div>`;
-          }).join("") || `<p class="hint">No rewards yet — add one!</p>`}
-        </div>`;
-      }).join("")}</div>`;
   }
 
   mealSlot(ev) {
@@ -3509,7 +3481,7 @@ class SkylightPanel extends HTMLElement {
           <div class="grow"><b>${esc(m.name)}</b><small>${[...(m.prefixes || []).map((p) => `“${esc(p)}…”`), ...(m.calendars || []).map((c) => esc(this.calName(c)))].join(", ") || "No calendars"}</small></div>
           <button class="icon sm" data-action="member-up" data-member="${m.id}" ${i === 0 ? "disabled" : ""}>↑</button>
           <button class="icon sm" data-action="member-down" data-member="${m.id}" ${i === this.members.length - 1 ? "disabled" : ""}>↓</button>
-          <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar, chores and rewards.</p>`}
+          <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar and chores.</p>`}
       </section>
 
       <section class="card">
@@ -3794,18 +3766,16 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .alldone { text-align:center; font-weight:800; color:var(--c); padding:6px; }
 .burst { position:fixed; pointer-events:none; font-size:26px; z-index:1000; animation:burst .9s ease-out forwards; }
 @keyframes burst { to { transform:translate(var(--dx),var(--dy)) scale(.4); opacity:0; } }
-/* rewards */
-.rewards { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:14px; align-items:start; }
-.rcard { background:var(--card); border-radius:var(--radius); padding:14px; border-top:6px solid var(--c); display:flex; flex-direction:column; gap:10px; }
-.rhead { display:flex; align-items:center; gap:10px; }
-.rname { flex:1; font-size:20px; font-weight:800; }
-.rstars { display:flex; align-items:center; gap:6px; font-weight:800; font-size:18px; }
-.reward { display:flex; align-items:center; gap:10px; background:var(--bg); padding:10px; border-radius:14px; }
-.ri { font-size:28px; }
-.rb { flex:1; min-width:0; }
-.rt { font-weight:700; cursor:pointer; }
-.prog { height:8px; border-radius:6px; background:var(--line); overflow:hidden; margin:4px 0 2px; }
-.prog div { height:100%; background:var(--c); border-radius:6px; }
+/* progress */
+.progress { display:flex; flex-direction:column; gap:12px; }
+.prow { display:flex; align-items:center; gap:16px; background:var(--card); border-radius:var(--radius); padding:14px 18px; border-left:6px solid var(--c); box-shadow:0 2px 10px rgba(60,50,30,.06); }
+.pwho { display:flex; align-items:center; gap:10px; min-width:150px; font-size:18px; }
+.pbars { flex:1; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:14px; }
+.pbar { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.pcol { width:100%; max-width:70px; height:70px; background:var(--line); border-radius:10px; display:flex; align-items:flex-end; overflow:hidden; }
+.pcol i { width:100%; background:var(--c); border-radius:10px 10px 0 0; }
+.pbar small { color:var(--muted); font-size:12px; }
+@media (max-width: 600px) { .prow { flex-direction:column; align-items:stretch; } .pbars { gap:8px; } }
 /* meals */
 .meals { display:flex; flex-direction:column; gap:8px; }
 .mrow { display:grid; grid-template-columns:110px repeat(7, minmax(0,1fr)); gap:8px; }

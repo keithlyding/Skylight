@@ -49,23 +49,25 @@ async def test_websocket_flow(hass: HomeAssistant, setup, hass_ws_client) -> Non
     assert (await client.receive_json())["event"]["members"][0]["name"] == "Alex"
     assert (await client.receive_json())["success"]
 
-    chore = {"id": "c", "member_id": "a", "title": "Bed", "stars": 3, "repeat": "daily", "completions": []}
+    chore = {"id": "c", "member_id": "a", "title": "Bed", "repeat": "daily", "completions": []}
     await client.send_json({"id": 3, "type": "skylight/set", "key": "chores", "value": [chore]})
     await client.receive_json(); await client.receive_json()
 
     today = date.today().isoformat()
     await client.send_json({"id": 4, "type": "skylight/chore/toggle", "chore_id": "c", "date": today})
     ev = await client.receive_json()
-    assert ev["event"]["stars"]["a"] == 3
+    assert "stars" not in ev["event"] and "rewards" not in ev["event"]
     assert ev["event"]["chores"][0]["completions"] == [today]
-    assert (await client.receive_json())["success"]
-
-    reward = {"id": "r", "title": "Movie", "icon": "x", "cost": 5, "member_id": None}
-    await client.send_json({"id": 5, "type": "skylight/set", "key": "rewards", "value": [reward]})
-    await client.receive_json(); await client.receive_json()
-    await client.send_json({"id": 6, "type": "skylight/reward/redeem", "reward_id": "r", "member_id": "a"})
     res = await client.receive_json()
-    assert res["result"] == {"redeemed": False}
+    assert res["success"] and res["result"] == {"done": True}
+
+    # Stars and rewards are gone
+    for i, msg in enumerate([{"type": "skylight/stars/adjust", "member_id": "a", "delta": 1},
+                             {"type": "skylight/reward/redeem", "reward_id": "r", "member_id": "a"},
+                             {"type": "skylight/set", "key": "rewards", "value": []}], start=5):
+        await client.send_json({"id": i + 100, **msg})
+        r = await client.receive_json()
+        assert not r["success"], msg
 
     await client.send_json({"id": 7, "type": "skylight/set", "key": "photos", "value": []})
     assert not (await client.receive_json())["success"]  # photos not editable wholesale
