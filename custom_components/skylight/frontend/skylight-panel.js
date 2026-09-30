@@ -1089,16 +1089,30 @@ class SkylightPanel extends HTMLElement {
   async _loadForecast() {
     const w = this.settings.weather_entity;
     if (!w || !this._hass.states[w]) return;
-    try {
-      const res = await this._hass.callWS({
-        type: "call_service", domain: "weather", service: "get_forecasts",
-        service_data: { type: "daily" }, target: { entity_id: w }, return_response: true,
-      });
-      const list = res?.response?.[w]?.forecast || [];
-      this.forecast = {};
-      for (const f of list) this.forecast[ymd(new Date(f.datetime))] = f;
-      if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render();
-    } catch (e) { console.warn("Skylight: forecast unavailable", e); }
+    const get = async (type) => {
+      try {
+        const res = await this._hass.callWS({
+          type: "call_service", domain: "weather", service: "get_forecasts",
+          service_data: { type }, target: { entity_id: w }, return_response: true,
+        });
+        return res?.response?.[w]?.forecast || [];
+      } catch (e) { return null; } // this weather source doesn't offer that forecast type
+    };
+    // Day headers show each day's condition and high. Sources like the US NWS have no daily
+    // forecast, only day/night periods: use the daytime period (or the night one if that's all).
+    let list = await get("daily");
+    const forecast = {};
+    if (list && list.length) {
+      for (const f of list) forecast[ymd(new Date(f.datetime))] = f;
+    } else {
+      for (const f of (await get("twice_daily")) || []) {
+        const key = ymd(new Date(f.datetime));
+        if (!forecast[key] || (f.is_daytime !== false && forecast[key].is_daytime === false)) forecast[key] = f;
+      }
+    }
+    if (!Object.keys(forecast).length) { console.warn("Skylight: no daily or day/night forecast from", w); return; }
+    this.forecast = forecast;
+    if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render();
   }
 
   // ---------- actions ----------
