@@ -23,6 +23,7 @@ from .photos import SkylightPhotoFileView, SkylightPhotoUploadView, photo_dir
 from .store import SkylightStore
 
 PANEL_JS = pathlib.Path(__file__).parent / "frontend" / "skylight-panel.js"
+PLATFORMS = ["todo"]
 
 
 def _module_url() -> str:
@@ -66,6 +67,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(nightmode.async_start(hass))
 
     await _async_register_once(hass)
+    # Skylight's lists as Home Assistant to-do entities (HA's To-do panel, phone app, Assist).
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await panel_custom.async_register_panel(
         hass,
         frontend_url_path=PANEL_PATH,
@@ -80,6 +83,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
     if (store := hass.data.get(DOMAIN, {}).get("store")) is not None:
         await store.async_flush()
     frontend.async_remove_panel(hass, PANEL_PATH)

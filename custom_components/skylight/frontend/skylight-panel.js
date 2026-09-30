@@ -2769,6 +2769,8 @@ class SkylightPanel extends HTMLElement {
   }
 
   // ---------- linked HA to-do lists ----------
+  // Skylight's own lists are also HA to-do entities; never offer those back as "linked" lists.
+  _ownTodo(e) { return this._hass.entities?.[e]?.platform === "skylight" || this._hass.states[e]?.attributes?.skylight_list_id !== undefined; }
   _isTodo() { return String(this.ui.list || "").startsWith("todo:"); }
   _todoEntity() { return this.ui.list.slice(5); }
   _subscribeTodo(entity) {
@@ -2780,7 +2782,7 @@ class SkylightPanel extends HTMLElement {
     this._todoSubs[entity].catch((e) => { console.warn("Skylight: todo subscribe failed", entity, e); delete this._todoSubs[entity]; });
   }
   linkedLists() {
-    return (this.data.linked_todos || []).filter((e) => this._hass.states[e]).map((e, i) => {
+    return (this.data.linked_todos || []).filter((e) => this._hass.states[e] && !this._ownTodo(e)).map((e, i) => {
       this._subscribeTodo(e);
       return {
         id: `todo:${e}`, linked: true, entity: e, canMove: !!((this._hass.states[e]?.attributes?.supported_features || 0) & 8) /* TodoListEntityFeature.MOVE_TODO_ITEM */, owner: (this.data.todo_owners || {})[e], name: this.entityName(e), color: PALETTE[(i * 5 + 3) % PALETTE.length],
@@ -3843,7 +3845,7 @@ class SkylightPanel extends HTMLElement {
 
   renderMealieSettings() {
     const m = this.mealie || { entries: [] };
-    const todos = Object.keys(this._hass.states).filter((e) => e.startsWith("todo.")).sort();
+    const todos = Object.keys(this._hass.states).filter((e) => e.startsWith("todo.") && !this._ownTodo(e)).sort();
     const linked = new Set(this.data.linked_todos || []);
     return `<section class="card">
       <h2>Mealie</h2>

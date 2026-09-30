@@ -142,6 +142,12 @@ Every family member is an **Adult** or a **Kid** (Settings → family member →
 
 v1.28 removes **stars and rewards**. On the first start after upgrading, Skylight deletes the saved star balances, the rewards and each chore's star value (logged once in the Home Assistant log). Chores and their completion history are kept, and the history now holds up to 400 check-offs per chore for the Progress view. Weeks before a chore was created don't count against it; for chores made before v1.28, the first check-off is used as the start.
 
+## Lists in Home Assistant (To-do, phone app, voice)
+
+Every Skylight list also appears in Home Assistant as a to-do entity named **Skylight _list name_** (e.g. `todo.skylight_groceries`). So the lists show in HA's **To-do** panel and phone app, and **Assist** can add to them ("add milk to Skylight Groceries"). Changes either way show up everywhere at once. New lists get an entity automatically; deleted lists lose theirs. Each entity has an `owner` attribute (Shared or the adult who owns it).
+
+These entities are for Home Assistant's own tools. Alexa via Home Assistant Cloud doesn't sync to-do lists as far as we know, so "Alexa, add milk" still goes to Alexa's own list.
+
 ## Backup and restore
 
 Settings → **Backup**:
@@ -171,7 +177,7 @@ Settings → **Backup**:
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 82 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 84 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
