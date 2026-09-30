@@ -29,6 +29,11 @@ def async_register(hass: HomeAssistant) -> None:
         ws_set,
         ws_toggle_chore,
         ws_move_list_item,
+        ws_list_add_item,
+        ws_list_update_item,
+        ws_list_delete_items,
+        ws_list_save,
+        ws_list_remove,
         ws_delete_photo,
         ws_create_calendar,
         ws_subscribe_calendar,
@@ -74,6 +79,83 @@ async def ws_set(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         return
     await _store(hass).async_set(msg["key"], msg["value"])
     connection.send_result(msg["id"])
+
+
+async def _list_call(connection, msg_id: int, coro) -> None:
+    try:
+        result = await coro
+    except KeyError as err:
+        connection.send_error(msg_id, "not_found", str(err))
+        return
+    except ValueError as err:
+        connection.send_error(msg_id, "invalid", str(err))
+        return
+    connection.send_result(msg_id, result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/list/item/add",
+        vol.Required("list_id"): str,
+        vol.Required("text"): vol.All(str, vol.Length(min=1)),
+        vol.Optional("item_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_list_add_item(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    if not msg["text"].strip():
+        connection.send_error(msg["id"], "invalid", "Empty item")
+        return
+    await _list_call(connection, msg["id"], _store(hass).async_list_add_item(msg["list_id"], msg["text"], msg.get("item_id")))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/list/item/update",
+        vol.Required("list_id"): str,
+        vol.Required("item_id"): str,
+        vol.Optional("text"): str,
+        vol.Optional("done"): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_list_update_item(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    await _list_call(connection, msg["id"], _store(hass).async_list_update_item(
+        msg["list_id"], msg["item_id"], msg.get("text"), msg.get("done")))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/list/item/delete",
+        vol.Required("list_id"): str,
+        vol.Optional("item_ids", default=[]): [str],
+        vol.Optional("done", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_list_delete_items(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    await _list_call(connection, msg["id"], _store(hass).async_list_delete_items(msg["list_id"], msg["item_ids"], msg["done"]))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/list/save",
+        vol.Optional("list_id"): str,
+        vol.Required("name"): str,
+        vol.Optional("color"): str,
+        vol.Optional("owner"): vol.Any(str, None),
+    }
+)
+@websocket_api.async_response
+async def ws_list_save(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    meta = {"id": msg.get("list_id"), "name": msg["name"], "color": msg.get("color"), "owner": msg.get("owner")}
+    await _list_call(connection, msg["id"], _store(hass).async_list_save(meta))
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/list/delete", vol.Required("list_id"): str})
+@websocket_api.async_response
+async def ws_list_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    await _list_call(connection, msg["id"], _store(hass).async_list_remove(msg["list_id"]))
 
 
 @websocket_api.websocket_command(

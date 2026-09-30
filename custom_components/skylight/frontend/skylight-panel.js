@@ -173,11 +173,6 @@ const pad = (n) => String(n).padStart(2, "0");
 // Adults and kids: only kids have chores; only adults own lists.
 const kidsOf = (members) => (members || []).filter((m) => m.role === "kid");
 const adultsOf = (members) => (members || []).filter((m) => m.role !== "kid");
-// Check/uncheck a list item, remembering when it was checked (done items are shown in that order).
-const toggleItem = (i) => {
-  if (i.done) { const { done_at, ...rest } = i; return { ...rest, done: false }; }
-  return { ...i, done: true, done_at: new Date().toISOString() };
-};
 // Open items in list order, then done items oldest check-off first (older items without a time keep list order).
 const orderItems = (items) => [
   ...(items || []).filter((i) => !i.done),
@@ -1408,7 +1403,7 @@ class SkylightPanel extends HTMLElement {
         const input = this.shadowRoot.getElementById("newitem");
         const text = input.value.trim(); if (!text) return;
         input.value = "";
-        await this._updateList(this.ui.list, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
+        await this._ws({ type: "skylight/list/item/add", list_id: this.ui.list, text });
         this.shadowRoot.getElementById("newitem")?.focus(); break;
       }
       case "item-move": {
@@ -1428,16 +1423,16 @@ class SkylightPanel extends HTMLElement {
         await this._ws({ type: "skylight/list/move", list_id: this.ui.list, item_id: d.item, direction: d.dir });
         break;
       }
-      case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.map((i) => (i.id === d.item ? toggleItem(i) : i)); }); break;
-      case "delete-item": if (this._isTodo()) { await this._todoAction("delete", d.item); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => i.id !== d.item); }); break;
-      case "clear-done": if (this._isTodo()) { await this._todoAction("clear"); break; } await this._updateList(this.ui.list, (l) => { l.items = l.items.filter((i) => !i.done); }); break;
+      case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._listToggle(this.ui.list, d.item); break;
+      case "delete-item": if (this._isTodo()) { await this._todoAction("delete", d.item); break; } await this._ws({ type: "skylight/list/item/delete", list_id: this.ui.list, item_ids: [d.item] }); break;
+      case "clear-done": if (this._isTodo()) { await this._todoAction("clear"); break; } await this._ws({ type: "skylight/list/item/delete", list_id: this.ui.list, done: true }); break;
       case "new-list": this.openListDialog(); break;
       case "edit-list": this.openListDialog(D.lists.find((l) => l.id === d.list)); break;
       case "save-list": await this.saveList(); break;
       case "delete-list": {
         const l = this.ui.dialog.list;
         if (!confirm(`Delete the list "${l.name}"?`)) return;
-        await this._set("lists", D.lists.filter((x) => x.id !== l.id)); this.ui.list = null; this.closeDialog(); break;
+        await this._ws({ type: "skylight/list/delete", list_id: l.id }); this.ui.list = null; this.closeDialog(); break;
       }
 
       // photos
@@ -1512,13 +1507,6 @@ class SkylightPanel extends HTMLElement {
     }
   }
 
-  async _updateList(id, fn) {
-    const lists = this.data.lists.map((l) => (l.id === id ? { ...l, items: [...l.items] } : l));
-    const list = lists.find((l) => l.id === id);
-    if (!list) return;
-    fn(list);
-    await this._set("lists", lists);
-  }
 
   _celebrate(r, emoji = "🎉") {
     for (let i = 0; i < 8; i++) {
@@ -2086,7 +2074,7 @@ class SkylightPanel extends HTMLElement {
       today, today_list: today === "list" ? todayList : "", default_calendar: defaultCal, ...(bday.none ? {} : { birthday: bday }) };
     const members = dlg.member ? this.members.map((x) => (x.id === rec.id ? rec : x)) : [...this.members, rec];
     await this._set("members", members); // members first, so the server knows the new owner is an adult
-    if (newList) await this._set("lists", [...(this.data.lists || []), { ...newList, ...(dlg.role === "adult" ? { owner: rec.id } : {}) }]);
+    if (newList) await this._ws({ type: "skylight/list/save", list_id: newList.id, name: newList.name, color: newList.color, owner: dlg.role === "adult" ? rec.id : null });
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
   }
 
@@ -2733,7 +2721,8 @@ class SkylightPanel extends HTMLElement {
       try { await this._hass.callService("todo", "update_item", { item: itemId, status: it?.status === "completed" ? "needs_action" : "completed" }, { entity_id }); }
       catch (e) { this._toast(e?.message || String(e)); }
     } else {
-      await this._updateList(listId, (l) => { l.items = l.items.map((i) => (i.id === itemId ? toggleItem(i) : i)); });
+      const it = (this.data.lists.find((l) => l.id === listId)?.items || []).find((i) => i.id === itemId);
+      if (it) await this._ws({ type: "skylight/list/item/update", list_id: listId, item_id: itemId, done: !it.done });
     }
   }
   async _listAdd(listId, text) {
@@ -2741,7 +2730,7 @@ class SkylightPanel extends HTMLElement {
       try { await this._hass.callService("todo", "add_item", { item: text }, { entity_id: listId.slice(5) }); }
       catch (e) { this._toast(e?.message || String(e)); }
     } else {
-      await this._updateList(listId, (l) => { l.items = [...l.items, { id: uid(), text, done: false }]; });
+      await this._ws({ type: "skylight/list/item/add", list_id: listId, text });
     }
   }
 
@@ -2808,10 +2797,8 @@ class SkylightPanel extends HTMLElement {
     const name = this.shadowRoot.getElementById("l-name").value.trim();
     if (!name) return;
     const owner = this.shadowRoot.getElementById("l-owner")?.value || "";
-    const rec = { ...(dlg.list || { id: uid(), items: [] }), name, color: dlg.color };
-    if (owner) rec.owner = owner; else delete rec.owner;
-    const lists = dlg.list ? this.data.lists.map((x) => (x.id === rec.id ? rec : x)) : [...this.data.lists, rec];
-    await this._set("lists", lists); this.ui.list = rec.id; this.closeDialog(); this.render();
+    const saved = await this._ws({ type: "skylight/list/save", ...(dlg.list ? { list_id: dlg.list.id } : {}), name, color: dlg.color, owner: owner || null });
+    this.ui.list = saved.id; this.closeDialog(); this.render();
   }
 
   async uploadPhotos(el) {

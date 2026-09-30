@@ -6,6 +6,7 @@ import asyncio
 import copy
 import logging
 import secrets
+from datetime import datetime, timezone
 from datetime import date
 from typing import Any
 
@@ -205,6 +206,81 @@ class SkylightStore:
                 adults = adult_ids(self.data)
                 self.data["lists"] = clean_list_owners(self.data["lists"], adults)
                 self.data["todo_owners"] = {e: o for e, o in self.data.get("todo_owners", {}).items() if o in adults}
+            self._changed()
+
+    # ----- list edits: one item at a time, under the lock, so two screens never overwrite each other -----
+    def _list(self, list_id: str) -> dict[str, Any]:
+        lst = next((l for l in self.data["lists"] if l.get("id") == list_id), None)
+        if lst is None:
+            raise KeyError(f"list {list_id}")
+        return lst
+
+    async def async_list_add_item(self, list_id: str, text: str, item_id: str | None = None) -> dict[str, Any]:
+        """Add an open item (placed after the other open items)."""
+        async with self._lock:
+            lst = self._list(list_id)
+            item = {"id": item_id or secrets.token_hex(6), "text": text.strip()[:500], "done": False}
+            if any(i.get("id") == item["id"] for i in lst["items"]):
+                raise ValueError(f"item {item['id']} exists")
+            open_items = [i for i in lst["items"] if not i.get("done")]
+            lst["items"] = open_items + [item] + [i for i in lst["items"] if i.get("done")]
+            self._changed()
+            return item
+
+    async def async_list_update_item(self, list_id: str, item_id: str, text: str | None = None,
+                                     done: bool | None = None) -> dict[str, Any]:
+        """Rename and/or check/uncheck one item. Checking records when (done items show in that order)."""
+        async with self._lock:
+            lst = self._list(list_id)
+            item = next((i for i in lst["items"] if i.get("id") == item_id), None)
+            if item is None:
+                raise KeyError(f"item {item_id}")
+            if text is not None and text.strip():
+                item["text"] = text.strip()[:500]
+            if done is not None and bool(done) != bool(item.get("done")):
+                item["done"] = bool(done)
+                if done:
+                    item["done_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+                else:
+                    item.pop("done_at", None)
+                    # back among the open items, at the bottom
+                    others = [i for i in lst["items"] if i is not item]
+                    lst["items"] = [i for i in others if not i.get("done")] + [item] + [i for i in others if i.get("done")]
+            self._changed()
+            return item
+
+    async def async_list_delete_items(self, list_id: str, item_ids: list[str] | None = None, done: bool = False) -> int:
+        """Delete the given items, or (done=True) every checked item. Returns how many were removed."""
+        async with self._lock:
+            lst = self._list(list_id)
+            ids = set(item_ids or [])
+            keep = [i for i in lst["items"] if not (i.get("id") in ids or (done and i.get("done")))]
+            removed = len(lst["items"]) - len(keep)
+            if removed:
+                lst["items"] = keep
+                self._changed()
+            return removed
+
+    async def async_list_save(self, meta: dict[str, Any]) -> dict[str, Any]:
+        """Create a list or change its name/color/owner. Items are never touched here."""
+        async with self._lock:
+            lst = next((l for l in self.data["lists"] if l.get("id") == meta.get("id")), None)
+            if lst is None:
+                lst = {"id": meta.get("id") or secrets.token_hex(6), "items": []}
+                self.data["lists"].append(lst)
+            lst["name"] = str(meta.get("name") or lst.get("name") or "List").strip()[:80]
+            lst["color"] = str(meta.get("color") or lst.get("color") or "#4a7dff")
+            if meta.get("owner") in adult_ids(self.data):
+                lst["owner"] = meta["owner"]
+            else:
+                lst.pop("owner", None)
+            self._changed()
+            return {k: v for k, v in lst.items() if k != "items"}
+
+    async def async_list_remove(self, list_id: str) -> None:
+        async with self._lock:
+            self._list(list_id)
+            self.data["lists"] = [l for l in self.data["lists"] if l.get("id") != list_id]
             self._changed()
 
     async def async_move_list_item(

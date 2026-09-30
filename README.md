@@ -156,14 +156,14 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 - **No Google Photos or iCloud album sync** (Immich and uploads only).
 - **"All events" on a repeating event** looks back up to 3 years to find the series start. Events that repeat "forever" and began earlier than that may be re-anchored.
 - **Repeating-event choices depend on the calendar.** Local Calendar supports all three; Google Calendar may reject edits, and subscribed feeds are read-only.
-- **Concurrent edits: the last save wins.** If two people add, check or delete items on the *same* list on two devices at the exact same moment, one change can be lost. Reordering items and chore check-offs are done atomically on the server, so they don't clash.
+- **Concurrent setup edits: the last save wins.** Lists are safe: adding, checking, renaming, deleting and reordering items, and chore check-offs, are each done as one small change on the server, so two screens never overwrite each other. Setup changes (family members, chores, settings) still save the whole section, so two people editing *setup* at the same moment could overwrite each other.
 - **Reordering is buttons only** (no drag and drop), because dragging isn't reliable in Android kiosk browsers. Home Assistant to-do lists show the arrows only when their integration supports reordering (for example, the built-in Local To-do and Shopping List do; many others don't).
 
 ## Development
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 79 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 81 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

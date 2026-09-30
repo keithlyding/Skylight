@@ -21,10 +21,11 @@ async def entry(hass: HomeAssistant, tmp_path):
 
 async def _cmd(ws, msg, _id=[4000]):
     _id[0] += 1
-    await ws.send_json({"id": _id[0], **msg})
+    my_id = _id[0]  # keep our own id: calls may run concurrently
+    await ws.send_json({"id": my_id, **msg})
     while True:
         r = await ws.receive_json()
-        if r.get("id") == _id[0] and r["type"] == "result":
+        if r.get("id") == my_id and r["type"] == "result":
             return r
 
 
@@ -75,13 +76,63 @@ def test_done_items_in_completion_order():
              {"id": "b"}, {"id": "old2", "done": True}]
     script = helpers + f"""
 const items = {json.dumps(items)};
-const t = toggleItem({{id: "n", done: false}}), u = toggleItem(t);
-console.log(JSON.stringify([orderItems(items).map((i) => i.id), !!t.done_at && t.done, "done_at" in u, u.done]));"""
+console.log(JSON.stringify(orderItems(items).map((i) => i.id)));"""
     try:
         out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
     except FileNotFoundError:
         pytest.skip("node not installed")
-    order, checked, has_time_after_uncheck, done_after_uncheck = json.loads(out)
     # open first in list order; done: no-time items (older) in list order, then by check-off time
-    assert order == ["a", "b", "old1", "old2", "y", "x"]
-    assert checked is True and has_time_after_uncheck is False and done_after_uncheck is False
+    assert json.loads(out) == ["a", "b", "old1", "old2", "y", "x"]
+
+
+async def test_item_commands_are_atomic(hass, entry, hass_ws_client):
+    """Two screens editing the same list at once: nothing is lost (each call changes one item on the server)."""
+    import asyncio
+    ws1, ws2 = await hass_ws_client(hass), await hass_ws_client(hass)
+    store = hass.data[DOMAIN]["store"]
+    lid = store.data["lists"][0]["id"]
+    r = await _cmd(ws1, {"type": "skylight/list/item/add", "list_id": lid, "text": " Milk "})
+    milk = r["result"]["id"]
+    assert r["result"] == {"id": milk, "text": "Milk", "done": False}
+
+    # interleave: ws1 checks Milk while ws2 adds Eggs; both survive
+    await asyncio.gather(
+        _cmd(ws1, {"type": "skylight/list/item/update", "list_id": lid, "item_id": milk, "done": True}),
+        _cmd(ws2, {"type": "skylight/list/item/add", "list_id": lid, "text": "Eggs"}),
+    )
+    items = store.data["lists"][0]["items"]
+    assert [(i["text"], i["done"]) for i in items] == [("Eggs", False), ("Milk", True)]  # open first
+    assert items[1]["done_at"].endswith("Z")
+
+    # rename + uncheck returns it to the bottom of the open items, without its done time
+    r = await _cmd(ws2, {"type": "skylight/list/item/update", "list_id": lid, "item_id": milk, "done": False, "text": "Oat milk"})
+    assert r["result"]["text"] == "Oat milk" and "done_at" not in r["result"]
+    assert [i["text"] for i in store.data["lists"][0]["items"]] == ["Eggs", "Oat milk"]
+
+    await _cmd(ws1, {"type": "skylight/list/item/update", "list_id": lid, "item_id": milk, "done": True})
+    assert (await _cmd(ws1, {"type": "skylight/list/item/delete", "list_id": lid, "done": True}))["result"] == 1
+    eggs = store.data["lists"][0]["items"][0]["id"]
+    assert (await _cmd(ws1, {"type": "skylight/list/item/delete", "list_id": lid, "item_ids": [eggs]}))["result"] == 1
+    assert store.data["lists"][0]["items"] == []
+
+    # errors
+    assert (await _cmd(ws1, {"type": "skylight/list/item/add", "list_id": lid, "text": "   "}))["error"]["code"] == "invalid"
+    assert (await _cmd(ws1, {"type": "skylight/list/item/add", "list_id": "nope", "text": "x"}))["error"]["code"] == "not_found"
+    assert (await _cmd(ws1, {"type": "skylight/list/item/update", "list_id": lid, "item_id": "nope", "done": True}))["error"]["code"] == "not_found"
+
+
+async def test_list_save_and_delete_keep_items(hass, entry, hass_ws_client):
+    ws = await hass_ws_client(hass)
+    store = hass.data[DOMAIN]["store"]
+    await _cmd(ws, {"type": "skylight/set", "key": "members", "value": [
+        {"id": "dad", "name": "Dad", "color": "#fff", "avatar": "x", "calendars": [], "role": "adult"},
+        {"id": "kid", "name": "Kid", "color": "#fff", "avatar": "x", "calendars": [], "role": "kid"}]})
+    new = (await _cmd(ws, {"type": "skylight/list/save", "name": "Honey-do", "color": "#e67e22", "owner": "dad"}))["result"]
+    assert new["name"] == "Honey-do" and new["owner"] == "dad" and "items" not in new
+    await _cmd(ws, {"type": "skylight/list/item/add", "list_id": new["id"], "text": "Fix fence"})
+    # renaming (from a screen that never saw the new item) keeps the items; a kid can't own it
+    r = await _cmd(ws, {"type": "skylight/list/save", "list_id": new["id"], "name": "Chores for Dad", "owner": "kid"})
+    lst = next(l for l in store.data["lists"] if l["id"] == new["id"])
+    assert lst["name"] == "Chores for Dad" and "owner" not in lst and [i["text"] for i in lst["items"]] == ["Fix fence"]
+    assert (await _cmd(ws, {"type": "skylight/list/delete", "list_id": new["id"]}))["success"]
+    assert all(l["id"] != new["id"] for l in store.data["lists"])
