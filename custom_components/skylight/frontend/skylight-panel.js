@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.33.2";
+const PANEL_VERSION = "1.33.3";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -347,8 +347,7 @@ class SkylightPanel extends HTMLElement {
     if (first) this._start();
   }
   get hass() { return this._hass; }
-  // Home Assistant sets this when Skylight is a sidebar panel: fill exactly the space HA gives us.
-  set panel(_p) { this.toggleAttribute("data-panel", true); }
+  set panel(_p) {}
   set narrow(n) { this._narrow = n; }
   setConfig(config) { this.config = config || {}; }
   getCardSize() { return 12; }
@@ -4110,8 +4109,9 @@ button.danger { background:#ffe3e3; color:#c0392b; }
 button.icon { width:40px; height:40px; padding:0; font-size:22px; border-radius:50%; }
 button.icon.sm { width:32px; height:32px; font-size:18px; }
 input, select, textarea { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 12px; width:100%; }
-.app { display:flex; height:100vh; background:var(--bg); overflow:hidden; }
-:host([data-panel]) .app { height:100%; } /* inside HA's panel area (not the whole screen, which can hide the edges on iPhone) */
+/* The visible screen height (dvh follows iOS's changing visible area). Not "100%": Home Assistant's
+   panel container has no fixed height, and sizing to it made the calendar resize itself in a loop. */
+.app { display:flex; height:100vh; height:100dvh; background:var(--bg); overflow:hidden; }
 .rail { width:calc(92px + env(safe-area-inset-left)); flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
   padding:max(14px, env(safe-area-inset-top)) 6px max(14px, env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left)); background:var(--card); border-right:1px solid var(--line); overflow-y:auto; }
 .logo { font-size:30px; color:#ff9f43; margin-bottom:8px; }
@@ -4661,8 +4661,6 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 
 /* ---------- phone (e.g. the Home Assistant app on a phone); tablets are unaffected ---------- */
 @media (max-width: 600px) {
-  .app { height:100vh; height:100dvh; } /* iPhone: exclude the browser/app toolbars */
-  :host([data-panel]) .app { height:100%; }
   .rail { width:100%; }
   header { padding:max(8px, env(safe-area-inset-top)) 12px 2px; }
   .content { padding-bottom:14px; }

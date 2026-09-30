@@ -68,8 +68,7 @@ const SCENARIOS = {
     // and Skylight fills the panel area Home Assistant gives it (not the whole screen).
     for (const [name, w, h, side] of [["portrait", 390, 844, false], ["landscape", 844, 390, true], ["ipad", 820, 1180, false]]) {
       const p = await open(browser, base, { width: w, height: h, ctx: { isMobile: true, hasTouch: true } });
-      await p.evaluate(() => { el.panel = {}; el.style.height = "100vh"; el.render(); });
-      eq(await p.evaluate(() => el.hasAttribute("data-panel")), true, `${name}: panel mode`);
+      await p.evaluate(() => { el.panel = {}; el.render(); }); // like HA: a container without a fixed height
       for (const t of ["home", "calendar", "meals", "lists", "settings"]) {
         await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t); await p.waitForTimeout(150);
         const m = await p.evaluate(() => {
@@ -86,6 +85,19 @@ const SCENARIOS = {
       eq(p.errors, [], `${name}: page errors`);
       await p.context().close();
     }
+  },
+
+  async steady(browser, base) {
+    // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
+    // container has no fixed height.
+    const p = await open(browser, base);
+    await p.evaluate(() => { el.panel = {}; el.ui.tab = "calendar"; el.render(); });
+    await p.waitForTimeout(500);
+    const sample = () => p.evaluate(() => { const g = el.shadowRoot.querySelector(".tg-scroll"); return [Math.round(el.shadowRoot.querySelector(".app").getBoundingClientRect().height), Math.round(g.scrollTop), Math.round(el._tgH)]; });
+    const a = await sample(); await p.waitForTimeout(1500); const b = await sample();
+    eq(b, a, "calendar height and scroll stay put");
+    eq(a[0], 912, "fills the screen height");
+    await p.context().close();
   },
 
   async weather(browser, base) {

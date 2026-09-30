@@ -201,7 +201,7 @@ pytest            # 85 tests: chores, integration, Immich, feeds, recurring edit
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 14 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 15 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
