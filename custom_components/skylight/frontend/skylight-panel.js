@@ -829,7 +829,7 @@ class SkylightPanel extends HTMLElement {
     return evs.filter((e) => e.info || (e.members || []).includes(this.ui.filter));
   }
 
-  // "Z- Soccer" -> {member: Sam, rest: "Soccer"} when Sam has prefix "Z".
+  // "S- Soccer" -> {member: Sam, rest: "Soccer"} when Sam has prefix "S".
   // A prefix matches only when followed by a separator (-, :, –, space), so "Z" never matches "Zoo trip".
   // Longest member prefix at position i of the title, or null.
   _prefixAt(t, i) {
@@ -847,7 +847,7 @@ class SkylightPanel extends HTMLElement {
     }
     return best;
   }
-  // "Z- Soccer" -> Sam; "Z&K- Soccer" / "Z/K: Soccer" / "Z + K - Soccer" -> Sam and Leo.
+  // "S- Soccer" -> Sam; "S&L- Soccer" / "S/L: Soccer" / "S + L - Soccer" -> Sam and Leo.
   // A prefix matches only when followed by a separator, so "Z" never matches "Zoo trip".
   prefixOwner(title) {
     const t = title.trim();
@@ -2084,7 +2084,7 @@ class SkylightPanel extends HTMLElement {
             ${kids.length ? `<div class="row"><select id="m-movechores">${kids.map((k) => `<option value="${k.id}">${k.avatar} ${esc(k.name)}</option>`).join("")}</select><button data-action="move-chores">Move chores to this kid</button></div>` : ""}</div>`;
         })()}
         <label>Event title prefixes <small class="hint">(optional, comma-separated)</small>
-          <input id="m-prefix" value="${esc((m?.prefixes || []).join(", "))}" placeholder="e.g. Z, Sam"></label>
+          <input id="m-prefix" value="${esc((m?.prefixes || []).join(", "))}" placeholder="e.g. S, Sam"></label>
         <p class="hint" style="margin-top:-4px">Events whose title starts with one of these, followed by "-", ":" or a space (like “Z- Soccer”), show in this person's color on any calendar.</p>
         <div class="label">Color</div>
         <div class="swatches colorgrid">${MEMBER_COLORS.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" title="${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>
@@ -3374,7 +3374,9 @@ class SkylightPanel extends HTMLElement {
           ${open ? `<div class="wdetail">${detail.map(([label, x]) => `<p><b>${label}${x.temperature !== undefined ? ` · ${Math.round(x.temperature)}°` : ""}:</b> ${esc(x.detailed_description || x.short_description)}</p>`).join("")}</div>` : ""}`;
       }).join("")}</div></section>`;
     }
-    const lat = this._hass.config?.latitude, lon = this._hass.config?.longitude;
+    // Rounded to ~1 km: the radar map is loaded from Windy/RainViewer and doesn't need more.
+    const r2 = (v) => (v === undefined || v === null ? undefined : Math.round(v * 100) / 100);
+    const lat = r2(this._hass.config?.latitude), lon = r2(this._hass.config?.longitude);
     const radarSrc = this.settings.weather_radar === "off" || lat === undefined ? null
       : this.settings.weather_radar === "rainviewer"
         ? `https://www.rainviewer.com/map.html?loc=${lat},${lon},7&oFa=0&oC=1&oU=0&oCS=1&oF=0&oAP=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1`

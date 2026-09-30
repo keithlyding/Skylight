@@ -127,7 +127,7 @@ def _read_exif(path: pathlib.Path) -> tuple[str | None, tuple[float, float] | No
 async def _reverse_geocode(hass: HomeAssistant, lat: float, lon: float) -> str | None:
     try:
         async with async_get_clientsession(hass).get(
-            PHOTON_REVERSE, params={"lat": f"{lat:.5f}", "lon": f"{lon:.5f}", "lang": "en"},
+            PHOTON_REVERSE, params={"lat": f"{lat:.3f}", "lon": f"{lon:.3f}", "lang": "en"},
             headers={"User-Agent": f"HomeAssistant-Skylight/{VERSION}"}, timeout=aiohttp.ClientTimeout(total=8),
         ) as resp:
             if resp.status != 200:

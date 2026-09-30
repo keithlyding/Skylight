@@ -156,6 +156,24 @@ Settings → **Backup**:
 - **⬆ Restore from file…** replaces those on every screen after asking you to confirm. Your current API keys and PIN stay. Photos in the backup are only kept if the files are still on the server. The data from just before the restore is saved on the server as `config/.storage/skylight.data.before_import`, in case you need to undo it.
 - Both need the settings PIN. On the kiosk tablet the download goes to its Downloads folder; it's easiest from a PC or phone.
 
+## Privacy: what leaves your home
+
+Skylight keeps family data on your Home Assistant server. Some features ask outside services for information. Home Assistant makes these requests (except the radar map, which the screen loads itself), and the home location is **rounded to about 1 km** first.
+
+| Service | Used for | What it receives |
+|---|---|---|
+| US National Weather Service (api.weather.gov) | Weather alerts | Rounded home location |
+| Open-Meteo | Rain in the next 2 hours, comparisons, air quality | Rounded home location |
+| Google Pollen API | US pollen (only if you add a Google key) | Rounded home location, your Google key |
+| Google Places | Place search in the event editor (only with a Google key) | What you type, rounded home location |
+| Photon / OpenStreetMap (komoot) | Place search without a Google key; town names for uploaded photos | What you type and the rounded home location; for photos, the photo's GPS rounded to about 100 m |
+| Windy or RainViewer | Radar map on the Weather tab (loaded by the screen) | Rounded home location, plus whatever those sites log about visitors |
+| Your own Mealie and Immich servers | Recipes, meal plans, photos | Talks only to the addresses you entered |
+
+To avoid a service: turn off weather alerts or the Open-Meteo extras in Settings, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
+
+Nothing is sent to the author of Skylight, and there is no tracking or analytics.
+
 ## Where data lives
 
 - Family data (members and their birthdays, birthdays & anniversaries, chores and their completion history, meals, lists, settings, settings-PIN hash): `config/.storage/skylight.data`. This is included in HA backups.
@@ -177,7 +195,7 @@ Settings → **Backup**:
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 84 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 85 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

@@ -23,7 +23,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, VERSION
+from .const import DOMAIN, VERSION, coarse_location
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -108,7 +108,7 @@ async def _air(hass: HomeAssistant, lat: float, lon: float) -> dict[str, Any]:
 
 async def _google_pollen(hass: HomeAssistant, key: str, lat: float, lon: float) -> list[dict[str, Any]]:
     data = await _get(hass, POLLEN_URL, {
-        "key": key, "location.latitude": f"{lat:.4f}", "location.longitude": f"{lon:.4f}", "days": 3,
+        "key": key, "location.latitude": f"{lat:.2f}", "location.longitude": f"{lon:.2f}", "days": 3,
         "plantsDescription": "false",
     })
     days = []
@@ -127,7 +127,11 @@ async def async_get_extra(hass: HomeAssistant, force: bool = False) -> dict[str,
     cache = hass.data.get(CACHE_KEY)
     if cache and not force and time.monotonic() - cache["at"] < CACHE_SECONDS:
         return cache["result"]
-    lat, lon = hass.config.latitude, hass.config.longitude
+    home = coarse_location(hass)
+    if home is None:
+        return {"errors": {"location": "Home location isn't set in Home Assistant"}, "pollen_source": None,
+                "forecast": None, "last_year": None, "air": None}
+    lat, lon = home
     key = hass.data[DOMAIN]["store"].data.get("places", {}).get("google_key")
     jobs = {"forecast": _forecast(hass, lat, lon), "last_year": _last_year(hass, lat, lon), "air": _air(hass, lat, lon)}
     if key:

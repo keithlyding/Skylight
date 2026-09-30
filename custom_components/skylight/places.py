@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import security
-from .const import DOMAIN, VERSION
+from .const import DOMAIN, VERSION, coarse_location
 
 PHOTON_URL = "https://photon.komoot.io/api/"
 GOOGLE_URL = "https://places.googleapis.com/v1/places:searchText"
@@ -38,9 +38,8 @@ def _photon_address(p: dict[str, Any]) -> str:
 
 async def _photon(hass: HomeAssistant, query: str) -> list[dict[str, str]]:
     params = {"q": query, "limit": str(LIMIT), "lang": "en"}
-    if hass.config.latitude is not None and hass.config.longitude is not None:
-        params["lat"] = str(hass.config.latitude)
-        params["lon"] = str(hass.config.longitude)
+    if (home := coarse_location(hass)) is not None:
+        params["lat"], params["lon"] = str(home[0]), str(home[1])
     session = async_get_clientsession(hass)
     try:
         async with session.get(PHOTON_URL, params=params, timeout=TIMEOUT,
@@ -62,9 +61,9 @@ async def _photon(hass: HomeAssistant, query: str) -> list[dict[str, str]]:
 
 async def _google(hass: HomeAssistant, key: str, query: str) -> list[dict[str, str]]:
     body: dict[str, Any] = {"textQuery": query, "pageSize": LIMIT}
-    if hass.config.latitude is not None and hass.config.longitude is not None:
+    if (home := coarse_location(hass)) is not None:
         body["locationBias"] = {"circle": {
-            "center": {"latitude": hass.config.latitude, "longitude": hass.config.longitude},
+            "center": {"latitude": home[0], "longitude": home[1]},
             "radius": 50000.0,
         }}
     session = async_get_clientsession(hass)

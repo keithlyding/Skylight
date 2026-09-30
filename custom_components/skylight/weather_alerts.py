@@ -16,7 +16,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DOMAIN, VERSION
+from .const import DOMAIN, VERSION, coarse_location
 
 NWS_ALERTS = "https://api.weather.gov/alerts/active"
 CACHE_KEY = f"{DOMAIN}_alerts"
@@ -47,12 +47,14 @@ async def async_get_alerts(hass: HomeAssistant, force: bool = False) -> dict[str
     cache = hass.data.get(CACHE_KEY)
     if cache and not force and time.monotonic() - cache["at"] < CACHE_SECONDS:
         return cache["result"]
-    lat, lon = hass.config.latitude, hass.config.longitude
+    home = coarse_location(hass)
     result: dict[str, Any] = {"supported": True, "alerts": [], "error": None}
+    if home is None:
+        return {**result, "supported": False}
     session = async_get_clientsession(hass)
     try:
         async with session.get(
-            NWS_ALERTS, params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=TIMEOUT,
+            NWS_ALERTS, params={"point": f"{home[0]:.2f},{home[1]:.2f}"}, timeout=TIMEOUT,
             headers={"User-Agent": f"HomeAssistant-Skylight/{VERSION} (family display)", "Accept": "application/geo+json"},
         ) as resp:
             if resp.status in (400, 404):  # outside the NWS coverage area

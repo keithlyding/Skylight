@@ -14,6 +14,14 @@ PHOTO_DIR = "skylight_photos"
 PANEL_PATH = "skylight"
 PANEL_ELEMENT = "skylight-panel"
 
+def coarse_location(hass) -> tuple[float, float] | None:
+    """Home location rounded to 2 decimals (about 1 km) for outside services; None if unset."""
+    lat, lon = hass.config.latitude, hass.config.longitude
+    if lat is None or lon is None:
+        return None
+    return round(float(lat), 2), round(float(lon), 2)
+
+
 # Top-level keys the frontend may replace wholesale via skylight/set.
 EDITABLE_KEYS = (
     "members", "chores", "meals", "todo_owners", "occasions", "lists", "settings", "family_calendars", "meal_calendars", "linked_todos", "info_calendars",

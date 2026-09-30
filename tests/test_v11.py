@@ -300,4 +300,4 @@ async def test_photo_captions_immich_and_upload(hass, setup, hass_ws_client, aio
     body = next(c[2] for c in aioclient_mock.mock_calls if "search/metadata" in str(c[1]))
     assert body["withExif"] is True
     lat = next(str(c[1]) for c in aioclient_mock.mock_calls if "photon" in str(c[1]))
-    assert "lat=40.020" in lat and "lon=-105.270" in lat
+    assert "lat=40.020" in lat and "lon=-105.270" in lat  # ~100 m precision is enough for a town name

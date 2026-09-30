@@ -67,3 +67,12 @@ async def test_google_pollen_and_partial_failure(hass, ws, aioclient_mock):
     assert r["pollen"][0] == {"date": "2026-09-27", "types": [
         {"code": "WEED", "name": "Weed", "value": 4, "category": "High", "in_season": True}]}
     assert r["pollen_source"] == "google"
+
+
+async def test_location_is_rounded_for_outside_services(hass, ws, aioclient_mock):
+    """Only ~1 km precision leaves Home Assistant (privacy)."""
+    for url in (FORECAST, ARCHIVE, AIR):
+        aioclient_mock.get(url, json={})
+    await _call(ws, {"type": "skylight/weather/extra", "force": True})
+    sent = " ".join(str(c[1]) for c in aioclient_mock.mock_calls)
+    assert "39.74" in sent and "-104.99" in sent and "39.7392" not in sent and "104.9903" not in sent
