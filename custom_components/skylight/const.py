@@ -74,5 +74,7 @@ DEFAULT_DATA = {
         "brightness_entity": None,  # e.g. number.<tablet>_screen_brightness (Fully Kiosk)
         "day_brightness": 80,
         "night_brightness": 20,
+        # Hide Home Assistant's own sidebar/header for non-admin users (e.g. the kitchen tablet).
+        "hide_ha_sidebar": True,
     },
 }

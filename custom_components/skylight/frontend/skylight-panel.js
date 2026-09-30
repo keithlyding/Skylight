@@ -397,9 +397,24 @@ class SkylightPanel extends HTMLElement {
       <p>Make sure the Skylight integration is installed and added under Settings → Devices &amp; Services.</p></div>`;
   }
 
+  // Non-admin users (the kitchen tablet, kids' devices) don't get Home Assistant's own sidebar and
+  // header: HA's kiosk mode for this browser session, plus the "always hidden" sidebar setting as a
+  // fallback on HA versions without kiosk mode. Admins are never affected. Not a security boundary:
+  // Home Assistant's user permissions still decide what an account can do.
+  _applyHaChrome() {
+    const user = this._hass?.user;
+    if (!user || user.is_admin) return;
+    const hide = this.settings.hide_ha_sidebar !== false;
+    if (this._haChromeHidden === hide) return;
+    this._haChromeHidden = hide;
+    window.dispatchEvent(new CustomEvent("hass-kiosk-mode", { detail: { enable: hide } }));
+    this.dispatchEvent(new CustomEvent("hass-dock-sidebar", { detail: { dock: hide ? "always_hidden" : "docked" }, bubbles: true, composed: true }));
+  }
+
   _onData(data) {
     const firstLoad = !this.data;
     this.data = data;
+    this._applyHaChrome();
     if (firstLoad) {
       const v = data.settings.default_view || "7day";
       this.ui.view = LEGACY_VIEWS[v] || v;
@@ -3902,6 +3917,8 @@ class SkylightPanel extends HTMLElement {
         <label class="inline">24-hour clock <input type="checkbox" ${s.clock_24h ? "checked" : ""} data-change="setting" data-key="clock_24h"></label>
         <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
         <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
+        <label class="inline">Hide Home Assistant's sidebar for non-admin users <input type="checkbox" ${s.hide_ha_sidebar !== false ? "checked" : ""} data-change="setting" data-key="hide_ha_sidebar"></label>
+        <p class="hint">On screens logged in as a non-admin Home Assistant user (like the kitchen tablet), Home Assistant's own menu and header are hidden so Skylight fills the screen. Admin accounts always keep them. This isn't a lock: what an account can do is still set by its Home Assistant permissions.</p>
         <label class="inline">Allow photo uploads <input type="checkbox" ${s.allow_uploads !== false ? "checked" : ""} data-change="setting" data-key="allow_uploads"></label>
         <label class="inline">Show date &amp; place on photos <input type="checkbox" ${s.photo_captions !== false ? "checked" : ""} data-change="setting" data-key="photo_captions"></label>
       </section>

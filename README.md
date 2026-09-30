@@ -91,7 +91,7 @@ The API key stays on your HA server and is never sent to the tablet. Immich imag
 1. Install **Fully Kiosk Browser** from the Play Store (the free version works; Plus adds remote control).
 2. **Start URL**: `http://<your-ha-address>:8123/skylight`
 3. Log in with a dedicated non-admin HA user, such as "kitchen". Tick *Keep me logged in*.
-4. Tap ☰ at the top of the HA sidebar to collapse it so Skylight fills the screen; Skylight has its own navigation rail. (A setting to hide the sidebar completely varies by HA version; check your user profile page.)
+4. Skylight hides Home Assistant's own sidebar and header for **non-admin** users automatically, so it fills the screen (Settings → Display → *Hide Home Assistant's sidebar for non-admin users*). Admin accounts always keep them. This is a convenience, not a lock: also turn on Fully Kiosk's kiosk mode (*Kiosk Mode → Enable*, with its own PIN) so the browser can't be left, and keep the tablet's account a non-admin user.
 5. In Fully Kiosk: **Keep screen on**, **Launch on boot**, and disable **Pull to refresh**.
 6. Optional: add the **Fully Kiosk Browser** integration in Home Assistant and pick its *Screen brightness* entity in Skylight → Settings → Look & night mode to dim the screen at night. Fully Kiosk's motion detection or schedule can also turn the screen off.
 
