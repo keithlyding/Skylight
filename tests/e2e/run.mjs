@@ -63,6 +63,31 @@ const SCENARIOS = {
     }
   },
 
+  async orientation(browser, base) {
+    // Phones upright and on their side, an iPad upright: every menu button on screen, nothing scrolls sideways,
+    // and Skylight fills the panel area Home Assistant gives it (not the whole screen).
+    for (const [name, w, h, side] of [["portrait", 390, 844, false], ["landscape", 844, 390, true], ["ipad", 820, 1180, false]]) {
+      const p = await open(browser, base, { width: w, height: h, ctx: { isMobile: true, hasTouch: true } });
+      await p.evaluate(() => { el.panel = {}; el.style.height = "100vh"; el.render(); });
+      eq(await p.evaluate(() => el.hasAttribute("data-panel")), true, `${name}: panel mode`);
+      for (const t of ["home", "calendar", "meals", "lists", "settings"]) {
+        await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t); await p.waitForTimeout(150);
+        const m = await p.evaluate(() => {
+          const tabs = [...el.shadowRoot.querySelectorAll(".rail .tab")].map((t) => t.getBoundingClientRect());
+          const rail = el.shadowRoot.querySelector(".rail").getBoundingClientRect();
+          return { vis: tabs.filter((b) => b.top >= 0 && b.bottom <= innerHeight + 1 && b.left >= 0 && b.right <= innerWidth + 1).length, n: tabs.length,
+            sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, railLeft: rail.left, railWide: rail.width > innerWidth / 2 };
+        });
+        eq(m.vis, m.n, `${name}/${t}: all menu buttons visible`);
+        check(m.sw <= w && m.sh <= h, `${name}/${t}: page overflows (${m.sw}x${m.sh})`);
+        eq(!m.railWide, side || w > 900, `${name}/${t}: side menu vs bottom bar`);
+      }
+      if (name !== "ipad") eq(await p.evaluate(() => el.calView), "3day", `${name}: calendar limited to 3 days`);
+      eq(p.errors, [], `${name}: page errors`);
+      await p.context().close();
+    }
+  },
+
   async weather(browser, base) {
     const p = await open(browser, base);
     // NWS has no daily forecast: day headers fall back to day/night periods

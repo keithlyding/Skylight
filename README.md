@@ -25,7 +25,7 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
-**On a phone** (e.g. the Home Assistant app on an iPhone, open ☰ → Skylight) the layout switches automatically below 600px width: a bottom tab bar, a scrollable row of family chips, calendar views up to 3 days (5/7-day choices are kept for bigger screens), Agenda by default on the Today screen, meals as one card per day, 2-column recipes, and dialogs as bottom sheets. Tablets and PCs are unchanged.
+**On a phone** (e.g. the Home Assistant app on an iPhone, open ☰ → Skylight) the layout adapts automatically, upright or on its side, and keeps clear of the notch and the home-indicator bar. Held upright (below 600px wide) you get a bottom tab bar, a scrollable row of family chips, calendar views up to 3 days (5/7-day choices are kept for bigger screens), Agenda by default on the Today screen, meals as one card per day, 2-column recipes, and dialogs as bottom sheets. Turned sideways, a slim menu sits on the left with a compact header, 3-day calendars and the same day-by-day meals. Tablets and PCs are unchanged.
 
 ## Install
 
@@ -201,7 +201,7 @@ pytest            # 85 tests: chores, integration, Immich, feeds, recurring edit
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 13 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 14 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.

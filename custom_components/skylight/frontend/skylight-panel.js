@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.33.1";
+const PANEL_VERSION = "1.33.2";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -347,7 +347,8 @@ class SkylightPanel extends HTMLElement {
     if (first) this._start();
   }
   get hass() { return this._hass; }
-  set panel(_p) {}
+  // Home Assistant sets this when Skylight is a sidebar panel: fill exactly the space HA gives us.
+  set panel(_p) { this.toggleAttribute("data-panel", true); }
   set narrow(n) { this._narrow = n; }
   setConfig(config) { this.config = config || {}; }
   getCardSize() { return 12; }
@@ -639,7 +640,7 @@ class SkylightPanel extends HTMLElement {
     return this.isPhone ? Math.min(this._homeDays, 3) : this._homeDays;
   }
   // Phone-width screens (e.g. the Home Assistant app on a phone) get a compact layout.
-  get isPhone() { return !!window.matchMedia?.("(max-width: 600px)").matches; }
+  get isPhone() { return !!window.matchMedia?.("(max-width: 600px), (max-height: 500px) and (orientation: landscape)").matches; }
   // 5- and 7-day grids don't fit on a phone: show 3 days there (the saved choice is kept for bigger screens).
   get calView() { const v = this.ui.view; return this.isPhone && (v === "5day" || v === "7day") ? "3day" : v; }
   set homeDays(n) {
@@ -2486,8 +2487,9 @@ class SkylightPanel extends HTMLElement {
         <div class="grow"><b>${esc(o.title)}</b><small>${MONTHS[o.month - 1]} ${o.day}${o.year ? `, ${o.year}` : ""}</small></div>
         <button data-action="edit-occasion" data-id="${esc(o.id)}">Edit</button></div>`).join("") || `<p class="hint">Nothing added yet.</p>`}
       <div class="row">
-        <label class="inline">Show on Today <input type="number" min="1" max="10" value="${Number(this.settings.upcoming_count ?? 3)}" data-change="setting" data-key="upcoming_count" data-num="1"></label>
-        <label class="inline">within (days) <input type="number" min="1" max="366" value="${Number(this.settings.upcoming_days ?? 60)}" data-change="setting" data-key="upcoming_days" data-num="1"></label></div>
+        <span class="label" style="margin:0">Upcoming card on Today:</span>
+        <label class="inline">show up to <input type="number" min="1" max="10" value="${Number(this.settings.upcoming_count ?? 3)}" data-change="setting" data-key="upcoming_count" data-num="1"> dates</label>
+        <label class="inline">up to <input type="number" min="1" max="366" value="${Number(this.settings.upcoming_days ?? 60)}" data-change="setting" data-key="upcoming_days" data-num="1"> days ahead</label></div>
     </section>`;
   }
   openOccasionDialog(o) {
@@ -3871,7 +3873,7 @@ class SkylightPanel extends HTMLElement {
           const mm = this.mealieOn ? this.mealieFor(ymd(d), slot) : [];
           const img = mm.find((m) => m.recipe?.image)?.recipe.image;
           const names = [...mm.map((m) => esc(this.mealieName(m))), ...synced.map((e) => esc(this.mealTitle(e))), ...(t ? [esc(t)] : [])];
-          return `<button class="pmslot ${names.length ? "" : "empty"}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">
+          return `<button class="pmslot ${names.length ? "" : "pmempty"}" data-action="edit-meal" data-date="${ymd(d)}" data-slot="${slot}">
             <span class="pmicon">${img ? `<img src="${esc(img)}" alt="" onerror="this.replaceWith('${icon}')">` : icon}</span>
             <span class="pmtext"><small>${label}</small>${names.length ? `<b>${names.join(" · ")}</b>` : `<b class="add">+ Add</b>`}</span></button>`;
         }).join("")}
@@ -4086,6 +4088,16 @@ class SkylightPanel extends HTMLElement {
 }
 
 const STYLES = `
+.pmeals { display:flex; flex-direction:column; gap:10px; }
+.pmday { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.pmday.today { outline:3px solid var(--accent); }
+.pmday h3 { margin:2px 0 6px; font-size:17px; } .pmday h3 small { color:var(--muted); font-weight:600; }
+.pmslot { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:6px 4px; background:none; box-shadow:none; border-top:1px solid var(--line); border-radius:0; }
+.pmicon { width:40px; height:40px; flex:none; display:grid; place-items:center; font-size:24px; }
+.pmicon img { width:40px; height:40px; border-radius:10px; object-fit:cover; }
+.pmtext { display:flex; flex-direction:column; min-width:0; } .pmtext small { color:var(--muted); font-weight:700; font-size:12px; }
+.pmtext b { font-size:15px; } .pmslot.pmempty .add { color:var(--muted); font-weight:600; }
+/* ---- layout frame ---- */
 :host { display:block; height:100%; --bg:#f7f4ef; --card:#fff; --ink:#2d2a26; --muted:#8a8378; --line:rgba(0,0,0,.07);
   --accent:#4a7dff; --radius:18px; font-family: Nunito, "Segoe UI", Roboto, system-ui, sans-serif; color:var(--ink); }
 @media (prefers-color-scheme: dark) { :host { --bg:#1b1a18; --card:#282724; --ink:#f1ede6; --muted:#a59f94; --line:rgba(255,255,255,.08); } }
@@ -4099,13 +4111,15 @@ button.icon { width:40px; height:40px; padding:0; font-size:22px; border-radius:
 button.icon.sm { width:32px; height:32px; font-size:18px; }
 input, select, textarea { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 12px; width:100%; }
 .app { display:flex; height:100vh; background:var(--bg); overflow:hidden; }
-.rail { width:92px; flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 6px; background:var(--card); border-right:1px solid var(--line); overflow-y:auto; }
+:host([data-panel]) .app { height:100%; } /* inside HA's panel area (not the whole screen, which can hide the edges on iPhone) */
+.rail { width:calc(92px + env(safe-area-inset-left)); flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:max(14px, env(safe-area-inset-top)) 6px max(14px, env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left)); background:var(--card); border-right:1px solid var(--line); overflow-y:auto; }
 .logo { font-size:30px; color:#ff9f43; margin-bottom:8px; }
 .tab { width:78px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px; background:none; box-shadow:none; font-size:12px; color:var(--muted); }
 .tab.active { background:var(--bg); color:var(--accent); font-weight:700; }
 .tab ha-icon { --mdc-icon-size:28px; }
 main { flex:1; display:flex; flex-direction:column; min-width:0; }
-header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
+header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) 6px 22px; }
 .when { min-width:190px; }
 .clock { font-size:44px; font-weight:800; line-height:1; letter-spacing:-1px; }
 .date { color:var(--muted); font-weight:600; margin-top:2px; }
@@ -4124,7 +4138,7 @@ header { display:flex; align-items:center; gap:16px; padding:14px 22px 6px; }
 .av.big { width:48px; height:48px; font-size:26px; }
 .weather { font-size:30px; display:flex; align-items:center; gap:6px; }
 .weather b { font-size:32px; }
-.content { flex:1; overflow-y:auto; padding:6px 22px 22px; }
+.content { flex:1; overflow-y:auto; padding:6px max(22px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) 22px; }
 .toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:6px 0 12px; flex-wrap:wrap; }
 .toolbar h1 { font-size:24px; margin:0 0 0 8px; }
 .toolbar h2 { margin:0; }
@@ -4648,6 +4662,10 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 /* ---------- phone (e.g. the Home Assistant app on a phone); tablets are unaffected ---------- */
 @media (max-width: 600px) {
   .app { height:100vh; height:100dvh; } /* iPhone: exclude the browser/app toolbars */
+  :host([data-panel]) .app { height:100%; }
+  .rail { width:100%; }
+  header { padding:max(8px, env(safe-area-inset-top)) 12px 2px; }
+  .content { padding-bottom:14px; }
   .rail { padding:2px 2px calc(2px + env(safe-area-inset-bottom)); gap:0; justify-content:stretch; }
   .tab { flex:1 1 0; min-width:0; padding:5px 0; gap:1px; font-size:9.5px; border-radius:10px; }
   .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -4672,15 +4690,6 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .hside { position:static; max-height:none; overflow:visible; }
   .tonight img, .tnoimg { width:64px; height:64px; }
   .hintrow p { font-size:14px; }
-  .pmeals { display:flex; flex-direction:column; gap:10px; }
-  .pmday { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
-  .pmday.today { outline:3px solid var(--accent); }
-  .pmday h3 { margin:2px 0 6px; font-size:17px; } .pmday h3 small { color:var(--muted); font-weight:600; }
-  .pmslot { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:6px 4px; background:none; box-shadow:none; border-top:1px solid var(--line); border-radius:0; }
-  .pmicon { width:40px; height:40px; flex:none; display:grid; place-items:center; font-size:24px; }
-  .pmicon img { width:40px; height:40px; border-radius:10px; object-fit:cover; }
-  .pmtext { display:flex; flex-direction:column; min-width:0; } .pmtext small { color:var(--muted); font-weight:700; font-size:12px; }
-  .pmtext b { font-size:15px; } .pmslot.empty .add { color:var(--muted); font-weight:600; }
   .mealsview button { padding:8px 10px; font-size:14px; }
   .rbgrid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
   .rbar select { flex:1 1 40%; }
@@ -4689,6 +4698,29 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .cktop { padding:10px 12px; gap:8px; } .ckserv span { min-width:74px; }
   .cknav { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); }
   .apcard .aphead { font-size:20px; } .apbody { font-size:15px; }
+}
+
+/* ---------- phone on its side (short landscape screens) ---------- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app { flex-direction:row; }
+  main { min-height:0; }
+  .rail { flex-direction:column; justify-content:flex-start; border-top:0; border-right:1px solid var(--line); overflow-y:auto; overflow-x:hidden; }
+  .rail .tab { flex:none; }
+  .rail { width:calc(64px + env(safe-area-inset-left)); gap:2px; padding-top:max(6px, env(safe-area-inset-top)); padding-bottom:max(6px, env(safe-area-inset-bottom)); }
+  .logo { display:none; }
+  .tab { width:56px; padding:4px 2px; gap:1px; font-size:9px; }
+  .tab ha-icon { --mdc-icon-size:20px; }
+  header { padding:max(4px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 2px 12px; gap:8px; flex-wrap:nowrap; }
+  .clock { font-size:22px; } .date { font-size:12px; } .when { min-width:0; }
+  header .members { flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; }
+  header .mchip { flex:none; padding:2px 8px 2px 2px; font-size:13px; }
+  header .mchip .av { width:22px; height:22px; font-size:13px; }
+  header .weather { font-size:18px; } header .weather b { font-size:20px; }
+  .alertbar, .connbar { margin:2px 12px 0; padding:4px 10px; font-size:13px; }
+  .content { padding:4px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) 12px; }
+  .toolbar h1 { font-size:18px; }
+  .home, .home.wide { grid-template-columns:1fr; }
+  .dialog { max-height:96vh; padding:14px 16px; }
 }
 `;
 
