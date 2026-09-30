@@ -196,6 +196,10 @@ Nothing is sent to the author of Skylight, and there is no tracking or analytics
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
 pytest            # 85 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+
+npm install       # once: Playwright, for the browser tests
+npx playwright install chromium
+npm run e2e       # 13 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
