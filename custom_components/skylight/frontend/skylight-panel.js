@@ -353,7 +353,46 @@ class SkylightPanel extends HTMLElement {
   getCardSize() { return 12; }
 
   connectedCallback() { if (this._hass && !this._unsub) this._start(); }
+  // Show a banner when Home Assistant can't be reached (after 10 s, so brief blips don't flash it),
+  // and refresh everything once it's back. The data subscription itself resumes automatically.
+  _watchConnection() {
+    const conn = this._hass.connection;
+    if (!conn?.addEventListener || this._connWatched === conn) return;
+    this._connWatched = conn;
+    this._onConnLost = () => {
+      if (this._lostAt) return;
+      this._lostAt = Date.now();
+      clearTimeout(this._lostTimer);
+      this._lostTimer = setTimeout(() => { if (this._lostAt) this.render(); }, 10000);
+    };
+    this._onConnBack = () => {
+      const was = this._lostAt;
+      this._lostAt = null; clearTimeout(this._lostTimer);
+      if (!was) return;
+      this._eventsKey = ""; this._loadEvents(); this._loadForecast(); this._loadAlerts(true);
+      if (this.ui.tab === "weather") this._loadWeatherFull(true);
+      if (Date.now() - was >= 10000) this._toast("Reconnected to Home Assistant");
+      this.render();
+    };
+    conn.addEventListener("disconnected", this._onConnLost);
+    conn.addEventListener("reconnect-error", this._onConnLost);
+    conn.addEventListener("ready", this._onConnBack);
+    window.addEventListener("offline", this._onConnLost);
+  }
+  renderConnBanner() {
+    if (!this._lostAt || Date.now() - this._lostAt < 10000) return "";
+    const since = this.fmtTime(new Date(this._lostAt));
+    return `<div class="connbar" role="status">📡 <b>Can't reach Home Assistant</b> — showing what was here at ${since}. Reconnecting…</div>`;
+  }
+
   disconnectedCallback() {
+    if (this._connWatched) {
+      this._connWatched.removeEventListener?.("disconnected", this._onConnLost);
+      this._connWatched.removeEventListener?.("reconnect-error", this._onConnLost);
+      this._connWatched.removeEventListener?.("ready", this._onConnBack);
+      window.removeEventListener("offline", this._onConnLost);
+      this._connWatched = null; clearTimeout(this._lostTimer); this._lostAt = null;
+    }
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
     clearInterval(this._refreshTimer); clearInterval(this._alertTimer);
@@ -368,6 +407,7 @@ class SkylightPanel extends HTMLElement {
     this._buildShadow();
     this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
     this._unsub.catch((e) => this._fatal(e));
+    this._watchConnection();
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
     this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather" || this.ui.tab === "home") this._loadWeatherFull(); this._loadWxExtra(); }, 5 * 60000);
     this._alertTimer = setInterval(() => this._loadAlerts(), 2 * 60000);
@@ -3022,6 +3062,7 @@ class SkylightPanel extends HTMLElement {
       </nav>
       <main>
         ${this.renderHeader()}
+        ${this.renderConnBanner()}
         ${this.renderAlertBanner()}
         <div class="content">${body}</div>
       </main>${this.renderAlertPopup()}`;
@@ -4338,6 +4379,8 @@ label.check input { width:22px; height:22px; }
 .lgroup:first-child { margin-top:0; }
 .lgroup .av.sm { width:22px; height:22px; font-size:13px; }
 .ownerpick { width:auto; }
+.connbar { margin:4px 22px 0; padding:8px 14px; border-radius:12px; background:#5f6368; color:#fff; font-size:15px; }
+@media (max-width: 600px) { .connbar { margin:4px 12px 0; font-size:13px; } }
 .pinbanner { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-radius:16px; background:#fff4e0; color:#6b4300; margin-bottom:12px; }
 .pinbanner .primary { margin-left:auto; }
 .lockmark { font-style:normal; font-size:.9em; }
