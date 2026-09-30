@@ -129,21 +129,39 @@ const SCENARIOS = {
   async lists(browser, base) {
     const p = await open(browser, base, { setup: () => { D.lists[0].items = ["Milk", "Eggs", "Bread", "Apples"].map((t, i) => ({ id: "i" + i, text: t, done: false })); push(); } });
     await p.tab("lists");
-    const names = async () => (await text(p.S(".items .item span:not(.imove)"))).join(",");
-    await p.S('[data-item="i2"][data-dir="up"]').click(); await p.waitForTimeout(200);
-    eq(await names(), "Milk,Bread,Eggs,Apples", "move up");
-    await p.S('.item span[data-item="i1"]').click(); await p.waitForTimeout(100);
-    await p.S('.item span[data-item="i3"]').click(); await p.waitForTimeout(200);
-    eq(await names(), "Milk,Bread,Eggs,Apples", "checked items below, in check-off order");
+    const names = async () => (await text(p.S(".items .item > span:not(.dragh)"))).join(",");
+    // drag the ≡ handle: mouse and touch both arrive as pointer events
+    const drag = async (id, rows) => {
+      const h = await p.S(`[data-drag="${id}"]`).boundingBox();
+      const rowH = (await p.S(".items .item").first().boundingBox()).height;
+      await p.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await p.mouse.down();
+      for (let k = 1; k <= 8; k++) await p.mouse.move(h.x + h.width / 2, h.y + h.height / 2 + (rows * rowH * k) / 8);
+      await p.mouse.up(); await p.waitForTimeout(400);
+    };
+    eq(await p.S(".imove").count(), 0, "no arrow buttons");
+    eq(await p.S(".dragh[data-drag]").count(), 4, "a handle on every open item");
+    await drag("i3", -3);
+    eq(await names(), "Apples,Milk,Eggs,Bread", "drag Apples to the top");
+    await drag("i0", 1.2);
+    eq(await names(), "Apples,Eggs,Milk,Bread", "drag Milk down one");
+    eq(await p.evaluate(() => el._drag), null, "drag finished");
+    await p.S('.item span[data-item="i1"]').click(); await p.waitForTimeout(50);
+    check(await p.evaluate(() => [...el.shadowRoot.querySelectorAll(".items .item")].some((r) => r.getAnimations().length)), "items slide when a check-off moves them");
+    await p.waitForTimeout(400);
+    eq(await names(), "Apples,Milk,Bread,Eggs", "checked item moved below");
     await p.S("#newitem").fill("Cheese"); await p.S('[data-action="add-item"]').click(); await p.waitForTimeout(200);
-    eq(await names(), "Milk,Bread,Cheese,Eggs,Apples", "new item at the bottom of the open ones");
+    eq(await names(), "Apples,Milk,Bread,Cheese,Eggs", "new item at the bottom of the open ones");
     await p.S('[data-action="edit-list"]').click(); await p.S("#l-name").fill("Food"); await p.S('[data-action="save-list"]').click(); await p.waitForTimeout(300);
     eq(await p.evaluate(() => D.lists[0].name + ":" + D.lists[0].items.length), "Food:5", "rename keeps items");
-    // linked HA list with reordering support
-    await p.evaluate(() => { window.TODO = [{ uid: "t1", summary: "A", status: "needs_action" }, { uid: "t2", summary: "B", status: "needs_action" }]; todoCb({ items: TODO }); el._hass.states["todo.mealie_shopping"].attributes.supported_features = 15; el.render(); });
+    // linked HA list: handles only when it supports reordering
+    await p.evaluate(() => { window.TODO = [{ uid: "t1", summary: "A", status: "needs_action" }, { uid: "t2", summary: "B", status: "needs_action" }, { uid: "t3", summary: "C", status: "needs_action" }]; todoCb({ items: TODO }); el.render(); });
     await p.S(`[data-action="pick-list"][data-list="todo:todo.mealie_shopping"]`).click(); await p.waitForTimeout(200);
-    await p.S('[data-item="t2"][data-dir="up"]').click(); await p.waitForTimeout(200);
-    eq(await p.evaluate(() => (window.TMOVES || []).map((m) => [m.uid, m.previous_uid || null])), [["t2", null]], "todo/item/move");
+    eq(await p.S("[data-drag]").count(), 0, "no handles without HA move support");
+    await p.evaluate(() => { el._hass.states["todo.mealie_shopping"].attributes.supported_features = 15; el.render(); });
+    await drag("t3", -2);
+    eq(await p.evaluate(() => (window.TMOVES || []).map((m) => [m.uid, m.previous_uid || null])), [["t3", null]], "todo/item/move to the top");
+    await drag("t1", 1.2);
+    eq(await p.evaluate(() => (window.TMOVES || []).map((m) => [m.uid, m.previous_uid || null])).then((x) => x[1]), ["t1", "t2"], "todo/item/move after B");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

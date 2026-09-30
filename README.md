@@ -19,7 +19,7 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 | **Chores** | One column per **kid** with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays, every N weeks, weekly or once. You can page back and forth by day. |
 | **Progress** | Read-only: one row per kid with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, and send ingredients to a shopping list. **📖 Recipes** browses your whole Mealie library, and **cook mode** shows a recipe full screen with scalable servings and a QR code for your phone. Other meal apps can be shown read-only through their calendar feed. |
-| **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items with the **▲ / ▼** buttons; checked-off items move to the bottom in the order they were checked. |
+| **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items by dragging the **≡** handle (finger or mouse); items slide into place, and checked-off items slide to the bottom in the order they were checked. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
 | **Settings** | Add, edit and reorder family members (name, **Adult/Kid**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
 
@@ -191,7 +191,7 @@ Nothing is sent to the author of Skylight, and there is no tracking or analytics
 - **"All events" on a repeating event** looks back up to 3 years to find the series start. Events that repeat "forever" and began earlier than that may be re-anchored.
 - **Repeating-event choices depend on the calendar.** Local Calendar supports all three; Google Calendar may reject edits, and subscribed feeds are read-only.
 - **Concurrent setup edits: the last save wins.** Lists are safe: adding, checking, renaming, deleting and reordering items, and chore check-offs, are each done as one small change on the server, so two screens never overwrite each other. Setup changes (family members, chores, settings) still save the whole section, so two people editing *setup* at the same moment could overwrite each other.
-- **Reordering is buttons only** (no drag and drop), because dragging isn't reliable in Android kiosk browsers. Home Assistant to-do lists show the arrows only when their integration supports reordering (for example, the built-in Local To-do and Shopping List do; many others don't).
+- **Reordering Home Assistant to-do lists** only works when their integration supports it (for example, the built-in Local To-do and Shopping List do; many others don't); the ≡ handles are hidden otherwise.
 
 ## Development
 

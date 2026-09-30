@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.33.0";
+const PANEL_VERSION = "1.33.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -493,6 +493,10 @@ class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
     this.shadowRoot.addEventListener("pointerup", (e) => this._swipeEnd(e), { passive: true });
     this.shadowRoot.addEventListener("pointerdown", (e) => this._holdStart(e), { passive: true });
+    this.shadowRoot.addEventListener("pointerdown", (e) => this._dragStart(e));
+    this.shadowRoot.addEventListener("pointermove", (e) => this._dragMove(e));
+    this.shadowRoot.addEventListener("pointerup", (e) => this._dragEnd(e));
+    this.shadowRoot.addEventListener("pointercancel", (e) => this._dragEnd(e));
     this.shadowRoot.addEventListener("pointermove", (e) => this._holdMove(e), { passive: true });
     for (const ev of ["pointerup", "pointercancel"]) {
       this.shadowRoot.addEventListener(ev, () => {
@@ -1481,21 +1485,10 @@ class SkylightPanel extends HTMLElement {
         await this._ws({ type: "skylight/list/item/add", list_id: this.ui.list, text });
         this.shadowRoot.getElementById("newitem")?.focus(); break;
       }
-      case "item-move": {
-        if (this._isTodo()) {
-          // Home Assistant to-do: move after the item that should come before it (none = top).
-          const entity_id = this._todoEntity();
-          const open = (this.todoItems[entity_id] || []).filter((t) => t.status !== "completed");
-          const k = open.findIndex((t) => t.uid === d.item);
-          if (k < 0) break;
-          const target = d.dir === "up" ? k - 1 : k + 1;
-          if (target < 0 || target >= open.length) break;
-          const before = d.dir === "up" ? open[target - 1] : open[target];
-          try { await this._hass.callWS({ type: "todo/item/move", entity_id, uid: d.item, ...(before ? { previous_uid: before.uid } : {}) }); }
-          catch (e) { this._toast(e?.message || String(e)); }
-          break;
-        }
-        await this._ws({ type: "skylight/list/move", list_id: this.ui.list, item_id: d.item, direction: d.dir });
+      case "item-move": { // keyboard/assistive fallback: data-dir up/down
+        const open = this._openIds();
+        const k = open.indexOf(d.item);
+        if (k >= 0) await this._moveItem(d.item, k + (d.dir === "up" ? -1 : 1));
         break;
       }
       case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._listToggle(this.ui.list, d.item); break;
@@ -2769,6 +2762,100 @@ class SkylightPanel extends HTMLElement {
   }
 
   // ---------- linked HA to-do lists ----------
+  // ----- reordering list items: drag the ≡ handle -----
+  _openIds() {
+    if (this._isTodo()) return (this.todoItems[this._todoEntity()] || []).filter((t) => t.status !== "completed").map((t) => t.uid);
+    return (this.data.lists.find((l) => l.id === this.ui.list)?.items || []).filter((i) => !i.done).map((i) => i.id);
+  }
+  // Put an open item at position `target` among the open items.
+  async _moveItem(itemId, target) {
+    const open = this._openIds();
+    const k = open.indexOf(itemId);
+    target = Math.max(0, Math.min(open.length - 1, target));
+    if (k < 0 || target === k) { this.render(); return; }
+    if (this._isTodo()) {
+      // Home Assistant to-do: "put it after <previous>" (none = top).
+      const rest = open.filter((id) => id !== itemId);
+      const previous = target === 0 ? null : rest[target - 1];
+      try { await this._hass.callWS({ type: "todo/item/move", entity_id: this._todoEntity(), uid: itemId, ...(previous ? { previous_uid: previous } : {}) }); }
+      catch (e) { this._toast(e?.message || String(e)); this.render(); }
+      return;
+    }
+    try { await this._ws({ type: "skylight/list/move", list_id: this.ui.list, item_id: itemId, to_index: target }); }
+    catch (e) { this.render(); }
+  }
+  _dragStart(e) {
+    const h = e.target.closest?.("[data-drag]");
+    if (!h || this._drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+    e.preventDefault();
+    const row = h.closest(".item");
+    const rows = [...row.parentElement.querySelectorAll(".item:not(.done)")];
+    const scroller = this.$app.querySelector(".content");
+    this._drag = { id: h.dataset.drag, row, rows, from: rows.indexOf(row), to: rows.indexOf(row), y0: e.clientY, s0: scroller?.scrollTop || 0,
+      scroller, tops: rows.map((r) => r.getBoundingClientRect().top), h: row.getBoundingClientRect().height, pid: e.pointerId };
+    try { h.setPointerCapture(e.pointerId); } catch (err) { /* old WebView */ }
+    row.classList.add("dragging");
+    rows.forEach((r) => { if (r !== row) r.classList.add("shifting"); });
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (err) { /* not supported */ }
+  }
+  _dragMove(e) {
+    const g = this._drag;
+    if (!g || e.pointerId !== g.pid) return;
+    // Scroll the page when dragging near its top or bottom edge.
+    if (g.scroller) {
+      const box = g.scroller.getBoundingClientRect();
+      if (e.clientY < box.top + 60) g.scroller.scrollTop -= 12;
+      else if (e.clientY > box.bottom - 60) g.scroller.scrollTop += 12;
+    }
+    const dy = e.clientY - g.y0 + ((g.scroller?.scrollTop || 0) - g.s0);
+    g.row.style.transform = `translateY(${dy}px)`;
+    // Where would it land? Count the rows whose middle it has passed.
+    const center = g.tops[g.from] + dy + g.h / 2;
+    let to = 0;
+    g.tops.forEach((t, i) => { if (i !== g.from && center > t + g.h / 2) to++; });
+    if (to === g.to) return;
+    g.to = to;
+    // Slide the others out of the way.
+    g.rows.forEach((r, i) => {
+      if (r === g.row) return;
+      const shift = g.from < to && i > g.from && i <= to ? -g.h : g.from > to && i >= to && i < g.from ? g.h : 0;
+      r.style.transform = shift ? `translateY(${shift}px)` : "";
+    });
+  }
+  _dragEnd(e) {
+    const g = this._drag;
+    if (!g || (e && e.pointerId !== g.pid)) return;
+    this._drag = null;
+    this._suppressClickUntil = Date.now() + 250;
+    if (g.to === g.from || e?.type === "pointercancel") {
+      g.rows.forEach((r) => { r.style.transform = ""; r.classList.remove("dragging"); });
+      return;
+    }
+    // Leave the rows where they were dropped; the list redraws in its new order when the server confirms.
+    g.row.style.transform = `translateY(${g.tops[g.to] - g.tops[g.from]}px)`;
+    g.row.classList.remove("dragging");
+    // If no update arrives (a move that didn't take), redraw anyway so nothing stays out of place.
+    clearTimeout(this._dropTimer);
+    this._dropTimer = setTimeout(() => this.render(), 1500);
+    this._moveItem(g.id, g.to);
+  }
+  // A short slide when list items change places (a drop, a check-off, another screen's change).
+  _snapshotItems() {
+    const m = new Map();
+    this.$app?.querySelectorAll(".items .item[data-key]").forEach((r) => m.set(r.dataset.key, r.getBoundingClientRect().top));
+    return m;
+  }
+  _animateItems(before) {
+    if (!before?.size || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    this.$app.querySelectorAll(".items .item[data-key]").forEach((r) => {
+      const old = before.get(r.dataset.key);
+      if (old === undefined) return;
+      const dy = old - r.getBoundingClientRect().top;
+      if (Math.abs(dy) < 2) return;
+      r.animate?.([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
+    });
+  }
+
   // Skylight's own lists are also HA to-do entities; never offer those back as "linked" lists.
   _ownTodo(e) { return this._hass.entities?.[e]?.platform === "skylight" || this._hass.states[e]?.attributes?.skylight_list_id !== undefined; }
   _isTodo() { return String(this.ui.list || "").startsWith("todo:"); }
@@ -3077,6 +3164,9 @@ class SkylightPanel extends HTMLElement {
       settings: () => this.renderSettings(),
     }[tab]();
     this._applyLook();
+    if (this._drag) return; // don't redraw under a finger that's dragging an item
+    clearTimeout(this._dropTimer);
+    const itemTops = tab === "lists" ? this._snapshotItems() : null;
     this.$app.innerHTML = `
       <nav class="rail">
         <div class="logo">☀︎</div>
@@ -3089,6 +3179,7 @@ class SkylightPanel extends HTMLElement {
         <div class="content">${body}</div>
       </main>${this.renderAlertPopup()}`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    if (itemTops) this._animateItems(itemTops);
     this._fitMonth();
     if (this.$app.querySelector(".month")) requestAnimationFrame(() => this._fitMonth());
     this._fitAgenda();
@@ -3805,18 +3896,13 @@ class SkylightPanel extends HTMLElement {
         <div class="additem"><input id="newitem" data-fresh="1" placeholder="Add an item…" data-enter="add-item"><button class="primary" data-action="add-item">Add</button></div>
         <div class="items">${(() => {
           const ordered = orderItems(cur.items), open = ordered.filter((i) => !i.done);
-          const arrows = !cur.linked || cur.canMove;
-          return ordered.map((i) => {
-            const k = open.indexOf(i);
-            return `
-          <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}">
+          const movable = (!cur.linked || cur.canMove) && open.length > 1;
+          return ordered.map((i) => `
+          <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}" data-key="${esc(i.id)}">
+            ${!i.done && movable ? `<span class="dragh" data-drag="${esc(i.id)}" role="button" aria-label="Drag to move ${esc(i.text)}" title="Drag to move">≡</span>` : movable ? `<span class="dragh off"></span>` : ""}
             <button class="box" data-action="toggle-item" data-item="${esc(i.id)}">${i.done ? "✓" : ""}</button>
             <span data-action="toggle-item" data-item="${esc(i.id)}">${esc(i.text)}</span>
-            ${!i.done && arrows && open.length > 1 ? `<span class="imove">
-              <button data-action="item-move" data-item="${esc(i.id)}" data-dir="up" ${k === 0 ? "disabled" : ""} aria-label="Move ${esc(i.text)} up">▲</button>
-              <button data-action="item-move" data-item="${esc(i.id)}" data-dir="down" ${k === open.length - 1 ? "disabled" : ""} aria-label="Move ${esc(i.text)} down">▼</button></span>` : ""}
-            <button class="x" data-action="delete-item" data-item="${esc(i.id)}">✕</button></div>`;
-          }).join("") || `<p class="hint">Empty list</p>`;
+            <button class="x" data-action="delete-item" data-item="${esc(i.id)}">✕</button></div>`).join("") || `<p class="hint">Empty list</p>`;
         })()}
         </div>` : `<div class="empty"><h2>No lists</h2></div>`}</section></div>`;
   }
@@ -4399,9 +4485,12 @@ label.check input { width:22px; height:22px; }
 @keyframes uglow { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 35%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .urow.today { animation:none; } }
 .datefields label { flex:1 1 90px; }
-.imove { display:flex; gap:4px; flex:none; }
-.imove button { width:48px; height:44px; padding:0; font-size:18px; border-radius:12px; }
-.imove button:disabled { opacity:.3; }
+.dragh { flex:none; width:44px; height:44px; display:grid; place-items:center; font-size:26px; line-height:1; color:var(--muted);
+  cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; border-radius:10px; }
+.dragh:active { cursor:grabbing; background:var(--chip, rgba(127,127,127,.12)); }
+.dragh.off { visibility:hidden; }
+.item.dragging { position:relative; z-index:3; background:var(--card); box-shadow:0 8px 24px rgba(0,0,0,.18); border-radius:12px; transition:none; }
+.item.shifting { transition:transform .18s ease; }
 .rolepick { width:fit-content; }
 .rolewarn { background:#fff4e0; color:#6b4300; border-radius:12px; padding:10px 12px; margin:8px 0; font-weight:600; }
 .rolewarn .row { margin-top:8px; align-items:center; }
