@@ -11,8 +11,9 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED
+from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED, VERSION
 from . import immich, photos, security
 from .photos import async_delete_photo
 
@@ -34,6 +35,8 @@ def async_register(hass: HomeAssistant) -> None:
         ws_list_delete_items,
         ws_list_save,
         ws_list_remove,
+        ws_backup_export,
+        ws_backup_import,
         ws_delete_photo,
         ws_create_calendar,
         ws_subscribe_calendar,
@@ -79,6 +82,36 @@ async def ws_set(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         return
     await _store(hass).async_set(msg["key"], msg["value"])
     connection.send_result(msg["id"])
+
+
+BACKUP_FORMAT = 1
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/backup/export"})
+@websocket_api.async_response
+@security.gated
+async def ws_backup_export(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    connection.send_result(msg["id"], {
+        "skylight_backup": BACKUP_FORMAT, "version": VERSION,
+        "created": dt_util.utcnow().isoformat(timespec="seconds"), "data": _store(hass).export(),
+    })
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "skylight/backup/import", vol.Required("backup"): dict}
+)
+@websocket_api.async_response
+@security.gated
+async def ws_backup_import(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    backup = msg["backup"]
+    data = backup.get("data")
+    if backup.get("skylight_backup") != BACKUP_FORMAT or not isinstance(data, dict) or not isinstance(data.get("members"), list):
+        connection.send_error(msg["id"], "invalid", "That file isn't a Skylight backup.")
+        return
+    folder = photos.photo_dir(hass)
+    existing = set(await hass.async_add_executor_job(lambda: [p.name for p in folder.iterdir()] if folder.exists() else []))
+    before = await _store(hass).async_import(data, existing)
+    connection.send_result(msg["id"], {"previous_saved_to": before})
 
 
 async def _list_call(connection, msg_id: int, coro) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import secrets
 from datetime import datetime, timezone
@@ -17,6 +18,11 @@ from . import chores, security
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _write_text(path: str, text: str) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
 ROLES = ("adult", "kid")
 
 
@@ -177,6 +183,44 @@ class SkylightStore:
                 "favorites": favorites,
             }
             self._changed()
+
+    # ----- backup / restore -----
+    SECRET_KEYS = ("security", "places")  # never exported, never overwritten by an import
+
+    def export(self) -> dict[str, Any]:
+        """Everything a family set up, without API keys or the PIN hash."""
+        data = copy.deepcopy({k: v for k, v in self.data.items() if k not in self.SECRET_KEYS})
+        data["immich"] = {k: v for k, v in data.get("immich", {}).items() if k != "api_key"}
+        return data
+
+    async def async_import(self, incoming: dict[str, Any], keep_photos: set[str]) -> str:
+        """Replace family data with a backup. The current data is written to a side file first.
+
+        Secrets (PIN, API keys) stay as they are. Returns the side file's path.
+        """
+        data = copy.deepcopy(incoming)
+        for k in self.SECRET_KEYS:
+            data.pop(k, None)
+        migrate(data)
+        async with self._lock:
+            before = self.hass.config.path(".storage", "skylight.data.before_import")
+            snapshot = json.dumps({"version": STORAGE_VERSION, "key": STORAGE_KEY, "data": self.data}, indent=2)
+            await self.hass.async_add_executor_job(_write_text, before, snapshot)
+            new = copy.deepcopy(DEFAULT_DATA)
+            for key in new:
+                if key in data and isinstance(data[key], type(new[key])):
+                    new[key] = data[key]
+            new["settings"] = {**DEFAULT_DATA["settings"], **(data.get("settings") or {})}
+            new["members"] = clean_members(new["members"])
+            new["lists"] = clean_list_owners(new["lists"], adult_ids(new))
+            new["occasions"] = clean_occasions(new["occasions"], {m["id"] for m in new["members"]})
+            new["photos"] = [p for p in new["photos"] if p in keep_photos]  # only files that are really here
+            new["immich"] = {**new["immich"], "api_key": self.data["immich"].get("api_key", "")}
+            for k in self.SECRET_KEYS:
+                new[k] = self.data[k]
+            self.data = new
+            self._changed()
+        return before
 
     async def async_flush(self) -> None:
         """Write now (a pending delayed save would be lost on an integration reload)."""

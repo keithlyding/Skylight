@@ -1214,6 +1214,26 @@ class SkylightPanel extends HTMLElement {
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
       case "icon-open": this.ui.dialog.iconOpen = !this.ui.dialog.iconOpen; this.renderDialog(); break;
       case "icon-pick": this.ui.dialog.icon = d.icon; this.ui.dialog.iconOpen = false; this.renderDialog(); break;
+      case "backup-export": {
+        const b = await this._ws({ type: "skylight/backup/export" });
+        const blob = new Blob([JSON.stringify(b, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob); a.download = `skylight-backup-${ymd(new Date())}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        this._toast("Backup downloaded"); break;
+      }
+      case "backup-pick": this.shadowRoot.getElementById("backup-file")?.click(); break;
+      case "backup-import": {
+        const file = el.files?.[0]; el.value = "";
+        if (!file) break;
+        let backup;
+        try { backup = JSON.parse(await file.text()); } catch (e) { this._toast("That file isn't a Skylight backup."); break; }
+        const when = backup?.created ? new Date(backup.created).toLocaleString() : "an unknown date";
+        if (!confirm(`Restore the backup from ${when}?\n\nThis replaces family members, chores, lists, meals, birthdays and settings on every screen.`)) break;
+        await this._ws({ type: "skylight/backup/import", backup });
+        this._urlCache = null; this._eventsKey = ""; this._loadEvents();
+        this._toast("Backup restored"); break;
+      }
       case "new-occasion": this.openOccasionDialog(); break;
       case "edit-occasion": this.openOccasionDialog((D.occasions || []).find((o) => o.id === d.id)); break;
       case "occ-kind": this.ui.dialog.kind = d.kind; this.renderDialog(); break;
@@ -3881,6 +3901,13 @@ class SkylightPanel extends HTMLElement {
       </section>
 
       ${this.renderOccasionsCard()}
+      <section class="card">
+        <h2>Backup</h2>
+        <p class="hint">Saves family members, chores and their history, lists, meals, birthdays and settings to a file. API keys and the settings PIN aren't included. Restoring replaces what's here now; the current data is kept on the Home Assistant server first (<code>.storage/skylight.data.before_import</code>).</p>
+        <div class="row"><button data-action="backup-export">⬇ Download backup</button>
+          <input type="file" id="backup-file" accept=".json,application/json" hidden data-change="backup-import">
+          <button data-action="backup-pick">⬆ Restore from file…</button></div>
+      </section>
 
       <section class="card">
         <h2>Calendars</h2>

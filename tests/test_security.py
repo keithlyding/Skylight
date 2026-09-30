@@ -201,3 +201,45 @@ async def test_migration_removes_stars_and_rewards(hass, tmp_path, hass_storage,
     assert "stars" not in data and "rewards" not in data
     assert data["chores"][0] == {"id": "c1", "member_id": "k1", "title": "Bed", "repeat": "daily", "completions": ["2026-09-01"]}
     assert sum("removed stars and rewards" in r.message for r in caplog.records) == 1
+
+
+# ---------------------------------------------------------------- backup / restore
+async def test_backup_export_and_import(hass, entry, hass_ws_client, hass_client, tmp_path):
+    ws = await hass_ws_client(hass)
+    store = hass.data[DOMAIN]["store"]
+    await _cmd(ws, {"type": "skylight/places/configure", "google_key": "GKEY123"})
+    await _cmd(ws, {"type": "skylight/immich/configure", "url": "http://immich.local", "api_key": "IKEY456", "albums": ["a"], "favorites": True})
+    await _cmd(ws, {"type": "skylight/set", "key": "members", "value": [
+        {"id": "z", "name": "Kid One", "color": "#123456", "avatar": "x", "calendars": [], "role": "kid"}]})
+    photo = await _upload(await hass_client())
+    await _cmd(ws, {"type": "skylight/pin/set", "pin": "2468"})
+
+    b = (await _cmd(ws, {"type": "skylight/backup/export"}))["result"]
+    text = str(b)
+    assert b["skylight_backup"] == 1 and b["data"]["members"][0]["name"] == "Kid One"
+    for secret in ("GKEY123", "IKEY456", store.data["security"]["pin_hash"], store.data["security"]["salt"]):
+        assert secret not in text
+    assert b["data"]["immich"]["url"] == "http://immich.local" and photo in b["data"]["photos"]
+
+    # locked screens can neither export nor import
+    ws2 = await hass_ws_client(hass)
+    assert (await _cmd(ws2, {"type": "skylight/backup/export"}))["error"]["code"] == "locked"
+    assert (await _cmd(ws2, {"type": "skylight/backup/import", "backup": b}))["error"]["code"] == "locked"
+
+    # change things, then restore
+    await _cmd(ws, {"type": "skylight/set", "key": "members", "value": []})
+    b["data"]["photos"].append("f" * 24 + ".jpg")  # a photo file that isn't here
+    b["data"]["stars"] = {"z": 5}                   # an old-format key: migrated away
+    r = await _cmd(ws, {"type": "skylight/backup/import", "backup": b})
+    assert r["success"], r
+    assert [m["name"] for m in store.data["members"]] == ["Kid One"]
+    assert store.data["photos"] == [photo] and "stars" not in store.data
+    # secrets are untouched by the import
+    assert store.data["places"]["google_key"] == "GKEY123" and store.data["immich"]["api_key"] == "IKEY456"
+    assert store.data["security"]["pin_hash"]
+    # the data from before the import was saved
+    import json as _json
+    before = _json.loads((tmp_path / ".storage" / "skylight.data.before_import").read_text())
+    assert before["data"]["members"] == []
+
+    assert (await _cmd(ws, {"type": "skylight/backup/import", "backup": {"hello": 1}}))["error"]["code"] == "invalid"

@@ -142,6 +142,14 @@ Every family member is an **Adult** or a **Kid** (Settings → family member →
 
 v1.28 removes **stars and rewards**. On the first start after upgrading, Skylight deletes the saved star balances, the rewards and each chore's star value (logged once in the Home Assistant log). Chores and their completion history are kept, and the history now holds up to 400 check-offs per chore for the Progress view. Weeks before a chore was created don't count against it; for chores made before v1.28, the first check-off is used as the start.
 
+## Backup and restore
+
+Settings → **Backup**:
+
+- **⬇ Download backup** saves a `.json` file with family members, chores and their history, lists, meals, birthdays and anniversaries, and settings. API keys and the settings PIN are never included.
+- **⬆ Restore from file…** replaces those on every screen after asking you to confirm. Your current API keys and PIN stay. Photos in the backup are only kept if the files are still on the server. The data from just before the restore is saved on the server as `config/.storage/skylight.data.before_import`, in case you need to undo it.
+- Both need the settings PIN. On the kiosk tablet the download goes to its Downloads folder; it's easiest from a PC or phone.
+
 ## Where data lives
 
 - Family data (members and their birthdays, birthdays & anniversaries, chores and their completion history, meals, lists, settings, settings-PIN hash): `config/.storage/skylight.data`. This is included in HA backups.
@@ -163,7 +171,7 @@ v1.28 removes **stars and rewards**. On the first start after upgrading, Skyligh
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 81 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 82 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 ```
 
 The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
