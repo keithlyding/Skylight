@@ -1,12 +1,21 @@
 {
   "domain": "skylight",
   "name": "Skylight Family Display",
-  "codeowners": [],
+  "codeowners": [
+    "@keithlyding"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "frontend", "panel_custom", "websocket_api"],
-  "documentation": "https://github.com/keithlyding/Skylight",
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "todo",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/keithlyding/Skylight#readme",
   "iot_class": "local_push",
+  "issue_tracker": "https://github.com/keithlyding/Skylight/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "1.32.0"
+  "version": "1.33.0"
 }

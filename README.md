@@ -1,5 +1,7 @@
 # Skylight for Home Assistant
 
+[![Validate](https://github.com/keithlyding/Skylight/actions/workflows/validate.yml/badge.svg)](https://github.com/keithlyding/Skylight/actions/workflows/validate.yml) [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+
 A Skylight Calendar–style family display for Home Assistant, built for a wall-mounted Android tablet.
 **Everything is set up from the touchscreen**: family members, calendars, events, chores,
 meals, lists, photos and display settings. No YAML editing.
