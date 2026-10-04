@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.1";
-import { choreDone } from "./chore-rules.js?v=1.36.1";
-import { STYLES } from "./styles.js?v=1.36.1";
-import { CalendarView } from "./calendar.js?v=1.36.1";
-import { WeatherView } from "./weather.js?v=1.36.1";
-import { HomeView } from "./home.js?v=1.36.1";
-import { ChoresView } from "./chores.js?v=1.36.1";
-import { MealsView } from "./meals.js?v=1.36.1";
-import { ListsView } from "./lists.js?v=1.36.1";
-import { PhotosView } from "./photos.js?v=1.36.1";
-import { SettingsView } from "./settings.js?v=1.36.1";
-import { PickersView } from "./pickers.js?v=1.36.1";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.2";
+import { choreDone } from "./chore-rules.js?v=1.36.2";
+import { STYLES } from "./styles.js?v=1.36.2";
+import { CalendarView } from "./calendar.js?v=1.36.2";
+import { WeatherView } from "./weather.js?v=1.36.2";
+import { HomeView } from "./home.js?v=1.36.2";
+import { ChoresView } from "./chores.js?v=1.36.2";
+import { MealsView } from "./meals.js?v=1.36.2";
+import { ListsView } from "./lists.js?v=1.36.2";
+import { PhotosView } from "./photos.js?v=1.36.2";
+import { SettingsView } from "./settings.js?v=1.36.2";
+import { PickersView } from "./pickers.js?v=1.36.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -110,6 +110,7 @@ export class SkylightPanel extends HTMLElement {
       this._onResize = () => {
         if (this._wasPhone !== undefined && this._wasPhone !== this.isPhone) { this._eventsKey = ""; this.render(); this._loadEvents(); } // rotated / resized across the phone breakpoint
         this._wasPhone = this.isPhone;
+        this._fitPhoneHeight();
         this._fitMonth();
         const g = this.$app?.querySelector(".tg-scroll");
         if (!g || !this._tgH) return;
@@ -855,7 +856,21 @@ export class SkylightPanel extends HTMLElement {
     probe.remove();
     // Home-indicator iPhones are 812pt or taller in either direction; older ones (Home button) need nothing.
     const tall = Math.max(screen.width, screen.height) >= 812;
-    if (!reported && tall) this.style.setProperty("--safe-bottom", "22px");
+    if (!reported && tall) this.style.setProperty("--safe-bottom", "34px"); // Apple's home-indicator inset (portrait)
+    this._safeReported = reported;
+    this._fitPhoneHeight();
+    setTimeout(() => this._fitPhoneHeight(), 600); // again once Home Assistant has laid out the page
+  }
+  // On phones, size the app to the space really left below where the panel starts. 100dvh can be taller
+  // than the area the Home Assistant iPhone app gives the panel, which pushed the bottom bar off screen.
+  // Uses only the window size and the panel's position (never its own content), so it can't feed back on itself.
+  _fitPhoneHeight() {
+    if (!this.isPhone) { this.style.removeProperty("--app-h"); return; }
+    const top = Math.max(0, Math.round(this.getBoundingClientRect().top + (window.scrollY || 0)));
+    const h = Math.round(window.innerHeight - top);
+    if (h > 200) this.style.setProperty("--app-h", `${h}px`);
+    this._vpInfo = { w: window.innerWidth, h: window.innerHeight, top, app: h, safe: this._safeReported ?? null,
+      fallback: this.style.getPropertyValue("--safe-bottom") || "none", dvh: window.visualViewport ? Math.round(window.visualViewport.height) : null };
   }
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.

@@ -88,6 +88,21 @@ const SCENARIOS = {
     }
   },
 
+  async phonebar(browser, base) {
+    // Regression (v1.36.2): in the HA iPhone app the panel can start below the top of the screen;
+    // the bottom bar must still be fully on screen (it used to be pushed off by a 100dvh-tall app).
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    await p.evaluate(() => { document.body.style.margin = "0"; document.body.style.paddingTop = "60px"; el.panel = {}; window.dispatchEvent(new Event("resize")); });
+    await p.waitForTimeout(400);
+    const m = await p.evaluate(() => {
+      const tabs = [...el.shadowRoot.querySelectorAll(".rail .tab")].map((t) => t.getBoundingClientRect());
+      return { bottom: Math.max(...tabs.map((b) => b.bottom)), h: innerHeight, n: tabs.length };
+    });
+    check(m.n > 0 && m.bottom <= m.h + 1, `bottom bar on screen (${m.bottom} > ${m.h})`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

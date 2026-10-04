@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc } from "./helpers.js?v=1.36.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc } from "./helpers.js?v=1.36.2";
 
 export class SettingsView {
 
@@ -373,6 +373,7 @@ export class SettingsView {
 
       <section class="card">
         <h2>Display</h2>
+        ${this.isPhone && this._vpInfo ? `<p class="hint">Screen check: ${this._vpInfo.w}×${this._vpInfo.h}, panel top ${this._vpInfo.top}, app ${this._vpInfo.app}, viewport ${this._vpInfo.dvh ?? "?"}, safe area ${this._vpInfo.safe ?? "?"}px, fallback ${this._vpInfo.fallback}</p>` : ""}
         <label class="inline">Name <input type="text" maxlength="40" value="${this.appName}" placeholder="${DEFAULT_APP_NAME}" data-change="setting" data-key="app_name"></label>
         <p class="hint">Shown in the Home Assistant sidebar and on the to-do lists in Home Assistant. Leave empty for "${DEFAULT_APP_NAME}".</p>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>

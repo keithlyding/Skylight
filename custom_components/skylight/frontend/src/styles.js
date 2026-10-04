@@ -578,6 +578,7 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 
 /* ---------- phone (e.g. the Home Assistant app on a phone); tablets are unaffected ---------- */
 @media (max-width: 600px) {
+  .app { height:var(--app-h, 100dvh); }
   .rail { width:100%; }
   header { padding:max(8px, env(safe-area-inset-top)) 12px 2px; }
   .content { padding-bottom:14px; }
@@ -619,6 +620,7 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 
 /* ---------- phone on its side (short landscape screens) ---------- */
 @media (max-height: 500px) and (orientation: landscape) {
+  .app { height:var(--app-h, 100dvh); }
   .app { flex-direction:row; }
   main { min-height:0; }
   .rail { flex-direction:column; justify-content:flex-start; border-top:0; border-right:1px solid var(--line); overflow-y:auto; overflow-x:hidden; }
