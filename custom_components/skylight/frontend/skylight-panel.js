@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.34.0";
+const PANEL_VERSION = "1.34.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -2685,6 +2685,8 @@ class SkylightPanel extends HTMLElement {
       lastStepSec = s.section || lastStepSec;
       return `${head}<button class="ckstep ${k === c.step ? "on" : k < c.step ? "past" : ""}" data-action="cook-step" data-k="${k}"><span class="num">${k + 1}</span><p>${esc(s.text)}</p></button>`;
     }).join("");
+    // Rebuilding the screen resets scroll positions; remember them so it doesn't jump to the top.
+    const kept = [".ckbody", ".ckings", ".cksteps"].map((sel) => this.$cook.querySelector(sel)?.scrollTop || 0);
     const times = [r.prep_time ? `Prep ${esc(r.prep_time)}` : "", r.cook_time ? `Cook ${esc(r.cook_time)}` : "", r.total_time ? `Total ${esc(r.total_time)}` : ""].filter(Boolean).join(" · ");
     this.$cook.innerHTML = shell(`
       <div class="cktop">
@@ -2710,6 +2712,7 @@ class SkylightPanel extends HTMLElement {
         <button class="primary" data-action="${c.step >= r.steps.length - 1 ? "cook-close" : "cook-next"}">${c.step >= r.steps.length - 1 ? "Done 🎉" : "Next ›"}</button></div>` : ""}
       ${c.qr ? `<div class="ckqr" data-action="cook-qr"><div class="ckqrcard"><h3>Scan with your phone</h3><div class="qrbox">${c.qrSvg || "…"}</div>
         <p class="hint">Opens this recipe in Mealie. Your phone must be able to reach Mealie (same Wi-Fi, or a link set in Settings → Mealie).</p><small class="qrurl">${esc(r.link)}</small></div></div>` : ""}`);
+    [".ckbody", ".ckings", ".cksteps"].forEach((sel, i) => { const el = this.$cook.querySelector(sel); if (el) el.scrollTop = kept[i]; });
     const on = this.$cook.querySelector(".ckstep.on");
     if (on && c.scrollStep) { on.scrollIntoView({ block: "center", behavior: "smooth" }); c.scrollStep = false; }
   }

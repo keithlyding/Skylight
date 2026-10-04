@@ -318,6 +318,20 @@ const SCENARIOS = {
     eq(await p.S(".qrbox svg").count(), 1, "QR code");
     eq(p.errors, [], "page errors");
     await p.context().close();
+    // Next on a long recipe glides down; it must never jump back to the top first.
+    const q = await open(browser, base, { height: 600 });
+    await q.evaluate(() => el.openCook("r1")); await q.waitForTimeout(500);
+    await q.evaluate(() => { el.cook.r.steps = [...Array(14)].map((_, i) => ({ text: `Step ${i + 1}. ` + "Stir the pot slowly and keep an eye on it. ".repeat(4) })); el.renderCook(); });
+    const sc = () => q.evaluate(() => { const b = el.$cook.querySelector(".cksteps"); return b.scrollHeight > b.clientHeight ? b.scrollTop : el.$cook.querySelector(".ckbody").scrollTop; });
+    let peak = 0, dropped = false;
+    for (let i = 0; i < 12; i++) {
+      await q.S('[data-action="cook-next"]').click();
+      for (let t = 0; t < 6; t++) { const y = await sc(); if (peak > 50 && y < peak - 50) dropped = true; peak = Math.max(peak, y); await q.waitForTimeout(60); }
+    }
+    check(peak > 200, `steps scrolled down (${peak})`);
+    check(!dropped, "Next never jumps back to the top");
+    eq(q.errors, [], "page errors (long recipe)");
+    await q.context().close();
   },
 
   async sidebar(browser, base) {
