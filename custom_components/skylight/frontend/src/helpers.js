@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.37.2";
+export const PANEL_VERSION = "1.38.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -155,10 +155,8 @@ export const TABS = [
   ["weather", "Weather", "mdi:weather-partly-cloudy"],
   ["calendar", "Calendar", "mdi:calendar-month"],
   ["chores", "Chores", "mdi:checkbox-marked-circle-outline"],
-  ["progress", "Progress", "mdi:chart-bar"],
   ["meals", "Meals", "mdi:silverware-fork-knife"],
   ["lists", "Lists", "mdi:format-list-checks"],
-  ["photos", "Photos", "mdi:image-multiple"],
   ["settings", "Setup", "mdi:cog"],
 ];
 export const WEATHER_ICONS = {

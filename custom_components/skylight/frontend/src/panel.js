@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.37.2";
-import { STYLES } from "./styles.js?v=1.37.2";
-import { CalendarView } from "./calendar.js?v=1.37.2";
-import { WeatherView } from "./weather.js?v=1.37.2";
-import { HomeView } from "./home.js?v=1.37.2";
-import { ChoresView } from "./chores.js?v=1.37.2";
-import { MealsView } from "./meals.js?v=1.37.2";
-import { ListsView } from "./lists.js?v=1.37.2";
-import { PhotosView } from "./photos.js?v=1.37.2";
-import { SettingsView } from "./settings.js?v=1.37.2";
-import { PickersView } from "./pickers.js?v=1.37.2";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.0";
+import { STYLES } from "./styles.js?v=1.38.0";
+import { CalendarView } from "./calendar.js?v=1.38.0";
+import { WeatherView } from "./weather.js?v=1.38.0";
+import { HomeView } from "./home.js?v=1.38.0";
+import { ChoresView } from "./chores.js?v=1.38.0";
+import { MealsView } from "./meals.js?v=1.38.0";
+import { ListsView } from "./lists.js?v=1.38.0";
+import { PhotosView } from "./photos.js?v=1.38.0";
+import { SettingsView } from "./settings.js?v=1.38.0";
+import { PickersView } from "./pickers.js?v=1.38.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -356,7 +356,10 @@ export class SkylightPanel extends HTMLElement {
     const D = this.data;
     switch (action) {
       // navigation
-      case "tab": if (d.tab === "settings") this._loadCalInfo(); if (this.ui.tab === "settings" && d.tab !== "settings") this.relock(); this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
+      case "chores-mode": this.ui.choresMode = d.mode; this._resetScroll = true; this.render(); break;
+      case "tab": if (d.tab === "progress") { d.tab = "chores"; this.ui.choresMode = "progress"; } else if (d.tab === "chores") this.ui.choresMode = "day";
+        if (d.tab === "photos") d.tab = "settings";
+        if (d.tab === "settings") this._loadCalInfo(); if (this.ui.tab === "settings" && d.tab !== "settings") this.relock(); this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
       case "view": this.ui.view = d.view; this.render(); this._loadEvents(); break;
       case "filter": this.ui.filter = this.ui.filter === d.member ? null : d.member || null; this.render(); break;
       case "today": this.ui.anchor = startOfDay(new Date()); this.render(); this._loadEvents(); break;

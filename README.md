@@ -8,7 +8,7 @@ meals, lists, photos and display settings. No YAML editing.
 
 ## What you get
 
-A **Lyding Strike** entry in the Home Assistant sidebar that opens a full-screen app with these tabs:
+A **Lyding Strike** entry in the Home Assistant sidebar that opens a full-screen app. Seven tabs (Today, Weather, Calendar, Chores, Meals, Lists, Setup) keep the buttons big; Progress and Photos live inside Chores and Setup:
 
 | Tab | What it does |
 |---|---|
@@ -17,10 +17,10 @@ A **Lyding Strike** entry in the Home Assistant sidebar that opens a full-screen
 | **Weather extras** | **Today's tips** in plain language on the Today screen and Weather tab (umbrella for an outdoor event, jacket this morning, freeze tonight, gusty, high UV, poor air, high pollen, much colder than yesterday). **Rain in the next 2 hours** in 15-minute steps ("Rain starting in about 30 min"). **Alert pop-ups**: a new NWS warning covers the screen (and wakes the photo screensaver) with an optional chime until someone taps OK. **Radar layers** (radar, rain forecast, storms, wind, gusts, temperature, clouds, satellite), **air quality** (US AQI with a 24-hour outlook), **pollen**, **comparisons** (yesterday, this day last year, rain over the last 7/30 days) and a **moon** card with the next phases. Rain-soon, air quality and comparisons come from Open-Meteo (free, no key). US pollen uses the Google Pollen API with the Google key from Location lookup. **Choose alert types** under Setup → Display (tornado, thunderstorm, flooding, winter, heat, …): turned-off types don't pop up or show in the banner, so a day of flood watches doesn't train everyone to ignore alerts; the Weather tab still lists every alert. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per **kid** and **Household** profile with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays (every 1 to 52 weeks), once a week on any day, **monthly on chosen dates** (e.g. the 1st and 15th, or the last day; every 1, 2, 3, 4, 6 or 12 months), or once. Weekday and monthly chores can **keep showing until done**: a missed one stays on the list, marked "since Oct 1", until it's checked off. You can page back and forth by day. |
-| **Progress** | Read-only: one row per kid with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
+| **Progress** (📊 button on the Chores screen) | Read-only: one row per kid with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, and send ingredients to a shopping list. **📖 Recipes** browses your whole Mealie library, and **cook mode** shows a recipe full screen with scalable servings and a QR code for your phone. Other meal apps can be shown read-only through their calendar feed. |
 | **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items by dragging the **≡** handle (finger or mouse); items slide into place, and checked-off items slide to the bottom in the order they were checked. |
-| **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like a Skylight frame's photo mode. |
+| **Photos** (a section in Setup) | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like a Skylight frame's photo mode. |
 | **Setup** | Add, edit and reorder family members (name, **Adult/Kid/Household**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **setup PIN** (see below). |
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
@@ -202,7 +202,7 @@ pytest            # 97 tests: chores, integration, Immich, feeds, recurring edit
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 21 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 22 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend is a plain web component with no build step: the browser loads the files as they are.

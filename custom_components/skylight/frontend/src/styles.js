@@ -29,9 +29,9 @@ input, select, textarea { font:inherit; color:var(--ink); background:var(--bg); 
 .rail { width:calc(92px + env(safe-area-inset-left)); flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
   padding:max(14px, env(safe-area-inset-top)) 6px max(14px, env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left)); background:var(--card); border-right:1px solid var(--line); overflow-y:auto; }
 .logo { font-size:30px; color:#ff9f43; margin-bottom:8px; }
-.tab { width:78px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px; background:none; box-shadow:none; font-size:12px; color:var(--muted); }
+.tab { width:80px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:14px 4px; background:none; box-shadow:none; font-size:13px; color:var(--muted); }
 .tab.active { background:var(--bg); color:var(--accent); font-weight:700; }
-.tab ha-icon { --mdc-icon-size:28px; }
+.tab ha-icon { --mdc-icon-size:32px; }
 main { flex:1; display:flex; flex-direction:column; min-width:0; }
 header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) 6px 22px; }
 .when { min-width:190px; }
@@ -592,9 +592,9 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
      Home Assistant iPhone app, where iOS can report the safe area as 0 (see _safeAreaFallback). */
   /* iOS reserves ~34px for the home-indicator line; the icons only need about half of it to stay clear. */
   .rail { padding:4px 2px max(6px, calc(max(env(safe-area-inset-bottom), var(--safe-bottom, 0px)) - 16px)); gap:0; justify-content:stretch; }
-  .tab { flex:1 1 0; min-width:0; padding:5px 0; gap:1px; font-size:9.5px; border-radius:10px; }
+  .tab { flex:1 1 0; min-width:0; padding:6px 0; gap:2px; font-size:11.5px; border-radius:10px; }
   .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tab ha-icon { --mdc-icon-size:22px; }
+  .tab ha-icon { --mdc-icon-size:26px; }
   .tab { position:relative; }
   /* Nothing scrolls sideways on a phone except strips made for it (e.g. the 24-hour forecast). */
   .content { overflow-x:hidden; }

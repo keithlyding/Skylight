@@ -53,7 +53,7 @@ const SCENARIOS = {
   async smoke(browser, base) {
     for (const [w, h] of [[1300, 912], [390, 760]]) {
       const p = await open(browser, base, { width: w, height: h, ctx: w < 600 ? { isMobile: true, hasTouch: true } : {} });
-      for (const t of ["home", "weather", "calendar", "chores", "progress", "meals", "lists", "photos", "settings"]) {
+      for (const t of ["home", "weather", "calendar", "chores", "meals", "lists", "settings"]) {
         await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t);
         await p.waitForTimeout(250);
         const over = await p.evaluate(() => document.documentElement.scrollWidth);
@@ -119,7 +119,7 @@ const SCENARIOS = {
       return [...el.shadowRoot.querySelectorAll(".app *, #dialog *")].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > w + 1 || b.left < -1) && !scroller(e); })
         .slice(0, 3).map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join(".")} "${(e.textContent || "").trim().slice(0, 30)}"`);
     }, w);
-    for (const t of ["home", "weather", "calendar", "chores", "progress", "meals", "lists", "photos", "settings"]) {
+    for (const t of ["home", "weather", "calendar", "chores", "meals", "lists", "settings"]) {
       await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t); await p.waitForTimeout(500);
       eq(await wide(), [], `${t}: nothing sticks out sideways`);
     }
@@ -179,6 +179,29 @@ const SCENARIOS = {
       eq(p.errors, [], "page errors");
       await p.context().close();
     }
+  },
+
+  async navtabs(browser, base) {
+    // 7 tabs: Progress lives on the Chores screen, Photos in Setup.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    eq(await text(p.S(".rail .tab span")), ["Today", "Weather", "Calendar", "Chores", "Meals", "Lists", "Setup"], "tabs");
+    await p.tab("chores");
+    await p.S('[data-action="chores-mode"][data-mode="progress"]').click(); await p.waitForTimeout(300);
+    check((await p.S(".progress").count()) === 1, "Progress opens from Chores");
+    check(await p.S('.tab[data-tab="chores"]').evaluate((e) => e.classList.contains("active")), "Chores tab stays highlighted");
+    await p.S('[data-action="chores-mode"][data-mode="day"]').click(); await p.waitForTimeout(300);
+    check((await p.S(".chores").count()) === 1, "back to Chores");
+    await p.S('[data-action="chores-mode"][data-mode="progress"]').click(); await p.waitForTimeout(200);
+    await p.tab("home"); await p.tab("chores");
+    check((await p.S(".chores").count()) === 1, "Chores tab opens on the day view again");
+    await p.tab("settings");
+    check((await p.S(".photosec h2").textContent()) === "Photos", "Photos section in Setup");
+    check((await p.S('.photosec [data-action="start-saver"]').count()) === 1, "slideshow button there");
+    const bar = await p.evaluate(() => { const t = el.shadowRoot.querySelector(".rail .tab"); const r = t.getBoundingClientRect(); return { w: r.width, font: parseFloat(getComputedStyle(t).fontSize) }; });
+    check(bar.w >= 50 && bar.font >= 11, `bigger tab buttons (${JSON.stringify(bar)})`);
+    await p.screenshot({ path: process.env.SHOT || "/dev/null" }).catch(() => {});
+    eq(p.errors, [], "page errors");
+    await p.context().close();
   },
 
   async steady(browser, base) {
@@ -300,7 +323,7 @@ const SCENARIOS = {
     await p.S('[data-action="new-chore"]').first().click(); await p.waitForTimeout(200);
     eq((await text(p.S("#c-every option"))).slice(-2), ["26 weeks", "52 weeks"], "every N weeks goes to 52");
     await p.evaluate(() => el.closeDialog());
-    await p.tab("progress");
+    await p.tab("chores"); await p.S('[data-action="chores-mode"][data-mode="progress"]').click(); await p.waitForTimeout(300);
     check(!(await p.content()).includes(">House<"), "Household not in Progress");
     eq(p.errors, [], "page errors");
     await p.context().close();
@@ -352,7 +375,7 @@ const SCENARIOS = {
       for (const c of D.chores) { c.created = ago(35); c.completions = []; for (let n = 30; n >= 0; n--) if (c.member_id === "c" || (c.member_id === "z" && n % 2 === 0)) c.completions.push(ago(n)); c.completions.sort(); }
       push();
     } });
-    await p.tab("progress");
+    await p.tab("chores"); await p.S('[data-action="chores-mode"][data-mode="progress"]').click(); await p.waitForTimeout(300);
     const rows = await text(p.S(".prow"));
     check(rows[0].includes("67%This week") && rows[1].includes("100%") && rows[2].includes("0%"), `progress rows: ${rows}`);
     await p.context().close();

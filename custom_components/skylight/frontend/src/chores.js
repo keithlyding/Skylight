@@ -1,6 +1,6 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.37.2";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.38.0";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
@@ -140,11 +140,12 @@ export class ChoresView {
   // Progress: last 4 weeks of chore completion per person with chores (read-only).
   renderProgress() {
     const people = kidsOf(this.members).filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
-    if (!people.length) return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
+    const back = `<button data-action="chores-mode" data-mode="day">‹ Chores</button>`;
+    if (!people.length) return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
     const thisWeek = this.weekStart(new Date());
     const weeks = [3, 2, 1, 0].map((k) => addDays(thisWeek, -7 * k));
     const label = (w, k) => (k === 3 ? "This week" : w.toLocaleDateString([], { month: "short", day: "numeric" }));
-    return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div><span class="hint">Chores done, last 4 weeks</span></div>
+    return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div><span class="hint">Chores done, last 4 weeks</span></div>
       <div class="progress">${people.map((m) => `<div class="prow" style="--c:${m.color}">
         <div class="pwho"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
         <div class="pbars">${weeks.map((w, k) => {
@@ -157,6 +158,7 @@ export class ChoresView {
   }
 
   renderChores() {
+    if (this.ui.choresMode === "progress") return this.renderProgress();
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
     const kids = choreOwnersOf(this.members);
@@ -187,7 +189,8 @@ export class ChoresView {
         <button class="icon" data-action="chore-day" data-dir="-1">‹</button>
         <button data-action="chore-day" data-dir="0">Today</button>
         <button class="icon" data-action="chore-day" data-dir="1">›</button>
-        <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div></div>
+        <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div>
+        <button data-action="chores-mode" data-mode="progress">📊 Progress</button></div>
       ${this._cvError ? `<p class="hint center">${esc(this._cvError)}</p>` : ""}
       <div class="chores">${cols}</div>`;
   }

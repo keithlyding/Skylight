@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.37.2";
+import { parseYmd, esc } from "./helpers.js?v=1.38.0";
 
 export class PhotosView {
 
@@ -106,19 +106,19 @@ export class PhotosView {
     if ((stale || photos.some((p) => !signed[p])) && photos.length && !this._photoUrlsLoading && Date.now() - (this._photoUrlsTried || 0) > 60000) {
       this._photoUrlsLoading = true; this._photoUrlsTried = Date.now(); // at most one try a minute (no loop if it fails)
       this._urlCache = null;
-      this._photoUrls().catch(() => {}).finally(() => { this._photoUrlsLoading = false; if (this.ui.tab === "photos") this.render(); });
+      this._photoUrls().catch(() => {}).finally(() => { this._photoUrlsLoading = false; if (this.ui.tab === "settings") this.render(); });
     }
     const uploads = this.settings.allow_uploads !== false;
-    return `<div class="toolbar"><div class="nav"><h1>Photos</h1></div>
+    return `<div class="toolbar"><div class="nav"><h2>Photos</h2></div>
       <div>${uploads ? `<input type="file" id="photo-input" accept="image/*" multiple hidden data-change="upload-photos">
         <button data-action="upload-photos">⬆ Upload</button>` : ""}
         <button class="primary" data-action="start-saver" ${this._hasPhotoSource() ? "" : "disabled"}>▶ Slideshow</button></div></div>
       ${this.data.immich?.url && this.data.immich?.has_key ? `<p class="hint">📷 Also showing ${[
         this.data.immich.albums?.length ? `${this.data.immich.albums.length} Immich album${this.data.immich.albums.length > 1 ? "s" : ""}` : "",
         this.data.immich.favorites ? "Immich favorites" : "",
-      ].filter(Boolean).join(" + ") || "no Immich albums yet"}. Change in Setup → Photos from Immich.</p>` : ""}
+      ].filter(Boolean).join(" + ") || "no Immich albums yet"}. Change under Photos from Immich below.</p>` : ""}
       ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph">${signed[p] ? `<img loading="lazy" src="${esc(signed[p])}">` : ""}<button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
-        : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>${uploads ? "Upload photos from this tablet or your phone (open the " + this.appName + " panel in the Home Assistant app)." : "Photo uploads are turned off in Setup."} They play as a screensaver when nobody is using the display. Or connect Immich in Setup.</p></div>`}`;
+        : this._hasPhotoSource() ? "" : `<p class="hint">No photos yet. ${uploads ? "Upload photos from this tablet or your phone (open the " + this.appName + " panel in the Home Assistant app)." : "Photo uploads are turned off (Display → Allow photo uploads)."} They play as a screensaver when nobody is using the display. Or connect Immich below.</p>`}`;
   }
 
   renderImmichSettings() {
