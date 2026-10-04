@@ -128,16 +128,29 @@ def overdue_since(chore: dict, on: date) -> date | None:
 KEEP_COMPLETIONS = 400  # per chore: over a year of daily history for the Progress view
 
 
-def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS, week_start: int = 1) -> bool:
-    """Toggle completion for `on`. Mutates chore; returns whether it is now done."""
+def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS, week_start: int = 1,
+           at: str | None = None, by: str | None = None) -> bool:
+    """Toggle completion for `on`. Mutates chore; returns whether it is now done.
+
+    `at` (ISO time) and `by` (who) go into chore["done_log"][day], so the Progress screen can show
+    exactly when house-maintenance tasks were done. Older check-offs have no log entry (date only).
+    """
     matches = matching_completions(chore, on, week_start)
     comps = [c for c in chore.get("completions", []) if c not in matches]
     if matches:
         chore["completions"] = comps
-        return False
-    comps.append(on.isoformat())
-    chore["completions"] = sorted(comps)[-keep:]
-    return True
+    else:
+        comps.append(on.isoformat())
+        chore["completions"] = sorted(comps)[-keep:]
+        if at:
+            entry = {"at": at}
+            if by:
+                entry["by"] = by
+            chore.setdefault("done_log", {})[on.isoformat()] = entry
+    log = chore.get("done_log")
+    if log is not None:
+        chore["done_log"] = {d: v for d, v in log.items() if d in chore["completions"]}
+    return not matches
 
 
 # ----- What the screens show. The panel draws these results; it has no chore rules of its own. -----

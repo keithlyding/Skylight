@@ -201,3 +201,35 @@ def test_weekly_follows_week_start_setting():
     assert chores.stats(c2, date(2026, 10, 4), date(2026, 10, 17), today, week_start=sun) == (2, 1)
     # Unchecking on Saturday removes Wednesday's check-off (same week)
     assert chores.toggle(c, date(2026, 10, 10), week_start=sun) is False and c["completions"] == []
+
+
+def test_done_log_records_when_and_who():
+    c = {"repeat": "monthly", "month_days": [1], "carry": True, "completions": ["2026-08-01"]}
+    assert chores.toggle(c, date(2026, 10, 3), at="2026-10-03T18:32:05-05:00", by="Alex") is True
+    assert c["done_log"] == {"2026-10-03": {"at": "2026-10-03T18:32:05-05:00", "by": "Alex"}}
+    assert chores.toggle(c, date(2026, 10, 3), at="2026-10-03T18:40:00-05:00") is False  # unchecked: entry gone
+    assert c["done_log"] == {} and c["completions"] == ["2026-08-01"]
+    assert chores.toggle(c, date(2026, 10, 4), at="2026-10-04T09:00:00-05:00") is True
+    assert c["done_log"] == {"2026-10-04": {"at": "2026-10-04T09:00:00-05:00"}}
+    old = {"repeat": "daily", "completions": ["2026-10-01"]}
+    assert chores.toggle(old, date(2026, 10, 2)) is True and "done_log" not in old  # no time given: no log
+
+
+async def test_toggle_records_time_and_user(hass, tmp_path, hass_storage, hass_ws_client):
+    from homeassistant.setup import async_setup_component
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    hass.config.config_dir = str(tmp_path)
+    hass_storage["skylight.data"] = {"version": 1, "key": "skylight.data", "data": {
+        "members": [{"id": "h", "name": "House", "role": "home", "color": "#777777", "avatar": "x", "calendars": []}],
+        "chores": [{"id": "f", "member_id": "h", "title": "Furnace filter", "repeat": "monthly", "month_days": [1],
+                    "carry": True, "completions": []}]}}
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain="skylight", data={})
+    e.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(e.entry_id)
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "skylight/chore/toggle", "chore_id": "f", "date": "2026-10-03"})
+    assert (await ws.receive_json())["success"]
+    entry = hass.data["skylight"]["store"].data["chores"][0]["done_log"]["2026-10-03"]
+    assert entry["at"].startswith("20") and "T" in entry["at"]
+    assert entry.get("by")  # the logged-in test user's name

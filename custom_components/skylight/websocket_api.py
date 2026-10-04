@@ -226,7 +226,8 @@ async def ws_move_list_item(hass: HomeAssistant, connection, msg: dict[str, Any]
 @websocket_api.async_response
 async def ws_toggle_chore(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        done = await _store(hass).async_toggle_chore(msg["chore_id"], date.fromisoformat(msg["date"]))
+        user = getattr(connection, "user", None)
+        done = await _store(hass).async_toggle_chore(msg["chore_id"], date.fromisoformat(msg["date"]), by=getattr(user, "name", None))
     except (KeyError, ValueError) as err:
         connection.send_error(msg["id"], "not_found", str(err))
         return

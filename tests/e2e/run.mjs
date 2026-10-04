@@ -292,6 +292,25 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async homelog(browser, base) {
+    // Progress shows a maintenance log for Household profiles: when each task was done, at what time, by whom.
+    const p = await open(browser, base, { setup: () => {
+      D.members.push({ id: "h", name: "House", color: "#777777", avatar: "🏠", calendars: [], role: "home" });
+      D.chores.push({ id: "ff", member_id: "h", title: "Furnace filter", icon: "🔧", repeat: "daily", completions: ["2026-08-01"] });
+      push();
+    } });
+    await p.tab("chores");
+    await p.S('.ccol:has(.cname:text("House")) [data-action="toggle-chore"]').first().click(); await p.waitForTimeout(500);
+    await p.S('[data-action="chores-mode"][data-mode="progress"]').click(); await p.waitForTimeout(500);
+    const log = await p.S(".homelog").textContent();
+    check(log.includes("Furnace filter") && log.includes("Last done"), "maintenance log lists the task");
+    check(/\d{1,2}:\d{2}/.test(log) && log.includes("Test User"), `time and who are shown: ${log.replace(/\s+/g, " ").slice(0, 200)}`);
+    check(log.includes("History (2)"), "history includes the older, date-only check-off");
+    if (process.env.SHOT) { await p.S(".hlhist summary").first().click(); await p.S(".homelog").screenshot({ path: process.env.SHOT }); }
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

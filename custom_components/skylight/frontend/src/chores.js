@@ -1,6 +1,6 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.39.0";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.40.0";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
@@ -140,13 +140,14 @@ export class ChoresView {
   // Progress: last 4 weeks of chore completion per person with chores (read-only).
   renderProgress() {
     const people = kidsOf(this.members).filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
+    const homes = (this.members || []).filter((m) => m.role === "home" && (this.data.chores || []).some((c) => c.member_id === m.id));
     const back = `<button data-action="chores-mode" data-mode="day">‹ Chores</button>`;
-    if (!people.length) return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
+    if (!people.length && !homes.length) return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
     const thisWeek = this.weekStart(new Date());
     const weeks = [3, 2, 1, 0].map((k) => addDays(thisWeek, -7 * k));
     const label = (w, k) => (k === 3 ? "This week" : w.toLocaleDateString([], { month: "short", day: "numeric" }));
-    return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div><span class="hint">Chores done, last 4 weeks</span></div>
-      <div class="progress">${people.map((m) => `<div class="prow" style="--c:${m.color}">
+    return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div>${people.length ? `<span class="hint">Chores done, last 4 weeks</span>` : ""}</div>
+      ${people.length ? `<div class="progress">${people.map((m) => `<div class="prow" style="--c:${m.color}">
         <div class="pwho"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
         <div class="pbars">${weeks.map((w, k) => {
           const st = this.completionStats(m.id, w, addDays(w, 6));
@@ -154,7 +155,50 @@ export class ChoresView {
           return `<div class="pbar" title="${st.done} of ${st.due} chores">
             <div class="pcol"><i style="height:${pct === null ? 0 : Math.max(3, pct)}%"></i></div>
             <b>${pct === null ? "–" : `${pct}%`}</b><small>${label(w, k)}</small></div>`;
-        }).join("")}</div></div>`).join("")}</div>`;
+        }).join("")}</div></div>`).join("")}</div>` : ""}
+      ${homes.map((m) => this.renderHomeLog(m)).join("")}`;
+  }
+
+  // ---------- home maintenance log: when each Household task was really done (date, time, who) ----------
+  _repeatText(c) {
+    const ord = (n) => (n === -1 ? "last day" : `${n}${[, "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || "th"}`);
+    const every = (n, one, many) => (n > 1 ? `every ${n} ${many}` : `every ${one}`);
+    switch (c.repeat) {
+      case "days": return `${(c.days || []).map((d) => WEEKDAYS[d]).join(", ")}, ${every(Number(c.every_weeks) || 1, "week", "weeks")}`;
+      case "weekly": return "Once a week";
+      case "monthly": return `${(c.month_days || [1]).map(ord).join(", ")}, ${every(Number(c.every_months) || 1, "month", "months")}`;
+      case "once": return "Once";
+      default: return "Every day";
+    }
+  }
+  _doneText(c, day) {
+    const log = c.done_log?.[day];
+    const d = parseYmd(day).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+    if (!log?.at) return `${d}`;
+    const t = new Date(log.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !this.settings.clock_24h });
+    return `${d} · ${t}${log.by ? ` · ${esc(log.by)}` : ""}`;
+  }
+  renderHomeLog(m) {
+    const today = startOfDay(new Date());
+    const chores = (this.data.chores || []).filter((c) => c.member_id === m.id);
+    const rows = chores.map((c) => {
+      const done = [...(c.completions || [])].sort().reverse();
+      const st = this._choreState(c, today);
+      const days = this._cv?.days?.[c.id] || {};
+      const next = Object.keys(days).sort().find((d) => d > ymd(today));
+      const status = st?.since ? `<span class="hlbad">Overdue since ${st.since.toLocaleDateString([], { month: "short", day: "numeric" })}</span>`
+        : st && !st.done ? `<span class="hlwarn">Due today</span>`
+        : next ? `<span class="hint">Next: ${parseYmd(next).toLocaleDateString([], { month: "short", day: "numeric" })}</span>` : "";
+      return `<div class="hlrow">
+        <div class="hlhead"><span class="ci">${esc(c.icon || "✅")}</span><div class="hltitle"><b>${esc(c.title)}</b><small>${esc(this._repeatText(c))}</small></div>${status}</div>
+        <div class="hllast">${done.length ? `✅ Last done: <b>${this._doneText(c, done[0])}</b>` : `<span class="hint">Not done yet</span>`}</div>
+        ${done.length > 1 ? `<details class="hlhist"><summary>History (${done.length})</summary><ul>${done.slice(0, 24).map((d) => `<li>${this._doneText(c, d)}</li>`).join("")}</ul></details>` : ""}
+      </div>`;
+    }).join("");
+    return `<section class="card homelog" style="--c:${m.color}">
+      <h2>🏠 ${esc(m.name)}: maintenance log</h2>
+      <p class="hint">When each task was checked off. Times and names are recorded from v1.40; older check-offs show the date only.</p>
+      ${rows}</section>`;
   }
 
   renderChores() {

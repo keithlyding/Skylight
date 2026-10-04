@@ -13,6 +13,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from . import chores, security
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION, app_name
@@ -357,12 +358,13 @@ class SkylightStore:
                 self._changed()
             return target
 
-    async def async_toggle_chore(self, chore_id: str, on: date) -> bool:
+    async def async_toggle_chore(self, chore_id: str, on: date, by: str | None = None) -> bool:
         async with self._lock:
             chore = next((c for c in self.data["chores"] if c["id"] == chore_id), None)
             if chore is None:
                 raise KeyError(chore_id)
-            done = chores.toggle(chore, on, week_start=int(self.data["settings"].get("week_start") or 0))
+            done = chores.toggle(chore, on, week_start=int(self.data["settings"].get("week_start") or 0),
+                                 at=dt_util.now().isoformat(timespec="seconds"), by=by)
             self._changed()
             return done
 
