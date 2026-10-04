@@ -12,16 +12,16 @@ A **Skylight** entry in the Home Assistant sidebar that opens a full-screen app 
 
 | Tab | What it does |
 |---|---|
-| **Today** | Overview: Agenda or a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather; plain-language weather tips; tonight's dinner (tap to cook); **Upcoming** birthdays and anniversaries; each kid's chores for today (tap to check off) and adults' to-do lists. Opens by default. |
+| **Today** | Overview: Agenda or a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather; plain-language weather tips; tonight's dinner (tap to cook); **Upcoming** birthdays and anniversaries; each kid's and Household chores for today (tap to check off) and adults' to-do lists. Opens by default. |
 | **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), optional air-quality / pollen / UV sensors, and official **US National Weather Service alerts** (cards on the Weather tab plus a banner on every screen). Tap a forecast day for the written day/night forecast. Uses the weather integration chosen in Settings; the **NWS** integration is recommended in the US for rain chances and forecast text. |
 | **Weather extras** | **Today's tips** in plain language on the Today screen and Weather tab (umbrella for an outdoor event, jacket this morning, freeze tonight, gusty, high UV, poor air, high pollen, much colder than yesterday). **Rain in the next 2 hours** in 15-minute steps ("Rain starting in about 30 min"). **Alert pop-ups**: a new NWS warning covers the screen (and wakes the photo screensaver) with an optional chime until someone taps OK. **Radar layers** (radar, rain forecast, storms, wind, gusts, temperature, clouds, satellite), **air quality** (US AQI with a 24-hour outlook), **pollen**, **comparisons** (yesterday, this day last year, rain over the last 7/30 days) and a **moon** card with the next phases. Rain-soon, air quality and comparisons come from Open-Meteo (free, no key). US pollen uses the Google Pollen API with the Google key from Location lookup. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
-| **Chores** | One column per **kid** with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays, every N weeks, weekly or once. You can page back and forth by day. |
+| **Chores** | One column per **kid** and **Household** profile with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays (every 1 to 52 weeks), once a week on any day, **monthly on chosen dates** (e.g. the 1st and 15th, or the last day; every 1, 2, 3, 4, 6 or 12 months), or once. Weekday and monthly chores can **keep showing until done**: a missed one stays on the list, marked "since Oct 1", until it's checked off. You can page back and forth by day. |
 | **Progress** | Read-only: one row per kid with chores, showing the share of chores done in each of the last 4 weeks as small bars. |
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, and send ingredients to a shopping list. **📖 Recipes** browses your whole Mealie library, and **cook mode** shows a recipe full screen with scalable servings and a QR code for your phone. Other meal apps can be shown read-only through their calendar feed. |
 | **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items by dragging the **≡** handle (finger or mouse); items slide into place, and checked-off items slide to the bottom in the order they were checked. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like Skylight's photo frame. |
-| **Settings** | Add, edit and reorder family members (name, **Adult/Kid**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
+| **Settings** | Add, edit and reorder family members (name, **Adult/Kid/Household**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
@@ -130,14 +130,15 @@ Settings → **Look & night mode**:
 - The calendar shows them as all-day markers in every view, in the person's color (or the family color). Tapping one points you to Settings; they aren't calendar events and aren't written to any calendar.
 - Adding or changing them needs the settings PIN, like other setup.
 
-## Adults and kids
+## Adults, kids and Household
 
-Every family member is an **Adult** or a **Kid** (Settings → family member → *This person is*).
+Every family member is an **Adult**, a **Kid** or **Household** (Settings → family member → *This person is*).
 
-- **Kids** have chores. Only kids appear on the Chores and Progress tabs, in the chore editor's *Who* list, and in the Today screen's chores section.
+- **Kids** have chores. Kids appear on the Chores and Progress tabs, in the chore editor's *Who* list, and in the Today screen's chores section.
+- **Household** is for things that aren't one person's job, like house maintenance (furnace filter, fridge water filter, smoke detectors). It gets a Chores column, can be picked in the chore editor and shows on the Today screen, but isn't on the Progress tab and can't own lists.
 - **Adults** can own lists. In the list editor, *Whose list* is Shared or one adult; linked Home Assistant to-do lists get the same choice from a picker next to the list name. The Today screen can still show an adult's list.
 - Calendars work the same for everyone.
-- Switching someone with chores to Adult keeps their chores but hides them; the editor warns you and offers **Move chores to this kid**. Switching an adult to Kid makes their lists Shared.
+- Switching someone with chores to Adult keeps their chores but hides them; the editor warns you and offers **Move chores here**. Switching an adult to Kid makes their lists Shared.
 - **Upgrading from v1.28 or earlier:** people with at least one chore become Kids and everyone else Adults. A banner in Settings asks you to check this until you tap *Looks right*.
 
 ## Upgrading from v1.27 or earlier
@@ -197,7 +198,7 @@ Nothing is sent to the author of Skylight, and there is no tracking or analytics
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 85 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 90 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium

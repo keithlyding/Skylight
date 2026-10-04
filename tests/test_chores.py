@@ -92,17 +92,66 @@ def test_js_rule_matches_python():
         {"repeat": "days", "days": [0, 3], "every_weeks": 3, "start": "2026-09-30"},
         {"repeat": "days", "days": [6], "every_weeks": 1, "start": "2026-09-27"},
         {"repeat": "days", "days": [1, 5]},
+        {"repeat": "monthly", "month_days": [1, 15]},
+        {"repeat": "monthly", "month_days": [31], "start": "2026-09-01"},
+        {"repeat": "monthly", "month_days": [-1], "every_months": 3, "start": "2026-10-10"},
+        {"repeat": "monthly", "month_days": [1], "carry": True, "completions": ["2026-10-03", "2027-01-01"]},
+        {"repeat": "days", "days": [5], "every_weeks": 13, "start": "2026-09-05", "carry": True,
+         "completions": ["2026-09-08", "2027-03-01"]},
     ]
     days = [(date(2026, 9, 1) + timedelta(days=i)).isoformat() for i in range(366)]
     script = helpers + f"""
 const cases = {json.dumps(cases)}, days = {json.dumps(days)};
-console.log(JSON.stringify(cases.map((c) => days.map((d) => choreDue({{...c, completions: []}}, parseYmd(d))))));"""
+console.log(JSON.stringify(cases.map((c) => days.map((d) => [choreDue({{completions: [], ...c}}, parseYmd(d)), choreDone({{completions: [], ...c}}, parseYmd(d))]))));"""
     try:
         out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
     except FileNotFoundError:
         import pytest
         pytest.skip("node not installed")
     js = json.loads(out)
-    py = [[chores.is_due({**c, "completions": []}, date.fromisoformat(d)) for d in days] for c in cases]
+    py = [[[chores.is_due({"completions": [], **c}, date.fromisoformat(d)), chores.is_done({"completions": [], **c}, date.fromisoformat(d))]
+           for d in days] for c in cases]
     assert js == py
 
+
+
+def test_monthly_dates():
+    c = {"repeat": "monthly", "month_days": [1, 15], "completions": []}
+    assert chores.is_due(c, date(2026, 10, 1)) and chores.is_due(c, date(2026, 10, 15))
+    assert not chores.is_due(c, date(2026, 10, 2))
+    last = {"repeat": "monthly", "month_days": [31], "completions": []}
+    assert chores.is_due(last, date(2026, 2, 28)) and chores.is_due(last, date(2026, 4, 30))
+    assert not chores.is_due(last, date(2026, 4, 29))
+    lastday = {"repeat": "monthly", "month_days": [-1], "completions": []}
+    assert chores.is_due(lastday, date(2028, 2, 29)) and not chores.is_due(lastday, date(2028, 2, 28))
+
+
+def test_every_three_months_from_start():
+    c = {"repeat": "monthly", "month_days": [1], "every_months": 3, "start": "2026-10-01", "completions": []}
+    due = [m for m in range(1, 13) if chores.is_due(c, date(2027, m, 1))]
+    assert due == [1, 4, 7, 10]
+    assert not chores.is_due(c, date(2026, 7, 1))  # never before the start
+
+
+def test_every_52_weeks():
+    c = {"repeat": "days", "days": [5], "every_weeks": 52, "start": "2026-10-03", "completions": []}
+    assert chores.is_due(c, date(2026, 10, 3))
+    assert not chores.is_due(c, date(2026, 10, 10))
+    assert chores.is_due(c, date(2027, 10, 2))
+
+
+def test_keep_showing_until_done():
+    c = {"repeat": "monthly", "month_days": [1], "carry": True, "completions": []}
+    assert chores.is_due(c, date(2026, 10, 1))
+    assert chores.is_due(c, date(2026, 10, 5))  # missed: still showing
+    assert chores.overdue_since(c, date(2026, 10, 5)) == date(2026, 10, 1)
+    assert chores.overdue_since(c, date(2026, 10, 1)) is None
+    assert chores.toggle(c, date(2026, 10, 5)) is True
+    assert chores.is_due(c, date(2026, 10, 5)) and chores.is_done(c, date(2026, 10, 5))  # shows checked today
+    assert not chores.is_due(c, date(2026, 10, 6))  # gone afterwards
+    assert chores.is_due(c, date(2026, 11, 1)) and not chores.is_done(c, date(2026, 11, 1))
+    assert chores.toggle(c, date(2026, 10, 5)) is False  # uncheck brings it back
+    assert chores.is_due(c, date(2026, 10, 6))
+    # Without carry, a missed date simply disappears.
+    plain = {"repeat": "monthly", "month_days": [1], "completions": []}
+    assert not chores.is_due(plain, date(2026, 10, 5))

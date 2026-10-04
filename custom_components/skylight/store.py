@@ -23,7 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 def _write_text(path: str, text: str) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)
-ROLES = ("adult", "kid")
+ROLES = ("adult", "kid", "home")  # home = Household (house maintenance etc.): has chores, not in Progress
 
 
 def migrate(data: dict[str, Any]) -> bool:

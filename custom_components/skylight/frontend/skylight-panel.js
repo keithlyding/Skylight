@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.33.4";
+const PANEL_VERSION = "1.34.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -172,7 +172,10 @@ const WEATHER_ICONS = {
 const pad = (n) => String(n).padStart(2, "0");
 // Adults and kids: only kids have chores; only adults own lists.
 const kidsOf = (members) => (members || []).filter((m) => m.role === "kid");
-const adultsOf = (members) => (members || []).filter((m) => m.role !== "kid");
+// Who can have chores: kids, plus "household" profiles (e.g. Maintenance: furnace filters, smoke detectors).
+const choreOwnersOf = (members) => (members || []).filter((m) => m.role === "kid" || m.role === "home");
+const adultsOf = (members) => (members || []).filter((m) => m.role !== "kid" && m.role !== "home");
+const ROLE_LABEL = { adult: "🧑 Adult", kid: "🧒 Kid", home: "🏠 Household" };
 // Open items in list order, then done items oldest check-off first (older items without a time keep list order).
 const orderItems = (items) => [
   ...(items || []).filter((i) => !i.done),
@@ -297,16 +300,14 @@ const occasionText = (u) => {
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-// ---------- chore rules (mirror of chores.py) ----------
-const choreMatches = (c, day) => {
-  const comps = c.completions || [];
-  if (c.repeat === "once") return comps;
-  if (c.repeat === "weekly") return comps.filter((x) => isoWeek(parseYmd(x)) === isoWeek(day));
-  return comps.filter((x) => x === ymd(day));
-};
-const choreDone = (c, day) => choreMatches(c, day).length > 0;
-// Every-N-weeks for "days" chores (mirror of chores.py _week_ok): whole Mon-Sun weeks since the start date.
+// ---------- chore rules (mirror of chores.py; tests check they agree day by day) ----------
+const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
+const EVERY_MONTHS = [1, 2, 3, 4, 6, 12];
+const CARRY_REPEATS = ["days", "monthly"]; // repeats that can "keep showing until done"
+const LOOKBACK_DAYS = 400;
 const mondayOf = (d) => addDays(startOfDay(d), -pyWeekday(d));
+const lastDayOfMonth = (y, m) => new Date(y, m + 1, 0).getDate(); // m: 0-11
+// Every-N-weeks for "days" chores: whole Mon-Sun weeks since the start date.
 const choreWeekOk = (c, day) => {
   const every = Number(c.every_weeks) || 1;
   if (every <= 1 && !c.start) return true;
@@ -314,10 +315,57 @@ const choreWeekOk = (c, day) => {
   const weeks = Math.round((mondayOf(day) - mondayOf(anchor)) / (7 * 86400000));
   return weeks >= 0 && weeks % every === 0;
 };
-const choreDue = (c, day) => {
+// Every-N-months: whole calendar months since the start date's month (never before the start).
+const choreMonthOk = (c, day) => {
+  if (c.start && ymd(day) < c.start) return false;
+  const every = Math.max(1, Number(c.every_months) || 1);
+  const anchor = c.start ? parseYmd(c.start) : day;
+  const months = (day.getFullYear() * 12 + day.getMonth()) - (anchor.getFullYear() * 12 + anchor.getMonth());
+  return months >= 0 && months % every === 0;
+};
+// One of the chosen days of the month; -1 = last day; 29-31 fall on the last day of shorter months.
+const choreMonthDayOk = (c, day) => {
+  const last = lastDayOfMonth(day.getFullYear(), day.getMonth());
+  return (c.month_days && c.month_days.length ? c.month_days : [1]).some((d) => (Number(d) === -1 ? last : Math.min(Number(d), last)) === day.getDate());
+};
+const choreScheduled = (c, day) => {
   if (c.repeat === "days") return (c.days || []).includes(pyWeekday(day)) && choreWeekOk(c, day);
-  if (c.repeat === "once") { const comps = c.completions || []; return !comps.length || comps.includes(ymd(day)); }
+  if (c.repeat === "monthly") return choreMonthOk(c, day) && choreMonthDayOk(c, day);
   return true;
+};
+const choreCarries = (c) => !!c.carry && CARRY_REPEATS.includes(c.repeat);
+const choreLastOccurrence = (c, day) => {
+  for (let back = 0; back <= LOOKBACK_DAYS; back++) { const d = addDays(startOfDay(day), -back); if (choreScheduled(c, d)) return d; }
+  return null;
+};
+const choreMatches = (c, day) => {
+  const comps = c.completions || [];
+  if (c.repeat === "once") return comps;
+  if (c.repeat === "weekly") return comps.filter((x) => isoWeek(parseYmd(x)) === isoWeek(day));
+  if (choreCarries(c)) {
+    const since = choreLastOccurrence(c, day);
+    if (!since) return [];
+    const a = ymd(since), b = ymd(day);
+    return comps.filter((x) => x >= a && x <= b);
+  }
+  return comps.filter((x) => x === ymd(day));
+};
+const choreDone = (c, day) => choreMatches(c, day).length > 0;
+const choreDue = (c, day) => {
+  if (c.repeat === "once") { const comps = c.completions || []; return !comps.length || comps.includes(ymd(day)); }
+  if (choreCarries(c)) {
+    const since = choreLastOccurrence(c, day);
+    if (!since) return false;
+    const a = ymd(since), b = ymd(day);
+    return !(c.completions || []).some((x) => x >= a && x < b);
+  }
+  return choreScheduled(c, day);
+};
+// A carried-over chore due today but scheduled earlier: the day it was scheduled (else null).
+const choreOverdueSince = (c, day) => {
+  if (!choreCarries(c) || !choreDue(c, day) || choreDone(c, day)) return null;
+  const since = choreLastOccurrence(c, day);
+  return since && ymd(since) < ymd(day) ? since : null;
 };
 
 class SkylightPanel extends HTMLElement {
@@ -1389,6 +1437,7 @@ class SkylightPanel extends HTMLElement {
       case "new-chore": this.openChoreDialog(null, d.member); break;
       case "edit-chore": this.openChoreDialog(D.chores.find((c) => c.id === d.chore)); break;
       case "chore-repeat": this.ui.dialog.repeat = el.value; this._syncChoreDialog(); break;
+      case "chore-every": this._syncChoreDialog(); break;
       case "save-chore": await this.saveChore(); break;
       case "delete-chore": await this._set("chores", D.chores.filter((c) => c.id !== this.ui.dialog.chore.id)); this.closeDialog(); break;
 
@@ -2053,7 +2102,7 @@ class SkylightPanel extends HTMLElement {
   openMemberDialog(m) {
     const used = new Set(this.members.map((x) => x.color));
     const dlg = {
-      type: "member", member: m, role: m?.role === "kid" ? "kid" : m ? "adult" : "kid",
+      type: "member", member: m, role: ["kid", "home", "adult"].includes(m?.role) ? m.role : m ? "adult" : "kid",
       today: m?.today || (m?.role === "adult" ? "none" : "chores"), todayList: m?.today_list || "",
       color: m?.color || PALETTE.find((c) => !used.has(c)) || PALETTE[0],
       avatar: m?.avatar || AVATARS[this.members.length % AVATARS.length],
@@ -2068,14 +2117,14 @@ class SkylightPanel extends HTMLElement {
         <div class="label">Birthday <small class="hint">(optional; year optional too)</small></div>
         ${this._dateFields("m-bday", m?.birthday)}
         <div class="label">This person is</div>
-        <div class="seg rolepick"><button class="${dlg.role === "adult" ? "on" : ""}" data-action="member-role" data-role="adult">🧑 Adult</button><button class="${dlg.role === "kid" ? "on" : ""}" data-action="member-role" data-role="kid">🧒 Kid</button></div>
-        <p class="hint" style="margin-top:4px">Kids get chores and show on the Chores and Progress tabs. Adults can own lists (like a honey-do list).</p>
+        <div class="seg rolepick">${["adult", "kid", "home"].map((r) => `<button class="${dlg.role === r ? "on" : ""}" data-action="member-role" data-role="${r}">${ROLE_LABEL[r]}</button>`).join("")}</div>
+        <p class="hint" style="margin-top:4px">Kids get chores and show on the Chores and Progress tabs. Adults can own lists (like a honey-do list). <b>Household</b> is for a non-person profile like “Maintenance”: it gets chores (furnace filters, smoke detectors…) but isn't counted on Progress.</p>
         ${(() => {
           const theirs = m ? (this.data.chores || []).filter((c) => c.member_id === m.id) : [];
-          const kids = kidsOf(this.members).filter((k) => k.id !== m?.id);
+          const kids = choreOwnersOf(this.members).filter((k) => k.id !== m?.id);
           if (dlg.role !== "adult" || !theirs.length) return "";
           return `<div class="rolewarn">⚠️ ${esc(m.name)} has ${theirs.length} chore${theirs.length > 1 ? "s" : ""}. They're kept but hidden while ${esc(m.name)} is an adult.
-            ${kids.length ? `<div class="row"><select id="m-movechores">${kids.map((k) => `<option value="${k.id}">${k.avatar} ${esc(k.name)}</option>`).join("")}</select><button data-action="move-chores">Move chores to this kid</button></div>` : ""}</div>`;
+            ${kids.length ? `<div class="row"><select id="m-movechores">${kids.map((k) => `<option value="${k.id}">${k.avatar} ${esc(k.name)}</option>`).join("")}</select><button data-action="move-chores">Move chores here</button></div>` : ""}</div>`;
         })()}
         <label>Event title prefixes <small class="hint">(optional, comma-separated)</small>
           <input id="m-prefix" value="${esc((m?.prefixes || []).join(", "))}" placeholder="e.g. S, Sam"></label>
@@ -2100,7 +2149,7 @@ class SkylightPanel extends HTMLElement {
         <div class="label">Today screen shows</div>
         <div class="row">
           <label><select id="m-today" data-change="member-today">
-            ${dlg.role === "kid" ? `<option value="chores" ${dlg.today === "chores" ? "selected" : ""}>✅ Chores</option>` : ""}
+            ${dlg.role !== "adult" ? `<option value="chores" ${dlg.today === "chores" ? "selected" : ""}>✅ Chores</option>` : ""}
             <option value="list" ${dlg.today === "list" ? "selected" : ""}>📝 A list (to-do / honey-do)</option>
             <option value="none" ${dlg.today === "none" ? "selected" : ""}>Nothing</option></select></label>
           <label ${dlg.today === "list" ? "" : "hidden"}><select id="m-todaylist">
@@ -2215,19 +2264,27 @@ class SkylightPanel extends HTMLElement {
           <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
           <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
         </div>
-        <label>Who<select id="c-member">${kidsOf(this.members).map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Who<select id="c-member">${choreOwnersOf(this.members).map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
         <label>Repeats<select id="c-repeat" data-change="chore-repeat">
           <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
-          <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days</option>
+          <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days of the week</option>
           <option value="weekly" ${dlg.repeat === "weekly" ? "selected" : ""}>Once a week (any day)</option>
+          <option value="monthly" ${dlg.repeat === "monthly" ? "selected" : ""}>Monthly, on certain dates</option>
           <option value="once" ${dlg.repeat === "once" ? "selected" : ""}>Just once</option></select></label>
         <div class="dayopts" ${dlg.repeat === "days" ? "" : "hidden"}>
           <div class="daypick">${WEEKDAYS.map((w, i) => `<label class="daychip"><input type="checkbox" class="c-day" id="cd-${i}" value="${i}" ${(c?.days || [0, 1, 2, 3, 4]).includes(i) ? "checked" : ""}><span>${w}</span></label>`).join("")}</div>
-          <div class="row">
-            <label>Every<select id="c-every">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === (Number(c?.every_weeks) || 1) ? "selected" : ""}>${n === 1 ? "week" : `${n} weeks`}</option>`).join("")}</select></label>
-            <label>Starting<input type="date" id="c-start" value="${c?.start || ymd(new Date())}"></label>
-          </div>
+          <label>Every<select id="c-every" data-change="chore-every">${EVERY_WEEKS.map((n) => `<option value="${n}" ${n === (Number(c?.every_weeks) || 1) ? "selected" : ""}>${n === 1 ? "week" : `${n} weeks`}</option>`).join("")}</select></label>
           <p class="hint">For every other week, pick "2 weeks" and a start date in a week the chore happens (e.g. this Friday's recycling week).</p>
+        </div>
+        <div class="monthopts" ${dlg.repeat === "monthly" ? "" : "hidden"}>
+          <div class="daypick monthpick">${[...Array(31)].map((_, i) => i + 1).concat([-1]).map((n) => `<label class="daychip"><input type="checkbox" class="c-mday" value="${n}" ${(c?.month_days || [1]).includes(n) ? "checked" : ""}><span>${n === -1 ? "Last" : n}</span></label>`).join("")}</div>
+          <label>Every<select id="c-every-months">${EVERY_MONTHS.map((n) => `<option value="${n}" ${n === (Number(c?.every_months) || 1) ? "selected" : ""}>${n === 1 ? "month" : n === 12 ? "year (12 months)" : `${n} months`}</option>`).join("")}</select></label>
+          <p class="hint">Dates 29–31 fall on the last day of shorter months. For every 3 or 6 months, the start date sets which months.</p>
+        </div>
+        <div class="startopt" ${["days", "monthly"].includes(dlg.repeat) ? "" : "hidden"}>
+          <label>Starting<input type="date" id="c-start" value="${c?.start || ymd(new Date())}"></label>
+          <label class="check"><input type="checkbox" id="c-carry" ${(c ? c.carry : false) ? "checked" : ""}> Keep showing until done</label>
+          <p class="hint">If it's missed, it stays on the list each day (marked "since …") until someone checks it off. Good for filters and maintenance.</p>
         </div>
         <div class="actions">
           ${c ? `<button class="danger" data-action="delete-chore">Delete</button>` : ""}
@@ -2239,8 +2296,14 @@ class SkylightPanel extends HTMLElement {
     this._openDialog(dlg);
   }
   _syncChoreDialog() {
-    const dp = this.shadowRoot.querySelector(".dayopts");
-    if (dp) dp.hidden = this.ui.dialog.repeat !== "days";
+    const q = (sel) => this.shadowRoot.querySelector(sel);
+    const r = this.ui.dialog.repeat;
+    if (q(".dayopts")) q(".dayopts").hidden = r !== "days";
+    if (q(".monthopts")) q(".monthopts").hidden = r !== "monthly";
+    if (q(".startopt")) q(".startopt").hidden = r !== "days" && r !== "monthly";
+    // New chores: default "keep showing until done" on for monthly and for every 2+ weeks.
+    const carry = q("#c-carry");
+    if (carry && !this.ui.dialog.chore) carry.checked = r === "monthly" || (r === "days" && Number(q("#c-every")?.value) > 1);
   }
   async saveChore() {
     const $ = (id) => this.shadowRoot.getElementById(id);
@@ -2253,8 +2316,13 @@ class SkylightPanel extends HTMLElement {
       repeat: $("c-repeat").value,
       days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
       every_weeks: Number($("c-every").value) || 1,
+      month_days: [...this.shadowRoot.querySelectorAll(".c-mday:checked")].map((i) => Number(i.value)),
+      every_months: Number($("c-every-months").value) || 1,
+      carry: $("c-carry").checked,
       start: $("c-start").value || ymd(new Date()),
     };
+    if (rec.repeat === "days" && !rec.days.length) { this._toast("Pick at least one day"); return; }
+    if (rec.repeat === "monthly" && !rec.month_days.length) { this._toast("Pick at least one date"); return; }
     const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
     await this._set("chores", chores); this.closeDialog();
   }
@@ -3682,7 +3750,7 @@ class SkylightPanel extends HTMLElement {
     const chores = ordered.map((m) => {
       if (m.today === "none") return "";
       if (m.today === "list") return this.renderHomeList(m, lists.find((l) => l.id === m.today_list));
-      if (m.role !== "kid") return ""; // chores are for kids only
+      if (m.role !== "kid" && m.role !== "home") return ""; // chores are for kids and household profiles
       const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
       const done = list.filter((c) => choreDone(c, today)).length;
       if (!list.length) { free.push(m); return ""; } // summarized in one line below
@@ -3691,7 +3759,7 @@ class SkylightPanel extends HTMLElement {
           <span class="hint">${done}/${list.length}</span></div>
         ${list.map((c) => { const dn = choreDone(c, today); return `<div class="chore ${dn ? "done" : ""}">
           <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}" data-date="${ymd(today)}">
-            <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
+            <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(c, today)}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
           || `<p class="hint">No chores today</p>`}
         ${list.length && done === list.length ? `<div class="alldone">All done! 🎉</div>` : ""}
       </div>`;
@@ -3728,6 +3796,12 @@ class SkylightPanel extends HTMLElement {
     </div>`;
   }
 
+  // "since Oct 1" on a chore that was missed and is kept on the list until done.
+  _sinceNote(c, day) {
+    const since = choreOverdueSince(c, day);
+    return since ? ` <small class="since">since ${since.toLocaleDateString([], { month: "short", day: "numeric" })}</small>` : "";
+  }
+
   // Chore completion between two days (inclusive, never past today): {due, done}.
   // Days before a chore existed don't count against it. "Weekly" chores count once per week.
   completionStats(memberId, from, to) {
@@ -3740,6 +3814,18 @@ class SkylightPanel extends HTMLElement {
       let d = startOfDay(from);
       if (began && parseYmd(began) > d) d = parseYmd(began);
       if (!began && d < this.weekStart(today)) d = this.weekStart(today); // no history: count from this week
+      if (choreCarries(c)) {
+        // One per scheduled occurrence; done if checked off before the next occurrence.
+        for (; d <= end; d = addDays(d, 1)) {
+          if (!choreScheduled(c, d)) continue;
+          due++;
+          let next = addDays(d, 1);
+          for (let i = 0; i < LOOKBACK_DAYS && !choreScheduled(c, next); i++) next = addDays(next, 1);
+          const a = ymd(d), b = ymd(next);
+          if ((c.completions || []).some((x) => x >= a && x < b)) done++;
+        }
+        continue;
+      }
       if (c.repeat === "weekly") {
         for (let w = this.weekStart(d); w <= end; w = addDays(w, 7)) {
           due++;
@@ -3778,8 +3864,8 @@ class SkylightPanel extends HTMLElement {
   renderChores() {
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
-    const kids = kidsOf(this.members);
-    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids. Mark someone as a Kid in Settings → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    const kids = choreOwnersOf(this.members);
+    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids (and Household profiles like “Maintenance”). Set someone's type in Settings → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
     const cols = kids.map((m) => {
       const chores = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, day));
       const done = chores.filter((c) => choreDone(c, day)).length;
@@ -3793,7 +3879,7 @@ class SkylightPanel extends HTMLElement {
           const dn = choreDone(c, day);
           return `<div class="chore ${dn ? "done" : ""}">
             <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}">
-              <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}</span>
+              <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(c, day)}</span>
 <span class="box">${dn ? "✓" : ""}</span></button>
             <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`;
         }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? "No chores" : ""}</p>`}
@@ -4001,7 +4087,7 @@ class SkylightPanel extends HTMLElement {
         <div class="toolbar"><h2>Family members</h2><button class="primary" data-action="new-member">+ Add member</button></div>
         ${this.members.map((m, i) => `<div class="mrow2">
           <span class="av big" style="background:${m.color}">${m.avatar}</span>
-          <div class="grow"><b>${esc(m.name)} <span class="rolebadge">${m.role === "kid" ? "🧒 Kid" : "🧑 Adult"}</span></b><small>${[...(m.prefixes || []).map((p) => `“${esc(p)}…”`), ...(m.calendars || []).map((c) => esc(this.calName(c)))].join(", ") || "No calendars"}</small></div>
+          <div class="grow"><b>${esc(m.name)} <span class="rolebadge">${ROLE_LABEL[m.role] || ROLE_LABEL.adult}</span></b><small>${[...(m.prefixes || []).map((p) => `“${esc(p)}…”`), ...(m.calendars || []).map((c) => esc(this.calName(c)))].join(", ") || "No calendars"}</small></div>
           <button class="icon sm" data-action="member-up" data-member="${m.id}" ${i === 0 ? "disabled" : ""}>↑</button>
           <button class="icon sm" data-action="member-down" data-member="${m.id}" ${i === this.members.length - 1 ? "disabled" : ""}>↓</button>
           <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar and chores.</p>`}
@@ -4301,6 +4387,9 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .ring .av { width:50px; height:50px; font-size:28px; border:3px solid var(--card); }
 .cname { font-size:20px; font-weight:800; }
 .cstars { color:var(--muted); font-weight:700; }
+.since { color:var(--danger, #c0392b); font-weight:600; font-size:.8em; white-space:nowrap; }
+.monthpick { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+.monthpick .daychip span { min-width:0; padding:6px 0; text-align:center; }
 .clist { display:flex; flex-direction:column; gap:8px; }
 .chore { display:flex; gap:4px; }
 .ctoggle { flex:1; display:flex; align-items:center; gap:10px; text-align:left; padding:12px; border-radius:14px; background:var(--bg); box-shadow:none; transition:transform .15s; }

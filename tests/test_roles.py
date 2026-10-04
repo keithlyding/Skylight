@@ -83,11 +83,26 @@ def _node(script: str):
     return json.loads(out)
 
 
-def test_chore_picker_shows_kids_only():
-    members = [_m("dad", role="adult"), _m("sam", role="kid"), _m("mom", role="adult"), _m("leo", role="kid")]
+def test_chore_picker_shows_kids_and_household():
+    members = [_m("dad", role="adult"), _m("sam", role="kid"), _m("house", role="home"), _m("leo", role="kid")]
+    assert _node(f"console.log(JSON.stringify(choreOwnersOf({json.dumps(members)}).map((m) => m.id)))") == ["sam", "house", "leo"]
+    # Progress stays kids-only; a Household profile is not an adult (can't own lists)
     assert _node(f"console.log(JSON.stringify(kidsOf({json.dumps(members)}).map((m) => m.id)))") == ["sam", "leo"]
-    # the chore editor's "Who" picker uses kidsOf
-    assert '<label>Who<select id="c-member">${kidsOf(this.members)' in JS
+    assert _node(f"console.log(JSON.stringify(adultsOf({json.dumps(members)}).map((m) => m.id)))") == ["dad"]
+    assert '<label>Who<select id="c-member">${choreOwnersOf(this.members)' in JS
+
+
+async def test_household_role_is_kept(hass, tmp_path, hass_storage, hass_ws_client):
+    store = await _load(hass, tmp_path, hass_storage, {
+        "members": [_m("dad", role="adult"), _m("house", role="home")]})
+    assert store.data["settings"]["roles_review"] is False  # "home" is a valid role, no migration
+    ws = await hass_ws_client(hass)
+    lists = [{"id": "a", "name": "Filters", "color": "#fff", "items": [], "owner": "house"}]
+    assert (await _cmd(ws, {"type": "skylight/set", "key": "lists", "value": lists}))["success"]
+    assert store.data["lists"][0].get("owner") is None  # only adults own lists
+    members = [_m("dad", role="adult"), _m("house", role="home")]
+    assert (await _cmd(ws, {"type": "skylight/set", "key": "members", "value": members}))["success"]
+    assert {m["id"]: m["role"] for m in store.data["members"]} == {"dad": "adult", "house": "home"}
 
 
 def test_list_grouping_shared_first_then_adults():

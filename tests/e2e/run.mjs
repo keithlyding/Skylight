@@ -163,6 +163,42 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async monthly(browser, base) {
+    // A yearly Household chore that was due 3 days ago and is still not done.
+    const p = await open(browser, base, { setup: () => {
+      const d = new Date(); d.setDate(d.getDate() - 3);
+      const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      D.members.push({ id: "h", name: "House", color: "#777777", avatar: "🏠", calendars: [], role: "home" });
+      D.chores.push({ id: "f1", member_id: "h", title: "Furnace filter", icon: "🔧", repeat: "days", days: [(d.getDay() + 6) % 7],
+        every_weeks: 52, start, carry: true, completions: [] });
+      push();
+    } });
+    await p.tab("chores");
+    check((await text(p.S(".cname"))).includes("House"), "Household profile gets a Chores column");
+    check((await p.S(".since").count()) === 1, "missed chore keeps showing with a 'since' note");
+    await p.S('[data-action="new-chore"]').first().click(); await p.waitForTimeout(200);
+    check((await text(p.S("#c-member option"))).includes("🏠 House"), "Household in the chore picker");
+    await p.S("#c-title").fill("Smoke detectors");
+    await p.S("#c-repeat").selectOption("monthly"); await p.waitForTimeout(100);
+    check(await p.S(".monthopts").isVisible(), "monthly options shown");
+    check(!(await p.S(".dayopts").isVisible()), "weekday options hidden");
+    check(await p.S("#c-carry").isChecked(), "keep-showing defaults on for monthly");
+    await p.S('.c-mday[value="1"]').evaluate((e) => e.click());
+    await p.S('.c-mday[value="15"]').evaluate((e) => e.click());
+    await p.S('.c-mday[value="-1"]').evaluate((e) => e.click());
+    await p.S("#c-every-months").selectOption("3");
+    await p.S('[data-action="save-chore"]').click(); await p.waitForTimeout(300);
+    const c = await p.evaluate(() => D.chores.find((x) => x.title === "Smoke detectors"));
+    eq([c.repeat, c.month_days, c.every_months, c.carry], ["monthly", [15, -1], 3, true], "monthly chore saved");
+    await p.S('[data-action="new-chore"]').first().click(); await p.waitForTimeout(200);
+    eq((await text(p.S("#c-every option"))).slice(-2), ["26 weeks", "52 weeks"], "every N weeks goes to 52");
+    await p.evaluate(() => el.closeDialog());
+    await p.tab("progress");
+    check(!(await p.content()).includes(">House<"), "Household not in Progress");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async lists(browser, base) {
     const p = await open(browser, base, { setup: () => { D.lists[0].items = ["Milk", "Eggs", "Bread", "Apples"].map((t, i) => ({ id: "i" + i, text: t, done: false })); push(); } });
     await p.tab("lists");
