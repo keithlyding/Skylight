@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.40.2";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.40.3";
 
 export class HomeView {
 

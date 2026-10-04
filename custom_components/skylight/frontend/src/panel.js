@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.2";
-import { STYLES } from "./styles.js?v=1.40.2";
-import { CalendarView } from "./calendar.js?v=1.40.2";
-import { WeatherView } from "./weather.js?v=1.40.2";
-import { HomeView } from "./home.js?v=1.40.2";
-import { ChoresView } from "./chores.js?v=1.40.2";
-import { MealsView } from "./meals.js?v=1.40.2";
-import { ListsView } from "./lists.js?v=1.40.2";
-import { PhotosView } from "./photos.js?v=1.40.2";
-import { SettingsView } from "./settings.js?v=1.40.2";
-import { PickersView } from "./pickers.js?v=1.40.2";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.3";
+import { STYLES } from "./styles.js?v=1.40.3";
+import { CalendarView } from "./calendar.js?v=1.40.3";
+import { WeatherView } from "./weather.js?v=1.40.3";
+import { HomeView } from "./home.js?v=1.40.3";
+import { ChoresView } from "./chores.js?v=1.40.3";
+import { MealsView } from "./meals.js?v=1.40.3";
+import { ListsView } from "./lists.js?v=1.40.3";
+import { PhotosView } from "./photos.js?v=1.40.3";
+import { SettingsView } from "./settings.js?v=1.40.3";
+import { PickersView } from "./pickers.js?v=1.40.3";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -194,14 +194,13 @@ export class SkylightPanel extends HTMLElement {
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
     // iPhone: an up/down drag that starts on the header or the tab bar would rubber-band the whole page.
-    // Sideways drags (the row of family members) still scroll.
-    this.shadowRoot.addEventListener("touchstart", (e) => { const t = e.touches[0]; this._touch0 = t ? [t.clientX, t.clientY] : null; }, { passive: true });
-    this.shadowRoot.addEventListener("touchmove", (e) => {
-      const t = e.touches[0], s = this._touch0;
-      const box = t && s && e.target.closest?.("header, .rail");
-      if (!box || box.scrollHeight > box.clientHeight + 1) return; // e.g. the side menu on a phone on its side can scroll
+    // The guard is attached to just those two (see _guardBars) so scrolling anywhere else never waits on it.
+    this._barTouchStart = (e) => { const t = e.touches[0]; this._touch0 = t ? [t.clientX, t.clientY] : null; };
+    this._barTouchMove = (e) => {
+      const t = e.touches[0], s = this._touch0, box = e.currentTarget;
+      if (!t || !s || box.scrollHeight > box.clientHeight + 1) return; // e.g. the side menu on a phone on its side can scroll
       if (Math.abs(t.clientY - s[1]) > Math.abs(t.clientX - s[0]) && e.cancelable) e.preventDefault();
-    }, { passive: false });
+    };
     this.shadowRoot.addEventListener("pointerup", (e) => this._swipeEnd(e), { passive: true });
     this.shadowRoot.addEventListener("pointerdown", (e) => this._holdStart(e), { passive: true });
     this.shadowRoot.addEventListener("pointerdown", (e) => this._dragStart(e));
@@ -1039,6 +1038,10 @@ export class SkylightPanel extends HTMLElement {
         <div class="content">${body}</div>
       </main>${this.renderAlertPopup()}`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    for (const bar of this.$app.querySelectorAll("header, .rail")) { // new elements each render: no duplicates
+      bar.addEventListener("touchstart", this._barTouchStart, { passive: true });
+      bar.addEventListener("touchmove", this._barTouchMove, { passive: false });
+    }
     if (itemTops) this._animateItems(itemTops);
     this._fitMonth();
     if (this.$app.querySelector(".month")) requestAnimationFrame(() => this._fitMonth());

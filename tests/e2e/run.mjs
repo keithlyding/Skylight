@@ -239,6 +239,11 @@ const SCENARIOS = {
     eq(await drag("header", 0, 40), true, "vertical drag on the header cancelled");
     eq(await drag("header .members", -60, 5), false, "sideways drag on the member chips allowed");
     eq(await drag(".content", 0, -40), false, "content still scrolls");
+    // Only the header and tab bar have a blocking touch listener, so scrolling content never waits on the app.
+    const cdp = await p.context().newCDPSession(p);
+    const { result } = await cdp.send("Runtime.evaluate", { expression: "el.shadowRoot" });
+    const { listeners } = await cdp.send("DOMDebugger.getEventListeners", { objectId: result.objectId, depth: 0 });
+    eq(listeners.filter((l) => l.type === "touchmove" && !l.passive).length, 0, "no blocking touchmove listener on the whole app");
     eq(p.errors, [], "page errors");
     await p.context().close();
     // Phone on its side: bigger side-menu buttons, all 7 on screen without scrolling.

@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.40.2";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.40.3";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -59,8 +59,11 @@ export class CalendarView {
     const diff = (d.getDay() - ws + 7) % 7;
     return addDays(startOfDay(d), -diff);
   }
+  // One shared formatter: creating one per label (toLocaleTimeString) was slow on iPhones.
   fmtTime(d) {
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !this.settings.clock_24h });
+    const h12 = !this.settings.clock_24h;
+    if (this._timeFmt?.h12 !== h12) this._timeFmt = { h12, f: new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit", hour12: h12 }) };
+    return this._timeFmt.f.format(d);
   }
 
   // ---------- calendar data ----------
