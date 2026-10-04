@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.0";
-import { choreDone } from "./chore-rules.js?v=1.36.0";
-import { STYLES } from "./styles.js?v=1.36.0";
-import { CalendarView } from "./calendar.js?v=1.36.0";
-import { WeatherView } from "./weather.js?v=1.36.0";
-import { HomeView } from "./home.js?v=1.36.0";
-import { ChoresView } from "./chores.js?v=1.36.0";
-import { MealsView } from "./meals.js?v=1.36.0";
-import { ListsView } from "./lists.js?v=1.36.0";
-import { PhotosView } from "./photos.js?v=1.36.0";
-import { SettingsView } from "./settings.js?v=1.36.0";
-import { PickersView } from "./pickers.js?v=1.36.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.1";
+import { choreDone } from "./chore-rules.js?v=1.36.1";
+import { STYLES } from "./styles.js?v=1.36.1";
+import { CalendarView } from "./calendar.js?v=1.36.1";
+import { WeatherView } from "./weather.js?v=1.36.1";
+import { HomeView } from "./home.js?v=1.36.1";
+import { ChoresView } from "./chores.js?v=1.36.1";
+import { MealsView } from "./meals.js?v=1.36.1";
+import { ListsView } from "./lists.js?v=1.36.1";
+import { PhotosView } from "./photos.js?v=1.36.1";
+import { SettingsView } from "./settings.js?v=1.36.1";
+import { PickersView } from "./pickers.js?v=1.36.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -917,7 +917,7 @@ export class SkylightPanel extends HTMLElement {
     const itemTops = tab === "lists" ? this._snapshotItems() : null;
     this.$app.innerHTML = `
       <nav class="rail">
-        <div class="logo">☀︎</div>
+        <div class="logo" title="${this.appName}">⚡</div>
         ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
       </nav>
       <main>
