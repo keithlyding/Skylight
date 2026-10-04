@@ -135,6 +135,12 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .tg-ev span { font-size:11px; opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 .tg-ev.short { flex-direction:row; align-items:center; gap:6px; }
 .tg-ev.short b { -webkit-line-clamp:1; white-space:nowrap; text-overflow:ellipsis; flex:0 1 auto; }
+/* Set by _fitEvents when two lines don't fit: title and time on one line, the title keeps priority. */
+.tg-ev.oneline { flex-direction:row; align-items:center; gap:6px; padding-top:1px; padding-bottom:1px; }
+.tg-ev.oneline b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; min-width:2em; }
+.tg-ev.oneline span { flex:0 1000 auto; min-width:0; }
+.tg-ev.oneline span ~ span { display:none; }
+.tg-ev.tiny { font-size:11px; } .tg-ev.tiny span { display:none; }
 .tg-now { position:absolute; left:0; right:0; border-top:2px solid #ff4757; z-index:2; pointer-events:none; }
 .tg-now::before { content:""; position:absolute; left:-5px; top:-6px; width:10px; height:10px; border-radius:50%; background:#ff4757; }
 .hometool { margin-top:0; }

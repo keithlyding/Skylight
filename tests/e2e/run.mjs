@@ -165,6 +165,22 @@ const SCENARIOS = {
     }
   },
 
+  async eventfit(browser, base) {
+    // No event's text is cut off inside its box (e.g. 1-hour events on short screens): text that
+    // doesn't fit on two lines goes to one line, and the time is dropped if even that doesn't fit.
+    for (const [w, h, mobile] of [[1300, 912, false], [1000, 560, false], [844, 390, true], [390, 844, true]]) {
+      const p = await open(browser, base, { width: w, height: h, ctx: mobile ? { isMobile: true, hasTouch: true } : {} });
+      for (const view of ["day", "3day"]) {
+        await p.evaluate((v) => { el.ui.tab = "calendar"; el.ui.view = v; el.render(); }, view); await p.waitForTimeout(400);
+        const bad = await p.evaluate(() => [...el.shadowRoot.querySelectorAll(".tg-ev")].filter((e) => [...e.children].some((c) => c.offsetParent && c.scrollHeight > c.clientHeight + 1))
+          .map((e) => `${e.querySelector("b").textContent} (${e.clientHeight}px)`));
+        eq(bad, [], `${w}x${h} ${view}: event text fits`);
+      }
+      eq(p.errors, [], "page errors");
+      await p.context().close();
+    }
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.37.1";
-import { STYLES } from "./styles.js?v=1.37.1";
-import { CalendarView } from "./calendar.js?v=1.37.1";
-import { WeatherView } from "./weather.js?v=1.37.1";
-import { HomeView } from "./home.js?v=1.37.1";
-import { ChoresView } from "./chores.js?v=1.37.1";
-import { MealsView } from "./meals.js?v=1.37.1";
-import { ListsView } from "./lists.js?v=1.37.1";
-import { PhotosView } from "./photos.js?v=1.37.1";
-import { SettingsView } from "./settings.js?v=1.37.1";
-import { PickersView } from "./pickers.js?v=1.37.1";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.37.2";
+import { STYLES } from "./styles.js?v=1.37.2";
+import { CalendarView } from "./calendar.js?v=1.37.2";
+import { WeatherView } from "./weather.js?v=1.37.2";
+import { HomeView } from "./home.js?v=1.37.2";
+import { ChoresView } from "./chores.js?v=1.37.2";
+import { MealsView } from "./meals.js?v=1.37.2";
+import { ListsView } from "./lists.js?v=1.37.2";
+import { PhotosView } from "./photos.js?v=1.37.2";
+import { SettingsView } from "./settings.js?v=1.37.2";
+import { PickersView } from "./pickers.js?v=1.37.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -842,6 +842,19 @@ export class SkylightPanel extends HTMLElement {
     const [a, b] = this._tgWindow || [7, 20];
     this._tgH = Math.max(24, scroll.clientHeight / (b - a));
     tg.style.setProperty("--h", `${this._tgH}px`);
+    this._fitEvents(tg);
+  }
+  // Events whose text doesn't fit their box (e.g. a 1-hour event on a short screen) switch to one line,
+  // "title  time", and drop the time if even that doesn't fit. Measured, so it suits every screen size.
+  _fitEvents(root = this.$app) {
+    // The lines inside are squeezed (not the box), so check each visible line for clipped text.
+    const clipped = (ev) => [...ev.children].some((c) => c.offsetParent && c.scrollHeight > c.clientHeight + 1);
+    for (const ev of root?.querySelectorAll(".tg-ev") || []) {
+      ev.classList.remove("oneline", "tiny");
+      if (ev.classList.contains("short") || !clipped(ev)) continue;
+      ev.classList.add("oneline");
+      if (clipped(ev)) ev.classList.add("tiny");
+    }
   }
   // Default position: always the day window (7am-8pm), whatever the time.
   _scrollGridHome(grid = this.$app?.querySelector(".tg-scroll")) {
