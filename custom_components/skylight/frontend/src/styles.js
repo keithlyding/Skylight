@@ -118,6 +118,10 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .tg-dh .dd { font-size:24px; font-weight:800; }
 .tg-dh.today .dd { color:#fff; background:var(--accent); border-radius:999px; min-width:36px; text-align:center; padding:0 6px; }
 .tg-dh .wx { margin-left:auto; font-size:12px; color:var(--muted); }
+.tg-adgrid { grid-column:2 / -1; display:grid; grid-auto-rows:auto; row-gap:3px; padding:4px 0; max-height:104px; overflow-y:auto; position:relative; }
+.tg-adbg { border-left:1px solid var(--line); margin:-4px 0; }
+.tg-adbar { min-width:0; padding:0 4px; z-index:1; display:flex; }
+.tg-adbar .ev { flex:1; min-width:0; }
 .tg-adcell { display:flex; flex-direction:column; gap:3px; padding:4px; border-left:1px solid var(--line); min-width:0; max-height:96px; overflow-y:auto; }
 .tg-scroll { overflow-y:auto; flex:1; min-height:0; }
 .tg-body { position:relative; display:grid; grid-template-columns:56px 1fr; }

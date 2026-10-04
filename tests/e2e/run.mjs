@@ -269,6 +269,29 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async alldaybars(browser, base) {
+    // A multi-day all-day event is one bar across its days, not a copy per day; overlapping ones stack.
+    const p = await open(browser, base, { width: 1300, height: 912 });
+    await p.evaluate(() => {
+      const ymd = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+      const cal = "calendar.family";
+      window.EVS[cal].push({ summary: "Fall Break", start: { date: ymd(0) }, end: { date: ymd(3) }, uid: "fb" },
+                          { summary: "Stay at Holiday Inn", start: { date: ymd(1) }, end: { date: ymd(3) }, uid: "hi" });
+      el.ui.tab = "calendar"; el.ui.view = "7day"; el.ui.anchor = new Date(); el._eventsKey = ""; el._loadEvents();
+    });
+    await p.waitForTimeout(800);
+    const bars = await p.evaluate(() => {
+      const col = el.shadowRoot.querySelector(".tg-adbg").getBoundingClientRect().width;
+      return [...el.shadowRoot.querySelectorAll(".tg-adbar")].filter((b) => /Fall Break|Holiday Inn/.test(b.textContent))
+        .map((b) => ({ t: b.textContent.trim().replace(/^↳\s*/, ""), days: Math.round(b.getBoundingClientRect().width / col), top: Math.round(b.getBoundingClientRect().top) }));
+    });
+    eq(bars.map((b) => [b.t, b.days]), [["Fall Break", 3], ["Stay at Holiday Inn", 2]], "one bar per event, as wide as its days");
+    check(bars[0].top !== bars[1].top, "overlapping bars on separate rows");
+    if (process.env.SHOT) await p.screenshot({ path: process.env.SHOT, clip: { x: 0, y: 150, width: 1300, height: 260 } });
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

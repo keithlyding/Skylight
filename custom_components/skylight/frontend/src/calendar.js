@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.38.3";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.39.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -610,6 +610,21 @@ export class CalendarView {
 
   renderDay() { return this.renderTimeGrid([this.ui.anchor]); }
 
+  // All-day row: an event that covers several days on screen is one bar across them (like Google Calendar),
+  // not a copy in each day. Bars are stacked in rows so overlapping ones don't collide.
+  _allDayBars(days, cells) {
+    const spans = new Map(); // event -> [first, last] day index on screen
+    cells.forEach((list, i) => list.forEach((e) => { const s = spans.get(e); if (s) s[1] = i; else spans.set(e, [i, i]); }));
+    const items = [...spans].sort((a, b) => a[1][0] - b[1][0] || (b[1][1] - b[1][0]) - (a[1][1] - a[1][0]));
+    const lanes = []; // per lane: last day index used
+    const placed = items.map(([e, [a, b]]) => {
+      let lane = lanes.findIndex((end) => end < a);
+      if (lane < 0) { lane = lanes.length; lanes.push(b); } else lanes[lane] = b;
+      return `<div class="tg-adbar" style="grid-column:${a + 1} / ${b + 2};grid-row:${lane + 1}">${this.evPill(e, days[a], true)}</div>`;
+    }).join("");
+    const bg = days.map((_, i) => `<div class="tg-adbg" style="grid-column:${i + 1};grid-row:1 / span ${Math.max(1, lanes.length)}"></div>`).join("");
+    return `<div class="tg-adgrid" style="grid-template-columns:repeat(${days.length}, minmax(0,1fr))">${bg}${placed}</div>`;
+  }
   // Google/Outlook-style time grid: all-day row on top, hourly blocks below.
   renderTimeGrid(days, { labels } = {}) {
     const DAY_START = 7, DAY_END = 20; // window that fits on screen without scrolling (7am-8pm)
@@ -671,7 +686,7 @@ export class CalendarView {
     this._tgKeyNext = `${this.ui.tab}|${days.map(ymd).join(",")}`;
     return `<div class="tg" style="--n:${days.length};--h:${this._tgH || 40}px">
       <div class="tg-row tg-head"><div class="tg-gutter"></div>${head}</div>
-      ${hasAllDay ? `<div class="tg-row tg-allday"><div class="tg-gutter">all-day</div>${allDayCells.map((c, i) => `<div class="tg-adcell">${c.map((e) => this.evPill(e, days[i], true)).join("")}</div>`).join("")}</div>` : ""}
+      ${hasAllDay ? `<div class="tg-row tg-allday"><div class="tg-gutter">all-day</div>${this._allDayBars(days, allDayCells)}</div>` : ""}
       <div class="tg-scroll"><div class="tg-body" style="height:calc(var(--h) * 24)">
         <div class="tg-hours">${hours}</div><div class="tg-cols">${cols}</div>
       </div></div></div>`;
