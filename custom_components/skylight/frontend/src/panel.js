@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.1";
-import { STYLES } from "./styles.js?v=1.38.1";
-import { CalendarView } from "./calendar.js?v=1.38.1";
-import { WeatherView } from "./weather.js?v=1.38.1";
-import { HomeView } from "./home.js?v=1.38.1";
-import { ChoresView } from "./chores.js?v=1.38.1";
-import { MealsView } from "./meals.js?v=1.38.1";
-import { ListsView } from "./lists.js?v=1.38.1";
-import { PhotosView } from "./photos.js?v=1.38.1";
-import { SettingsView } from "./settings.js?v=1.38.1";
-import { PickersView } from "./pickers.js?v=1.38.1";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.2";
+import { STYLES } from "./styles.js?v=1.38.2";
+import { CalendarView } from "./calendar.js?v=1.38.2";
+import { WeatherView } from "./weather.js?v=1.38.2";
+import { HomeView } from "./home.js?v=1.38.2";
+import { ChoresView } from "./chores.js?v=1.38.2";
+import { MealsView } from "./meals.js?v=1.38.2";
+import { ListsView } from "./lists.js?v=1.38.2";
+import { PhotosView } from "./photos.js?v=1.38.2";
+import { SettingsView } from "./settings.js?v=1.38.2";
+import { PickersView } from "./pickers.js?v=1.38.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {

@@ -204,6 +204,24 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async navfill(browser, base) {
+    // The nav buttons fill the side menu / bottom bar on every device and never get smaller than before.
+    for (const [w, h, mobile, minIcon, minLabel] of [[1366, 768, false, 32, 12], [1920, 1080, false, 32, 12], [390, 844, true, 26, 11.5], [844, 390, true, 24, 10.5]]) {
+      const p = await open(browser, base, { width: w, height: h, ctx: mobile ? { isMobile: true, hasTouch: true } : {} });
+      const r = await p.evaluate(() => {
+        const rail = el.shadowRoot.querySelector(".rail"), tabs = [...rail.querySelectorAll(".tab")];
+        const rr = rail.getBoundingClientRect(), z = tabs.at(-1).getBoundingClientRect(), vertical = rr.height > rr.width;
+        const sizes = tabs.map((t) => t.getBoundingClientRect()[vertical ? "height" : "width"]);
+        return { gap: Math.round(vertical ? rr.bottom - z.bottom : rr.right - z.right), even: Math.max(...sizes) - Math.min(...sizes) < 2,
+          icon: parseFloat(getComputedStyle(tabs[0].querySelector("ha-icon")).fontSize), label: parseFloat(getComputedStyle(tabs[0].querySelector("span")).fontSize),
+          scroll: rail.scrollHeight > rail.clientHeight + 1 || rail.scrollWidth > rail.clientWidth + 1 };
+      });
+      check(r.gap <= 20 && r.even && !r.scroll, `${w}x${h}: buttons fill the menu evenly ${JSON.stringify(r)}`);
+      check(r.icon >= minIcon - 0.1 && r.label >= minLabel - 0.1, `${w}x${h}: buttons not smaller than before ${JSON.stringify(r)}`);
+      await p.context().close();
+    }
+  },
+
   async nobounce(browser, base) {
     // iPhone: an up/down drag starting on the header or tab bar is cancelled (no page bounce); sideways
     // drags there and up/down drags on the content are left alone.

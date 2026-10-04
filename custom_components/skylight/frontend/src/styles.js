@@ -26,7 +26,7 @@ input, select, textarea { font:inherit; color:var(--ink); background:var(--bg); 
 /* The visible screen height (dvh follows iOS's changing visible area). Not "100%": Home Assistant's
    panel container has no fixed height, and sizing to it made the calendar resize itself in a loop. */
 .app { display:flex; height:100vh; height:100dvh; background:var(--bg); overflow:hidden; }
-.rail { width:calc(92px + env(safe-area-inset-left)); flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
+.rail { width:calc(clamp(92px, 10vh, 140px) + env(safe-area-inset-left)); flex:none; display:flex; flex-direction:column; align-items:center; gap:6px;
   padding:max(14px, env(safe-area-inset-top)) 6px max(14px, env(safe-area-inset-bottom)) calc(6px + env(safe-area-inset-left)); background:var(--card); border-right:1px solid var(--line); overflow-y:auto; }
 .logo { font-size:30px; color:#ff9f43; margin-bottom:8px; }
 .tab { width:80px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:14px 4px; background:none; box-shadow:none; font-size:13px; color:var(--muted); }
@@ -666,5 +666,22 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .toolbar h1 { font-size:18px; }
   .home, .home.wide { grid-template-columns:1fr; }
   .dialog { max-height:96vh; padding:14px 16px; }
+}
+
+/* ---------- nav buttons fill the side menu / bottom bar and scale with the space (every device) ----------
+   Each button is a size container; the icon and label use its size (cqh/cqw/cqi), within limits. */
+.rail .tab { flex:1 1 0; min-height:0; max-height:150px; width:100%; justify-content:center; padding:4px 2px; container-type:size;
+  --tab-icon:clamp(32px, min(36cqh, 46cqw), 56px); --tab-label:clamp(12px, min(12cqh, 17cqw), 18px); }
+.rail .tab ha-icon { font-size:var(--tab-icon); --mdc-icon-size:1em; }
+.rail .tab span { font-size:var(--tab-label); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width: 900px) {
+  /* bottom bar: buttons share the width; height follows the icon and label */
+  .rail .tab { flex:1 1 0; width:auto; min-width:0; max-height:none; padding:6px 0; container-type:inline-size;
+    --tab-icon:clamp(26px, 48cqi, 40px); --tab-label:clamp(11.5px, 20cqi, 15px); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  /* phone on its side: back to a side menu */
+  .rail .tab { flex:1 1 0; width:100%; max-height:120px; padding:2px; container-type:size;
+    --tab-icon:clamp(24px, min(50cqh, 42cqw), 36px); --tab-label:clamp(10.5px, min(20cqh, 16cqw), 13px); }
 }
 `;
