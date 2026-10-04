@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc } from "./helpers.js?v=1.36.5";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.37.0";
 
 export class WeatherView {
 
@@ -11,9 +11,11 @@ export class WeatherView {
     this._checkNewAlerts();
     this.render();
   }
+  // Alerts of a type turned off in Setup don't pop up and aren't in the banner (the Weather tab still lists them).
+  _alertShown(a) { return !(this.settings.alert_hide || []).includes(alertType(a.event)); }
   alertColor(sev) { return { Extreme: "#7b1fa2", Severe: "#c62828", Moderate: "#ef6c00", Minor: "#f9a825" }[sev] || "#607d8b"; }
   renderAlertBanner() {
-    const list = this.settings.weather_alerts === false ? [] : this.alerts?.alerts || [];
+    const list = this.settings.weather_alerts === false ? [] : (this.alerts?.alerts || []).filter((a) => this._alertShown(a));
     if (!list.length || this.ui.tab === "weather") return "";
     const a = list[0], c = this.alertColor(a.severity);
     const until = a.ends ? ` until ${new Date(a.ends).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "";
@@ -26,7 +28,8 @@ export class WeatherView {
     if (this.alerts.error) return `<p class="hint">⚠️ ${esc(this.alerts.error)}</p>`;
     const fmt = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
     if (!this.alerts.alerts.length) return `<p class="noalerts">✅ No active weather alerts for your area</p>`;
-    return this.alerts.alerts.map((a) => {
+    const hidden = [...new Set(this.alerts.alerts.filter((a) => !this._alertShown(a)).map((a) => ALERT_TYPE_LABELS[alertType(a.event)]))];
+    return (hidden.length ? `<p class="hint">Not popped up or shown in the banner (turned off in Setup): ${hidden.map(esc).join(", ")}</p>` : "") + this.alerts.alerts.map((a) => {
       const c = this.alertColor(a.severity);
       return `<section class="alertcard" style="--ac:${c}">
         <div class="ahead" style="background:${c};color:${textOn(c)}">⚠️ <b>${esc(a.event)}</b><span>${esc(a.severity)}${a.urgency ? ` · ${esc(a.urgency)}` : ""}</span></div>
@@ -55,7 +58,7 @@ export class WeatherView {
     return p === "off" ? [] : p === "all" ? ["Extreme", "Severe", "Moderate", "Minor", "Unknown"] : p === "extreme" ? ["Extreme"] : ["Extreme", "Severe"];
   }
   _checkNewAlerts() {
-    const list = (this.alerts?.alerts || []).filter((a) => this._popupLevels().includes(a.severity));
+    const list = (this.alerts?.alerts || []).filter((a) => this._popupLevels().includes(a.severity) && this._alertShown(a));
     const seen = this._seenAlerts();
     const fresh = list.filter((a) => a.id && !seen.includes(a.id));
     if (!fresh.length) return;

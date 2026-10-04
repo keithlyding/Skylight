@@ -1,6 +1,6 @@
 /* Skylight panel: location lookup, time picker and emoji/icon pickers (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.36.5";
+import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.37.0";
 
 export class PickersView {
 

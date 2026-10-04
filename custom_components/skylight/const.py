@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.36.5"
+VERSION = "1.37.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -69,6 +69,8 @@ DEFAULT_DATA = {
         "mealie_entry": None,
         "info_on_today": True,
         "weather_alerts": True,
+        # Weather alert types (see ALERT_TYPES in the panel) that don't pop up or show in the banner.
+        "alert_hide": [],
         "allow_uploads": True,
         "unlock_minutes": 5,
         # Set by the v1.29 migration; the Settings banner asks to check Adult/Kid until dismissed.

@@ -71,5 +71,29 @@ def test_helpers_used_are_imported():
         own = set(re.findall(r"^export const ([A-Za-z_$][\w$]*)", text, re.M))
         imported = {n.strip() for group in re.findall(r"^import \{([^}]*)\} from", text, re.M) for n in group.split(",")}
         code = re.sub(r"^import .*$", "", text, flags=re.M)
-        used = {n for n in shared if n not in own and re.search(r"(?<![\w$.])" + re.escape(n) + r"(?![\w$])", code)}
+        # (?<![^.]\.) skips property access (x.name) but still counts spreads (...name)
+        used = {n for n in shared if n not in own and re.search(r"(?<![\w$])(?<![^.]\.)" + re.escape(n) + r"(?![\w$])", code)}
         assert used <= imported, f"{f.name} uses {sorted(used - imported)} without importing"
+
+
+def test_alert_types():
+    """NWS event names sort into the types offered in Setup."""
+    import json
+    import subprocess
+    events = {
+        "Tornado Warning": "tornado", "Tornado Watch": "tornado", "Severe Thunderstorm Warning": "thunderstorm",
+        "Flash Flood Warning": "flood", "Flood Watch": "flood", "Coastal Flood Advisory": "flood",
+        "Hydrologic Outlook": "flood", "Winter Storm Warning": "winter", "Wind Chill Advisory": "winter",
+        "Freeze Warning": "winter", "Lake Effect Snow Warning": "winter", "Excessive Heat Warning": "heat",
+        "Heat Advisory": "heat", "Red Flag Warning": "fire", "Dense Fog Advisory": "air", "Air Quality Alert": "air",
+        "High Wind Warning": "wind", "Wind Advisory": "wind", "Hurricane Warning": "tropical",
+        "Tropical Storm Watch": "tropical", "Rip Current Statement": "marine", "Small Craft Advisory": "marine",
+        "Special Weather Statement": "other",
+    }
+    script = HELPERS + f"console.log(JSON.stringify({json.dumps(list(events))}.map(alertType)))"
+    try:
+        got = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+    except FileNotFoundError:
+        import pytest
+        pytest.skip("node not installed")
+    assert dict(zip(events, got)) == events

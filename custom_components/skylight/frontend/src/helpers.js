@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.36.5";
+export const PANEL_VERSION = "1.37.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -298,3 +298,20 @@ export const occasionText = (u) => {
 };
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- weather alert types (by the National Weather Service event name) ----------
+// Setup lets the family turn types off, so e.g. dozens of flood watches don't pop up all day.
+export const ALERT_TYPES = [
+  ["tornado", "🌪️ Tornado", /tornado/i],
+  ["thunderstorm", "⛈️ Thunderstorm", /thunderstorm|lightning/i],
+  ["tropical", "🌀 Hurricane & tropical", /hurricane|tropical|typhoon|storm surge/i],
+  ["flood", "🌊 Flooding", /flood|hydrologic/i],
+  ["winter", "❄️ Winter & cold", /winter|snow|blizzard|ice storm|\bice\b|freez|frost|sleet|wind chill|cold/i],
+  ["heat", "🌡️ Heat", /heat/i],
+  ["fire", "🔥 Fire & smoke", /fire|red flag|smoke/i],
+  ["air", "🌫️ Fog & air quality", /fog|air quality|air stagnation|ashfall|dust/i],
+  ["marine", "🏖️ Coast & marine", /marine|small craft|gale|surf|rip current|coastal|beach|lakeshore|tsunami|seas\b/i],
+  ["wind", "💨 Wind", /wind/i],
+];
+export const alertType = (event) => (ALERT_TYPES.find(([, , re]) => re.test(event || "")) || ["other"])[0];
+export const ALERT_TYPE_LABELS = Object.fromEntries([...ALERT_TYPES.map(([k, l]) => [k, l]), ["other", "⚠️ Other"]]);

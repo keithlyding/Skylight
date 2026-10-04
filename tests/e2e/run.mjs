@@ -169,6 +169,19 @@ const SCENARIOS = {
     await p.S('[data-action="alert-dismiss"]').click();
     await p.evaluate(() => el._checkNewAlerts());
     check((await p.S(".alertpop").count()) === 0, "dismissed alert stays dismissed");
+    // Turn thunderstorms off in Setup: no pop-up and no banner, but still listed on the Weather tab
+    await p.evaluate(() => { el.__seen = []; try { localStorage.removeItem("skylight.seenAlerts"); } catch (e) {} });
+    await p.tab("settings");
+    await p.S('input[data-change="alert-type"][data-type="thunderstorm"]').evaluate((e) => e.click()); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => D.settings.alert_hide), ["thunderstorm"], "type turned off");
+    await p.tab("home");
+    await p.evaluate(() => { el._checkNewAlerts(); el.render(); }); await p.waitForTimeout(200);
+    check((await p.S(".alertpop").count()) === 0, "turned-off type doesn't pop up");
+    check(!(await p.S(".alertbar").textContent().catch(() => "")).includes("Thunderstorm"), "turned-off type not in the banner");
+    await p.tab("weather");
+    check((await p.S(".alertcard").count()) === 2, "Weather tab still lists every alert");
+    check((await p.S(".content").textContent()).includes("turned off in Setup"), "note about hidden types");
+    eq(p.errors, [], "page errors");
     await p.context().close();
   },
 
