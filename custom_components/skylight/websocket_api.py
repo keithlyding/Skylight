@@ -264,7 +264,7 @@ def ws_chore_view(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     data = _store(hass).data
     today = dt_util.now().date()
     week_start = int(data["settings"].get("week_start") or 0)
-    days = {c["id"]: chores.day_states(c, start, end) for c in data["chores"]}
+    days = {c["id"]: chores.day_states(c, start, end, week_start) for c in data["chores"]}
     totals = []
     for a, b in ranges:
         per: dict[str, list[int]] = {}

@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.37.0";
+import { parseYmd, esc } from "./helpers.js?v=1.37.1";
 
 export class PhotosView {
 

@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 
-def _week_key(d: date) -> tuple[int, int]:
-    iso = d.isocalendar()
-    return (iso[0], iso[1])
+def _week_start(d: date, week_start: int) -> date:
+    """Start of d's week; week_start 0 = Sunday, 1 = Monday (the "Week starts on" setting)."""
+    first = 6 if week_start == 0 else 0  # Python weekday of the first day
+    return d - timedelta(days=(d.weekday() - first) % 7)
 
 
 CARRY_REPEATS = ("days", "monthly")  # repeats that can "keep showing until done"
@@ -74,14 +75,16 @@ def last_occurrence(chore: dict, on: date) -> date | None:
     return None
 
 
-def matching_completions(chore: dict, on: date) -> list[str]:
+def matching_completions(chore: dict, on: date, week_start: int = 1) -> list[str]:
     """Completions that make `chore` count as done on day `on`."""
     repeat = chore.get("repeat", "daily")
     done = chore.get("completions", [])
     if repeat == "once":
         return list(done)
     if repeat == "weekly":
-        return [c for c in done if _week_key(date.fromisoformat(c)) == _week_key(on)]
+        # "once a week (any day)": done for the whole week it was checked off in
+        week = _week_start(on, week_start)
+        return [c for c in done if _week_start(date.fromisoformat(c), week_start) == week]
     if carries(chore):
         since = last_occurrence(chore, on)
         if since is None:
@@ -91,8 +94,8 @@ def matching_completions(chore: dict, on: date) -> list[str]:
     return [c for c in done if c == on.isoformat()]
 
 
-def is_done(chore: dict, on: date) -> bool:
-    return bool(matching_completions(chore, on))
+def is_done(chore: dict, on: date, week_start: int = 1) -> bool:
+    return bool(matching_completions(chore, on, week_start))
 
 
 def is_due(chore: dict, on: date) -> bool:
@@ -125,9 +128,9 @@ def overdue_since(chore: dict, on: date) -> date | None:
 KEEP_COMPLETIONS = 400  # per chore: over a year of daily history for the Progress view
 
 
-def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS) -> bool:
+def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS, week_start: int = 1) -> bool:
     """Toggle completion for `on`. Mutates chore; returns whether it is now done."""
-    matches = matching_completions(chore, on)
+    matches = matching_completions(chore, on, week_start)
     comps = [c for c in chore.get("completions", []) if c not in matches]
     if matches:
         chore["completions"] = comps
@@ -139,7 +142,7 @@ def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS) -> bool:
 
 # ----- What the screens show. The panel draws these results; it has no chore rules of its own. -----
 
-def day_states(chore: dict, start: date, end: date) -> dict[str, list]:
+def day_states(chore: dict, start: date, end: date, week_start: int = 1) -> dict[str, list]:
     """Days in [start, end] the chore appears on: {"YYYY-MM-DD": [done, since]}.
 
     `since` is the ISO day a missed "keep showing until done" chore was scheduled (else None).
@@ -152,7 +155,7 @@ def day_states(chore: dict, start: date, end: date) -> dict[str, list]:
         d = start
         while d <= end:
             if is_due(chore, d):
-                out[d.isoformat()] = [is_done(chore, d), None]
+                out[d.isoformat()] = [is_done(chore, d, week_start), None]
             d += timedelta(days=1)
         return out
     comps = sorted(chore.get("completions", []))
@@ -169,12 +172,6 @@ def day_states(chore: dict, start: date, end: date) -> dict[str, list]:
                 out[b] = [done, a if (not done and occ < d) else None]
         d += timedelta(days=1)
     return out
-
-
-def _week_start(d: date, week_start: int) -> date:
-    """Start of d's week; week_start 0 = Sunday, 1 = Monday (the display setting)."""
-    first = 6 if week_start == 0 else 0  # Python weekday of the first day
-    return d - timedelta(days=(d.weekday() - first) % 7)
 
 
 def stats(chore: dict, start: date, end: date, today: date, week_start: int = 0) -> tuple[int, int]:
@@ -208,7 +205,7 @@ def stats(chore: dict, start: date, end: date, today: date, week_start: int = 0)
         w = _week_start(d, week_start)
         while w <= end:
             due += 1
-            if any(w + timedelta(days=i) <= end and is_done(chore, w + timedelta(days=i)) for i in range(7)):
+            if any(w + timedelta(days=i) <= end and is_done(chore, w + timedelta(days=i), week_start) for i in range(7)):
                 done += 1
             w += timedelta(days=7)
         return due, done

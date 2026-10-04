@@ -186,3 +186,18 @@ async def test_chore_view_command(hass, tmp_path, hass_storage, hass_ws_client):
     assert r["result"]["stats"] == [{"k": [1, 1]}]
     await ws.send_json({"id": 2, "type": "skylight/chores/view", "start": "2020-01-01", "end": "2026-01-01"})
     assert not (await ws.receive_json())["success"]  # range too long
+
+
+def test_weekly_follows_week_start_setting():
+    """A "once a week" chore done on Wednesday Oct 7 covers that week, Sunday- or Monday-based."""
+    c = {"repeat": "weekly", "completions": ["2026-10-07"]}
+    sun, mon = 0, 1
+    assert chores.is_done(c, date(2026, 10, 4), sun) and chores.is_done(c, date(2026, 10, 10), sun)  # Sun Oct 4 - Sat Oct 10
+    assert not chores.is_done(c, date(2026, 10, 11), sun)  # next Sunday starts a new week
+    assert chores.is_done(c, date(2026, 10, 11), mon)  # Monday weeks: Sunday Oct 11 is still that week
+    assert not chores.is_done(c, date(2026, 10, 4), mon)
+    today = date(2026, 10, 14)
+    c2 = {"repeat": "weekly", "created": "2026-09-01", "completions": ["2026-10-07"]}
+    assert chores.stats(c2, date(2026, 10, 4), date(2026, 10, 17), today, week_start=sun) == (2, 1)
+    # Unchecking on Saturday removes Wednesday's check-off (same week)
+    assert chores.toggle(c, date(2026, 10, 10), week_start=sun) is False and c["completions"] == []

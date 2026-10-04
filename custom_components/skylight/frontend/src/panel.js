@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.37.0";
-import { STYLES } from "./styles.js?v=1.37.0";
-import { CalendarView } from "./calendar.js?v=1.37.0";
-import { WeatherView } from "./weather.js?v=1.37.0";
-import { HomeView } from "./home.js?v=1.37.0";
-import { ChoresView } from "./chores.js?v=1.37.0";
-import { MealsView } from "./meals.js?v=1.37.0";
-import { ListsView } from "./lists.js?v=1.37.0";
-import { PhotosView } from "./photos.js?v=1.37.0";
-import { SettingsView } from "./settings.js?v=1.37.0";
-import { PickersView } from "./pickers.js?v=1.37.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.37.1";
+import { STYLES } from "./styles.js?v=1.37.1";
+import { CalendarView } from "./calendar.js?v=1.37.1";
+import { WeatherView } from "./weather.js?v=1.37.1";
+import { HomeView } from "./home.js?v=1.37.1";
+import { ChoresView } from "./chores.js?v=1.37.1";
+import { MealsView } from "./meals.js?v=1.37.1";
+import { ListsView } from "./lists.js?v=1.37.1";
+import { PhotosView } from "./photos.js?v=1.37.1";
+import { SettingsView } from "./settings.js?v=1.37.1";
+import { PickersView } from "./pickers.js?v=1.37.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -78,6 +78,7 @@ export class SkylightPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._origThemeColor !== undefined) { const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = this._origThemeColor; this._origThemeColor = undefined; }
     if (this._connWatched) {
       this._connWatched.removeEventListener?.("disconnected", this._onConnLost);
       this._connWatched.removeEventListener?.("reconnect-error", this._onConnLost);
@@ -871,13 +872,36 @@ export class SkylightPanel extends HTMLElement {
   // than the area the Home Assistant iPhone app gives the panel, which pushed the bottom bar off screen.
   // Uses only the window size and the panel's position (never its own content), so it can't feed back on itself.
   _fitPhoneHeight() {
-    if (!this.isPhone) { this.style.removeProperty("--app-h"); return; }
+    if (!this.isPhone) { this.style.removeProperty("--app-h"); this.style.removeProperty("--lift"); return; }
     const top = Math.max(0, Math.round(this.getBoundingClientRect().top + (window.scrollY || 0)));
-    const h = Math.round(window.innerHeight - top);
+    // iPhone app: when the panel starts just below the status bar, reach up behind it (the header is
+    // padded so names and weather sit below the notch). Undone if that strip doesn't actually show us.
+    const lift = /iPhone|iPod/.test(navigator.userAgent) && !this._liftFailed && top > 0 && top <= 64 ? top : 0;
+    this.style.setProperty("--lift", `${lift}px`);
+    const h = Math.round(window.innerHeight - top + lift);
     if (h > 200) this.style.setProperty("--app-h", `${h}px`);
+    if (lift) {
+      requestAnimationFrame(() => {
+        // What's really on top there: hit-test from the page down through each shadow root.
+        const x = window.innerWidth / 2, y = Math.max(1, lift / 2);
+        let hit = document.elementFromPoint(x, y);
+        while (hit?.shadowRoot) { const inner = hit.shadowRoot.elementFromPoint(x, y); if (!inner || inner === hit) break; hit = inner; }
+        const ours = hit && this.shadowRoot.contains(hit);
+        if (ours && !this.$app?.contains(hit)) return; // our own pop-up or screensaver is on top: check again later
+        if (!ours) { this._liftFailed = true; this._fitPhoneHeight(); }
+      });
+    }
   }
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
+  // The page's theme color (browsers and possibly the HA phone app use it for the status-bar strip) follows our background.
+  _syncThemeColor() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const bg = getComputedStyle(this).getPropertyValue("--bg").trim();
+    if (!meta || !bg || meta.content === bg) return;
+    if (this._origThemeColor === undefined) this._origThemeColor = meta.content;
+    meta.content = bg;
+  }
   _applyLook() {
     if (!this.data) return;
     const s = this.settings, now = new Date();
@@ -895,6 +919,7 @@ export class SkylightPanel extends HTMLElement {
     const overlay = s.night_dim && !s.brightness_entity && isNightAt({ ...s, dark_mode: mode === "sun" ? "sun" : "scheduled" }, now, rise, set);
     const level = Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
     if (this.$dim) this.$dim.style.opacity = overlay ? String(level) : "0";
+    if (this.isPhone) this._syncThemeColor();
   }
 
   _tickClock() {

@@ -362,7 +362,7 @@ class SkylightStore:
             chore = next((c for c in self.data["chores"] if c["id"] == chore_id), None)
             if chore is None:
                 raise KeyError(chore_id)
-            done = chores.toggle(chore, on)
+            done = chores.toggle(chore, on, week_start=int(self.data["settings"].get("week_start") or 0))
             self._changed()
             return done
 

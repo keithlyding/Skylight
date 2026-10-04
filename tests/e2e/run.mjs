@@ -135,6 +135,36 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async notch(browser, base) {
+    // iPhone app with the panel starting below the status bar (47 px): the app reaches up behind it and the
+    // header clears the notch; if something else covers that strip, it backs off again.
+    const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Home Assistant/2025.1";
+    for (const covered of [false, true]) {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 797 }, isMobile: true, hasTouch: true, userAgent: UA });
+      const p = await ctx.newPage(); p.errors = []; p.on("pageerror", (e) => p.errors.push(e.message));
+      await p.addInitScript((covered) => {
+        addEventListener("DOMContentLoaded", () => {
+          document.body.style.margin = "0"; document.body.style.paddingTop = "47px";
+          if (covered) { const bar = document.createElement("div"); bar.style.cssText = "position:fixed;top:0;left:0;right:0;height:47px;background:#000;z-index:99999"; document.body.appendChild(bar); }
+        });
+      }, covered);
+      await p.goto(base); await p.waitForTimeout(300);
+      await p.evaluate(() => { el.ui.alertPop = null; el.render(); window.dispatchEvent(new Event("resize")); }); await p.waitForTimeout(800);
+      const m = await p.evaluate(() => {
+        const app = el.shadowRoot.querySelector(".app").getBoundingClientRect();
+        const chips = el.shadowRoot.querySelector("header").getBoundingClientRect();
+        const first = el.shadowRoot.querySelector("header .members, header .weather")?.getBoundingClientRect();
+        const tabs = [...el.shadowRoot.querySelectorAll(".rail .tab")].map((t) => t.getBoundingClientRect().bottom);
+        return { appTop: Math.round(app.top), contentTop: Math.round(first?.top ?? chips.top), barBottom: Math.max(...tabs), h: innerHeight };
+      });
+      if (covered) eq(m.appTop, 47, "covered strip: app stays below it");
+      else { eq(m.appTop, 0, "app reaches up behind the status bar"); check(m.contentTop >= 47, `header content clears the notch (${m.contentTop})`); }
+      check(m.barBottom <= m.h + 1, `bottom bar on screen (${m.barBottom} > ${m.h})`);
+      eq(p.errors, [], "page errors");
+      await ctx.close();
+    }
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
