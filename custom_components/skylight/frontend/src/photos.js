@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.35.0";
+import { parseYmd, esc } from "./helpers.js?v=1.36.0";
 
 export class PhotosView {
 
@@ -118,7 +118,7 @@ export class PhotosView {
         this.data.immich.favorites ? "Immich favorites" : "",
       ].filter(Boolean).join(" + ") || "no Immich albums yet"}. Change in Settings → Photos from Immich.</p>` : ""}
       ${photos.length ? `<div class="pgrid">${photos.map((p) => `<div class="ph">${signed[p] ? `<img loading="lazy" src="${esc(signed[p])}">` : ""}<button class="x" data-action="delete-photo" data-name="${esc(p)}">✕</button></div>`).join("")}</div>`
-        : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>${uploads ? "Upload photos from this tablet or your phone (open the Skylight panel in the Home Assistant app)." : "Photo uploads are turned off in Settings."} They play as a screensaver when nobody is using the display. Or connect Immich in Settings.</p></div>`}`;
+        : this._hasPhotoSource() ? "" : `<div class="empty"><h2>No photos yet</h2><p>${uploads ? "Upload photos from this tablet or your phone (open the " + this.appName + " panel in the Home Assistant app)." : "Photo uploads are turned off in Settings."} They play as a screensaver when nobody is using the display. Or connect Immich in Settings.</p></div>`}`;
   }
 
   renderImmichSettings() {

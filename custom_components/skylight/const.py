@@ -1,7 +1,9 @@
 """Constants for the Skylight integration."""
 
-DOMAIN = "skylight"
-VERSION = "1.35.0"
+DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
+DEFAULT_APP_NAME = "Lyding Strike"
+APP_NAME_MAX = 40
+VERSION = "1.36.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -55,6 +57,8 @@ DEFAULT_DATA = {
     # Settings PIN: salt + PBKDF2 hash only. Never sent to the browser (see SkylightStore.public).
     "security": {"salt": "", "pin_hash": ""},
     "settings": {
+        # Shown in the sidebar, the panel and the to-do list names. Families can rename it.
+        "app_name": DEFAULT_APP_NAME,
         "weather_entity": None,
         "week_start": 0,
         "clock_24h": False,
@@ -86,3 +90,9 @@ DEFAULT_DATA = {
         "hide_ha_sidebar": True,
     },
 }
+
+
+def app_name(data: dict | None) -> str:
+    """The display name from settings (trimmed), or the default."""
+    name = " ".join(str(((data or {}).get("settings") or {}).get("app_name") or "").split())[:APP_NAME_MAX]
+    return name or DEFAULT_APP_NAME

@@ -106,7 +106,7 @@ async def ws_backup_import(hass: HomeAssistant, connection, msg: dict[str, Any])
     backup = msg["backup"]
     data = backup.get("data")
     if backup.get("skylight_backup") != BACKUP_FORMAT or not isinstance(data, dict) or not isinstance(data.get("members"), list):
-        connection.send_error(msg["id"], "invalid", "That file isn't a Skylight backup.")
+        connection.send_error(msg["id"], "invalid", "That file isn't a backup from this display.")
         return
     folder = photos.photo_dir(hass)
     existing = set(await hass.async_add_executor_job(lambda: [p.name for p in folder.iterdir()] if folder.exists() else []))

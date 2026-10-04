@@ -44,7 +44,7 @@ async def test_alerts_sorted_and_cached(hass, ws, aioclient_mock):
     assert alerts[0]["instruction"] == "Move indoors." and alerts[0]["area"] == "Denver, CO"
     call = aioclient_mock.mock_calls[0]
     assert "point=39.74%2C-104.99" in str(call[1]) or "point=39.74,-104.99" in str(call[1])  # rounded to ~1 km
-    assert "Skylight" in call[3]["User-Agent"]
+    assert "LydingStrike" in call[3]["User-Agent"]
     await _alerts(ws)  # cached: no second request
     assert len(aioclient_mock.mock_calls) == 1
     await _alerts(ws, force=True)

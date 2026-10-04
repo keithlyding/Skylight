@@ -1,6 +1,6 @@
 /* Skylight panel: chore rules (mirror of chores.py; tests check they agree). */
 
-import { ymd, parseYmd, addDays, startOfDay, pyWeekday, isoWeek } from "./helpers.js?v=1.35.0";
+import { ymd, parseYmd, addDays, startOfDay, pyWeekday, isoWeek } from "./helpers.js?v=1.36.0";
 
 // ---------- chore rules (mirror of chores.py; tests check they agree day by day) ----------
 export const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];

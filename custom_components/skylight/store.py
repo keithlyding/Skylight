@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from . import chores, security
-from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION
+from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION, app_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -235,6 +235,8 @@ class SkylightStore:
         async with self._lock:
             if key == "settings":
                 value = {**self.data["settings"], **value}
+                if "app_name" in value:
+                    value["app_name"] = app_name({"settings": value})
             elif key == "members":
                 value = clean_members(value)
             elif key == "lists":

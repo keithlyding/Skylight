@@ -1,4 +1,4 @@
-"""Skylight's own lists as Home Assistant to-do entities.
+"""The app's own lists as Home Assistant to-do entities.
 
 Each Skylight list (Groceries, a honey-do list, ...) appears in Home Assistant's
 To-do panel, the HA phone app and Assist. Changes from either side go through the
@@ -18,7 +18,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, EVENT_UPDATED
+from .const import DOMAIN, EVENT_UPDATED, app_name
 
 
 def _unique_id(entry: ConfigEntry, list_id: str) -> str:
@@ -75,7 +75,7 @@ class SkylightTodoList(TodoListEntity):
 
     def _load(self) -> None:
         lst = self._list() or {"name": "List", "items": []}
-        self._attr_name = f"Skylight {lst.get('name') or 'List'}"
+        self._attr_name = f"{app_name(self._store.data)} {lst.get('name') or 'List'}"
         items = []
         for i in lst.get("items", []):
             done = bool(i.get("done"))

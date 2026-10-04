@@ -1,6 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
-export const PANEL_VERSION = "1.35.0";
+export const DEFAULT_APP_NAME = "Lyding Strike";
+export const PANEL_VERSION = "1.36.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light

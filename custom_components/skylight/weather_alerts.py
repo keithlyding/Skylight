@@ -55,7 +55,7 @@ async def async_get_alerts(hass: HomeAssistant, force: bool = False) -> dict[str
     try:
         async with session.get(
             NWS_ALERTS, params={"point": f"{home[0]:.2f},{home[1]:.2f}"}, timeout=TIMEOUT,
-            headers={"User-Agent": f"HomeAssistant-Skylight/{VERSION} (family display)", "Accept": "application/geo+json"},
+            headers={"User-Agent": f"HomeAssistant-LydingStrike/{VERSION} (family display)", "Accept": "application/geo+json"},
         ) as resp:
             if resp.status in (400, 404):  # outside the NWS coverage area
                 result["supported"] = False

@@ -1,7 +1,7 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.35.0";
-import { choreDone, choreDue } from "./chore-rules.js?v=1.35.0";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.36.0";
+import { choreDone, choreDue } from "./chore-rules.js?v=1.36.0";
 
 export class HomeView {
 

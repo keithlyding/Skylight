@@ -2,19 +2,19 @@
   "config": {
     "step": {
       "user": {
-        "title": "Skylight Family Display",
-        "description": "Adds a Skylight panel to the sidebar. Family members, calendars, chores, meals, lists and photos are all managed from inside the panel."
+        "title": "Lyding Strike",
+        "description": "Adds the Lyding Strike family display to the sidebar (you can rename it in its Settings). Family members, calendars, chores, meals, lists and photos are all managed from inside the panel."
       }
     },
     "abort": {
-      "single_instance_allowed": "Skylight is already set up."
+      "single_instance_allowed": "Lyding Strike is already set up."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Skylight settings PIN",
-        "description": "{status} Tick the box and submit to remove the settings PIN, for example if it was forgotten. Anyone can then set a new PIN from Skylight → Settings.",
+        "title": "Settings PIN",
+        "description": "{status} Tick the box and submit to remove the settings PIN, for example if it was forgotten. Anyone can then set a new PIN from the display's Settings.",
         "data": {
           "clear_pin": "Remove the settings PIN"
         }

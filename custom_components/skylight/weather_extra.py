@@ -32,7 +32,7 @@ POLLEN_URL = "https://pollen.googleapis.com/v1/forecast:lookup"
 CACHE_KEY = f"{DOMAIN}_wx_extra"
 CACHE_SECONDS = 10 * 60
 TIMEOUT = aiohttp.ClientTimeout(total=10)
-HEADERS = {"User-Agent": f"HomeAssistant-Skylight/{VERSION} (family display)"}
+HEADERS = {"User-Agent": f"HomeAssistant-LydingStrike/{VERSION} (family display)"}
 EU_POLLEN = ["alder_pollen", "birch_pollen", "grass_pollen", "mugwort_pollen", "olive_pollen", "ragweed_pollen"]
 
 

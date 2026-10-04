@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.35.0";
-import { choreDone } from "./chore-rules.js?v=1.35.0";
-import { STYLES } from "./styles.js?v=1.35.0";
-import { CalendarView } from "./calendar.js?v=1.35.0";
-import { WeatherView } from "./weather.js?v=1.35.0";
-import { HomeView } from "./home.js?v=1.35.0";
-import { ChoresView } from "./chores.js?v=1.35.0";
-import { MealsView } from "./meals.js?v=1.35.0";
-import { ListsView } from "./lists.js?v=1.35.0";
-import { PhotosView } from "./photos.js?v=1.35.0";
-import { SettingsView } from "./settings.js?v=1.35.0";
-import { PickersView } from "./pickers.js?v=1.35.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.0";
+import { choreDone } from "./chore-rules.js?v=1.36.0";
+import { STYLES } from "./styles.js?v=1.36.0";
+import { CalendarView } from "./calendar.js?v=1.36.0";
+import { WeatherView } from "./weather.js?v=1.36.0";
+import { HomeView } from "./home.js?v=1.36.0";
+import { ChoresView } from "./chores.js?v=1.36.0";
+import { MealsView } from "./meals.js?v=1.36.0";
+import { ListsView } from "./lists.js?v=1.36.0";
+import { PhotosView } from "./photos.js?v=1.36.0";
+import { SettingsView } from "./settings.js?v=1.36.0";
+import { PickersView } from "./pickers.js?v=1.36.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -126,8 +126,8 @@ export class SkylightPanel extends HTMLElement {
   }
 
   _fatal(e) {
-    this.$app.innerHTML = `<div class="empty"><h2>Skylight is not available</h2><p>${esc(e?.message || e)}</p>
-      <p>Make sure the Skylight integration is installed and added under Settings → Devices &amp; Services.</p></div>`;
+    this.$app.innerHTML = `<div class="empty"><h2>${this.appName} is not available</h2><p>${esc(e?.message || e)}</p>
+      <p>Make sure the ${this.appName} integration is installed and added under Settings → Devices &amp; Services.</p></div>`;
   }
 
   // Non-admin users (the kitchen tablet, kids' devices) don't get Home Assistant's own sidebar and
@@ -333,6 +333,8 @@ export class SkylightPanel extends HTMLElement {
     return this.isPhone ? Math.min(this._homeDays, 3) : this._homeDays;
   }
   // Phone-width screens (e.g. the Home Assistant app on a phone) get a compact layout.
+  // The display name from Settings (default "Lyding Strike"); HTML-escaped for templates.
+  get appName() { return esc((this.settings?.app_name || "").trim() || DEFAULT_APP_NAME); }
   get isPhone() { return !!window.matchMedia?.("(max-width: 600px), (max-height: 500px) and (orientation: landscape)").matches; }
   // 5- and 7-day grids don't fit on a phone: show 3 days there (the saved choice is kept for bigger screens).
   get calView() { const v = this.ui.view; return this.isPhone && (v === "5day" || v === "7day") ? "3day" : v; }
@@ -399,7 +401,7 @@ export class SkylightPanel extends HTMLElement {
         const b = await this._ws({ type: "skylight/backup/export" });
         const blob = new Blob([JSON.stringify(b, null, 2)], { type: "application/json" });
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob); a.download = `skylight-backup-${ymd(new Date())}.json`;
+        a.href = URL.createObjectURL(blob); a.download = `${(this.settings?.app_name || DEFAULT_APP_NAME).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "family-display"}-backup-${ymd(new Date())}.json`;
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
         this._toast("Backup downloaded"); break;
       }
@@ -408,7 +410,7 @@ export class SkylightPanel extends HTMLElement {
         const file = el.files?.[0]; el.value = "";
         if (!file) break;
         let backup;
-        try { backup = JSON.parse(await file.text()); } catch (e) { this._toast("That file isn't a Skylight backup."); break; }
+        try { backup = JSON.parse(await file.text()); } catch (e) { this._toast("That file isn't a backup from this display."); break; }
         const when = backup?.created ? new Date(backup.created).toLocaleString() : "an unknown date";
         if (!confirm(`Restore the backup from ${when}?\n\nThis replaces family members, chores, lists, meals, birthdays and settings on every screen.`)) break;
         await this._ws({ type: "skylight/backup/import", backup });

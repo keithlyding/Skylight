@@ -1,6 +1,6 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.35.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.36.0";
 
 export class MealsView {
   async _loadMealie() {
@@ -111,7 +111,7 @@ export class MealsView {
       b.page = r.page; b.pages = r.total_pages; b.total = r.total; b.error = null;
     } catch (e) {
       if (req !== b.req) return;
-      b.error = /unknown command/i.test(e.message || "") ? "Restart Home Assistant to finish updating Skylight." : e.message; b.items = b.items || [];
+      b.error = /unknown command/i.test(e.message || "") ? `Restart Home Assistant to finish updating ${this.appName}.` : e.message; b.items = b.items || [];
     }
     b.loading = false;
     if (this.ui.tab === "meals") this.render();
@@ -178,7 +178,7 @@ export class MealsView {
       this.cook = { key, r, servings: r.servings || null, mult: 1, step: 0, got: new Set(), qr: false };
     } catch (e) {
       if (this.cook?.key !== key) return;
-      this.cook = { key, error: /unknown command/i.test(e.message || "") ? "Restart Home Assistant to finish updating Skylight." : e.message };
+      this.cook = { key, error: /unknown command/i.test(e.message || "") ? `Restart Home Assistant to finish updating ${this.appName}.` : e.message };
     }
     this.renderCook();
   }

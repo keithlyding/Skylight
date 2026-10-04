@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc } from "./helpers.js?v=1.35.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc } from "./helpers.js?v=1.36.0";
 
 export class SettingsView {
 
@@ -121,7 +121,7 @@ export class SettingsView {
           <label class="inline">Night brightness % <input type="number" min="1" max="100" value="${Number(s.night_brightness ?? 20)}" data-change="setting" data-key="night_brightness" data-num="1"></label></div>
         <p class="hint">${s.brightness_entity
           ? "Home Assistant sets this entity to the day or night level when night starts and ends (a manual change stays until the next switch). With Fully Kiosk Browser, use its integration's “Screen brightness” entity."
-          : "No brightness entity: Skylight darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}
+          : "No brightness entity: ${this.appName} darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}
           Night hours ${mode === "sun" ? "follow sunset and sunrise" : "use the times above"}; the photo screensaver is dimmed too.</p>` : ""}
     </section>`;
   }
@@ -165,7 +165,7 @@ export class SettingsView {
         <div class="seg"><button class="${dlg.kind === "birthday" ? "on" : ""}" data-action="occ-kind" data-kind="birthday">🎂 Birthday</button><button class="${dlg.kind === "anniversary" ? "on" : ""}" data-action="occ-kind" data-kind="anniversary">💍 Anniversary</button><button class="${dlg.kind === "other" ? "on" : ""}" data-action="occ-kind" data-kind="other">📅 Other</button></div>
         <label>Title<input id="o-title" value="${esc(o?.title || "")}" placeholder="${dlg.kind === "anniversary" ? "Mom & Dad's anniversary" : dlg.kind === "birthday" ? "Grandma's birthday" : "Adoption day"}" autofocus></label>
         ${this._dateFields("o", o)}
-        <p class="hint" style="margin-top:-4px">With a year, Skylight shows the age or number of years.</p>
+        <p class="hint" style="margin-top:-4px">With a year, ${this.appName} shows the age or number of years.</p>
         <label>Emoji <small class="hint">(optional)</small><input id="o-emoji" value="${esc(o?.emoji || "")}" maxlength="8" placeholder="${OCCASION_EMOJI[dlg.kind]}"></label>
         <div class="label">Whose ${dlg.kind === "birthday" ? "family is it (color)" : "is it"} <small class="hint">(optional)</small></div>
         <div class="checklist">${this.members.map((m) => `<label class="check"><input type="checkbox" class="o-mem" value="${m.id}" ${(o?.members || []).includes(m.id) ? "checked" : ""}> ${m.avatar} ${esc(m.name)}</label>`).join("")}</div>
@@ -283,7 +283,7 @@ export class SettingsView {
         <div class="row">${this.unlocked ? `<button data-action="pin-lock">🔒 Lock now</button>` : `<button class="primary" data-action="pin-unlock">🔓 Unlock</button>`}
           <button data-action="pin-change">Change PIN</button><button data-action="pin-remove">Remove PIN</button></div>
         <label class="inline">Stay unlocked for (minutes) <input type="number" min="1" max="60" value="${Number(s.unlock_minutes) || 5}" data-change="setting" data-key="unlock_minutes"></label>
-        <p class="hint">Forgot it? A Home Assistant admin can remove it: Settings → Devices &amp; Services → Skylight → Configure.</p>`
+        <p class="hint">Forgot it? A Home Assistant admin can remove it: Settings → Devices &amp; Services → ${this.appName} → Configure.</p>`
       : `<p class="hint">No PIN set: anyone using this display can change Settings, family members and chores.</p>
         <button class="primary" data-action="pin-setup">Set a settings PIN</button>`}
     </section>`;
@@ -373,6 +373,8 @@ export class SettingsView {
 
       <section class="card">
         <h2>Display</h2>
+        <label class="inline">Name <input type="text" maxlength="40" value="${this.appName}" placeholder="${DEFAULT_APP_NAME}" data-change="setting" data-key="app_name"></label>
+        <p class="hint">Shown in the Home Assistant sidebar and on the to-do lists in Home Assistant. Leave empty for "${DEFAULT_APP_NAME}".</p>
         <label class="inline">Weather <select data-change="setting" data-key="weather_entity"><option value="">None</option>${weathers.map((w) => `<option value="${w}" ${w === s.weather_entity ? "selected" : ""}>${esc(this.entityName(w))}</option>`).join("")}</select></label>
         <label class="inline">Weather alerts (US National Weather Service) <input type="checkbox" ${s.weather_alerts !== false ? "checked" : ""} data-change="setting" data-key="weather_alerts"></label>
         <label class="inline">Pop up new alerts on this screen <select data-change="setting" data-key="alert_popup">
@@ -394,11 +396,11 @@ export class SettingsView {
         <label class="inline">Photo screensaver after (minutes, 0 = off) <input type="number" min="0" max="240" value="${s.screensaver_minutes}" data-change="setting" data-key="screensaver_minutes"></label>
         <label class="inline">Seconds per photo <input type="number" min="5" max="600" value="${s.photo_seconds}" data-change="setting" data-key="photo_seconds"></label>
         <label class="inline">Hide Home Assistant's sidebar for non-admin users <input type="checkbox" ${s.hide_ha_sidebar !== false ? "checked" : ""} data-change="setting" data-key="hide_ha_sidebar"></label>
-        <p class="hint">On screens logged in as a non-admin Home Assistant user (like the kitchen tablet), Home Assistant's own menu and header are hidden so Skylight fills the screen. Admin accounts always keep them. This isn't a lock: what an account can do is still set by its Home Assistant permissions.</p>
+        <p class="hint">On screens logged in as a non-admin Home Assistant user (like the kitchen tablet), Home Assistant's own menu and header are hidden so ${this.appName} fills the screen. Admin accounts always keep them. This isn't a lock: what an account can do is still set by its Home Assistant permissions.</p>
         <label class="inline">Allow photo uploads <input type="checkbox" ${s.allow_uploads !== false ? "checked" : ""} data-change="setting" data-key="allow_uploads"></label>
         <label class="inline">Show date &amp; place on photos <input type="checkbox" ${s.photo_captions !== false ? "checked" : ""} data-change="setting" data-key="photo_captions"></label>
       </section>
-      <p class="hint center">Skylight v${PANEL_VERSION}</p>
+      <p class="hint center">${this.appName} v${PANEL_VERSION}</p>
     </div>`;
   }
 }

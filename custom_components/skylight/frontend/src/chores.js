@@ -1,7 +1,7 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.35.0";
-import { EVERY_WEEKS, EVERY_MONTHS, LOOKBACK_DAYS, choreScheduled, choreCarries, choreDone, choreDue, choreOverdueSince } from "./chore-rules.js?v=1.35.0";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.36.0";
+import { EVERY_WEEKS, EVERY_MONTHS, LOOKBACK_DAYS, choreScheduled, choreCarries, choreDone, choreDue, choreOverdueSince } from "./chore-rules.js?v=1.36.0";
 
 export class ChoresView {
 

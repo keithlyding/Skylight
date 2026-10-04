@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.35.0";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.36.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -394,7 +394,7 @@ export class CalendarView {
           <button data-action="scope" data-scope="future" ${seriesOk ? "" : "disabled"}>This and following events</button>
           <button data-action="scope" data-scope="all" ${seriesOk ? "" : "disabled"}>All events</button>
         </div>
-        ${seriesOk ? "" : `<p class="hint">This calendar (e.g. Google) doesn't let Skylight edit the whole series. Change the series in Google Calendar, or edit just this event here.</p>`}
+        ${seriesOk ? "" : `<p class="hint">This calendar (e.g. Google) doesn't let ${this.appName} edit the whole series. Change the series in Google Calendar, or edit just this event here.</p>`}
         <div class="actions"><span class="spacer"></span><button data-action="scope" data-scope="cancel">Cancel</button></div>
       </div></div>`;
       this.$dialog.appendChild(layer);
@@ -683,7 +683,7 @@ export class CalendarView {
       type: "search",
       html: () => `<h2>🔍 Search events</h2>
         <input id="search-q" autocomplete="off" autofocus placeholder="Title, place or notes (e.g. dentist, soccer, Grandma)">
-        <p class="hint">Searches ${this._searchRangeText()} on every calendar shown in Skylight.</p>
+        <p class="hint">Searches ${this._searchRangeText()} on every calendar shown in ${this.appName}.</p>
         <div id="search-results" class="sresults"></div>
         <div class="actions"><span class="spacer"></span><button data-action="close">Close</button></div>`,
     });

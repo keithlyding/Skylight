@@ -1,4 +1,4 @@
-"""Config flow: one click to add Skylight. Options: admin reset of the settings PIN."""
+"""Config flow: one click to add Lyding Strike. Options: admin reset of the settings PIN."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 
-from .const import DOMAIN
+from .const import DEFAULT_APP_NAME, DOMAIN
 
 
 class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -17,7 +17,7 @@ class SkylightConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="Skylight", data={})
+            return self.async_create_entry(title=DEFAULT_APP_NAME, data={})
         return self.async_show_form(step_id="user")
 
     @staticmethod

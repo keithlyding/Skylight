@@ -1,6 +1,6 @@
 /* Skylight panel: location lookup, time picker and emoji/icon pickers (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.35.0";
+import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.36.0";
 
 export class PickersView {
 
@@ -15,7 +15,7 @@ export class PickersView {
       try { res = await this._hass.callWS({ type: "skylight/places/search", query: q }); }
       catch (e) {
         const msg = /unknown command/i.test(e.message || "")
-          ? "Address lookup needs a Home Assistant restart after updating Skylight."
+          ? "Address lookup needs a Home Assistant restart after updating ${this.appName}."
           : e.message;
         this._showSugg([], msg); return;
       }

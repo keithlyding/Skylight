@@ -37,7 +37,7 @@ class SkylightPhotoUploadView(HomeAssistantView):
     async def post(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
         if hass.data[DOMAIN]["store"].data["settings"].get("allow_uploads") is False:
-            return self.json_message("Photo uploads are turned off in Skylight settings", 403)
+            return self.json_message("Photo uploads are turned off in the display settings", 403)
         reader = await request.multipart()
         field = await reader.next()
         if field is None or field.name != "file":
@@ -128,7 +128,7 @@ async def _reverse_geocode(hass: HomeAssistant, lat: float, lon: float) -> str |
     try:
         async with async_get_clientsession(hass).get(
             PHOTON_REVERSE, params={"lat": f"{lat:.3f}", "lon": f"{lon:.3f}", "lang": "en"},
-            headers={"User-Agent": f"HomeAssistant-Skylight/{VERSION}"}, timeout=aiohttp.ClientTimeout(total=8),
+            headers={"User-Agent": f"HomeAssistant-LydingStrike/{VERSION}"}, timeout=aiohttp.ClientTimeout(total=8),
         ) as resp:
             if resp.status != 200:
                 return None

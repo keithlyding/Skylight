@@ -1,6 +1,6 @@
 {
   "domain": "skylight",
-  "name": "Skylight Family Display",
+  "name": "Lyding Strike",
   "codeowners": [
     "@keithlyding"
   ],
@@ -17,5 +17,5 @@
   "issue_tracker": "https://github.com/keithlyding/Skylight/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "1.35.0"
+  "version": "1.36.0"
 }

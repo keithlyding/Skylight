@@ -43,7 +43,7 @@ async def _photon(hass: HomeAssistant, query: str) -> list[dict[str, str]]:
     session = async_get_clientsession(hass)
     try:
         async with session.get(PHOTON_URL, params=params, timeout=TIMEOUT,
-                               headers={"User-Agent": f"HomeAssistant-Skylight/{VERSION}"}) as resp:
+                               headers={"User-Agent": f"HomeAssistant-LydingStrike/{VERSION}"}) as resp:
             if resp.status != 200:
                 raise PlacesError(f"Address lookup returned HTTP {resp.status}")
             data = await resp.json(content_type=None)

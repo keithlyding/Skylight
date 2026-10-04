@@ -269,6 +269,20 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async rename(browser, base) {
+    const p = await open(browser, base);
+    await p.tab("settings");
+    const name = p.S('input[data-key="app_name"]');
+    eq(await name.inputValue(), "Lyding Strike", "default name");
+    await name.fill("The Smith Board"); await name.dispatchEvent("change"); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => D.settings.app_name), "The Smith Board", "name saved");
+    check((await p.S(".settings").textContent()).includes("The Smith Board v"), "version line uses the name");
+    await name.fill("<b>x</b>"); await name.dispatchEvent("change"); await p.waitForTimeout(300);
+    eq(await p.S(".settings b", { hasText: "x" }).filter({ hasText: /^x$/ }).count(), 0, "name is escaped, not HTML");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async theme(browser, base) {
     const p = await open(browser, base, { at: "2026-10-20T22:30:00" });
     const look = () => p.evaluate(() => [el.dataset.theme, el.dataset.scheme, getComputedStyle(el).getPropertyValue("--bg").trim(), el.$dim.style.opacity]);

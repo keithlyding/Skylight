@@ -1,4 +1,4 @@
-"""Skylight family display for Home Assistant."""
+"""Lyding Strike family display for Home Assistant (internal id: skylight)."""
 
 from __future__ import annotations
 
@@ -8,15 +8,17 @@ import pathlib
 from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 
 from . import mealie, nightmode, places, security, weather_alerts, weather_extra, websocket_api
 from .const import (
     DOMAIN,
+    EVENT_UPDATED,
     PANEL_ELEMENT,
     PANEL_PATH,
     URL_FRONTEND,
     VERSION,
+    app_name,
 )
 from .immich import SkylightImmichView
 from .photos import SkylightPhotoFileView, SkylightPhotoUploadView, photo_dir
@@ -75,17 +77,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _async_register_once(hass)
     # Skylight's lists as Home Assistant to-do entities (HA's To-do panel, phone app, Assist).
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await _async_register_panel(hass, app_name(store.data))
+    _sync_entry_title(hass, entry, app_name(store.data))
+
+    @callback
+    def _name_changed(_event: Event) -> None:
+        """Renaming in Settings updates the sidebar and the integration's title right away."""
+        name = app_name(store.data)
+        _sync_entry_title(hass, entry, name)
+        if hass.data.get(f"{DOMAIN}_panel_title") != name:
+            frontend.async_remove_panel(hass, PANEL_PATH)
+            hass.async_create_task(_async_register_panel(hass, name))
+
+    entry.async_on_unload(hass.bus.async_listen(EVENT_UPDATED, _name_changed))
+    return True
+
+
+async def _async_register_panel(hass: HomeAssistant, title: str) -> None:
+    hass.data[f"{DOMAIN}_panel_title"] = title
     await panel_custom.async_register_panel(
         hass,
         frontend_url_path=PANEL_PATH,
         webcomponent_name=PANEL_ELEMENT,
-        sidebar_title="Skylight",
+        sidebar_title=title,
         sidebar_icon="mdi:calendar-heart",
         module_url=hass.data[f"{DOMAIN}_module_url"],
         require_admin=False,
         config={},
     )
-    return True
+
+
+@callback
+def _sync_entry_title(hass: HomeAssistant, entry: ConfigEntry, title: str) -> None:
+    if entry.title != title:
+        hass.config_entries.async_update_entry(entry, title=title)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -94,5 +119,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if (store := hass.data.get(DOMAIN, {}).get("store")) is not None:
         await store.async_flush()
     frontend.async_remove_panel(hass, PANEL_PATH)
+    hass.data.pop(f"{DOMAIN}_panel_title", None)
     hass.data.pop(DOMAIN, None)
     return True
