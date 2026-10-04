@@ -426,6 +426,45 @@ const SCENARIOS = {
     }
   },
 
+  async resume(browser, base) {
+    // "Frozen" screen guards: a drawing error shows a card with Try again; coming back to the app redraws and
+    // clears a screensaver; the panel removed and re-added by Home Assistant still responds to taps.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    await p.evaluate(() => { window.__orig = el.renderHome; el.renderHome = () => { throw new Error("boom"); }; el.ui.tab = "home"; el.render(); });
+    check((await p.S(".content, .empty").first().textContent()).includes("Something went wrong") || (await p.S(".empty h2").textContent()).includes("Something went wrong"), "error card instead of a silent freeze");
+    await p.evaluate(() => { el.renderHome = window.__orig; });
+    await p.S('[data-action="retry-render"]').click(); await p.waitForTimeout(300);
+    eq(await p.S(".rail .tab").count(), 7, "Try again brings the app back");
+    // Leave the app and come back after a while with the screensaver running.
+    await p.evaluate(() => {
+      el.ui.saver = true; el.$saver.innerHTML = '<div class="saver"></div>';
+      let v = "hidden"; Object.defineProperty(document, "visibilityState", { configurable: true, get: () => v });
+      document.dispatchEvent(new Event("visibilitychange"));
+      el._hiddenAt = Date.now() - 60000; v = "visible"; document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await p.waitForTimeout(400);
+    eq(await p.evaluate(() => el.ui.saver), false, "screensaver cleared on return");
+    // Home Assistant removing and re-adding the panel element
+    await p.evaluate(() => { const parent = el.parentNode; parent.removeChild(el); parent.appendChild(el); });
+    await p.waitForTimeout(500);
+    await p.S('.tab[data-tab="lists"]').click(); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.ui.tab), "lists", "taps work after the panel is re-added");
+    // Loop brake: a position that keeps flipping stops the re-measuring instead of looping forever.
+    eq(await p.evaluate(() => {
+      let flip = 0; el.getBoundingClientRect = () => ({ top: (flip++ % 2) * 47, left: 0, right: 390, bottom: 844, width: 390, height: 844 });
+      for (let i = 0; i < 40; i++) el._fitPhoneHeight();
+      return el._fitStopped === true;
+    }), true, "re-measuring stops when the layout keeps flipping");
+    await p.evaluate(() => { delete el.getBoundingClientRect; });
+    // Reset link clears this screen's own settings.
+    await p.evaluate(() => localStorage.setItem("skylight.screenScheme", "dark"));
+    await p.goto(base + "?reset_screen=1"); await p.waitForTimeout(1000);
+    eq(await p.evaluate(() => localStorage.getItem("skylight.screenScheme")), null, "?reset_screen=1 clears this screen's settings");
+    check((await p.S(".content").textContent()).length > 0, "content drawn");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

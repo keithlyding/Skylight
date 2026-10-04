@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.41.2";
-import { STYLES } from "./styles.js?v=1.41.2";
-import { CalendarView } from "./calendar.js?v=1.41.2";
-import { WeatherView } from "./weather.js?v=1.41.2";
-import { HomeView } from "./home.js?v=1.41.2";
-import { ChoresView } from "./chores.js?v=1.41.2";
-import { MealsView } from "./meals.js?v=1.41.2";
-import { ListsView } from "./lists.js?v=1.41.2";
-import { PhotosView } from "./photos.js?v=1.41.2";
-import { SettingsView } from "./settings.js?v=1.41.2";
-import { PickersView } from "./pickers.js?v=1.41.2";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.41.3";
+import { STYLES } from "./styles.js?v=1.41.3";
+import { CalendarView } from "./calendar.js?v=1.41.3";
+import { WeatherView } from "./weather.js?v=1.41.3";
+import { HomeView } from "./home.js?v=1.41.3";
+import { ChoresView } from "./chores.js?v=1.41.3";
+import { MealsView } from "./meals.js?v=1.41.3";
+import { ListsView } from "./lists.js?v=1.41.3";
+import { PhotosView } from "./photos.js?v=1.41.3";
+import { SettingsView } from "./settings.js?v=1.41.3";
+import { PickersView } from "./pickers.js?v=1.41.3";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -78,7 +78,6 @@ export class SkylightPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this._origThemeColor !== undefined) { const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = this._origThemeColor; this._origThemeColor = undefined; }
     if (this._connWatched) {
       this._connWatched.removeEventListener?.("disconnected", this._onConnLost);
       this._connWatched.removeEventListener?.("reconnect-error", this._onConnLost);
@@ -88,6 +87,8 @@ export class SkylightPanel extends HTMLElement {
     }
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
     if (this._remUnsub) { this._remUnsub.then((u) => u && u()).catch(() => {}); this._remUnsub = null; }
+    if (this._onVisible) { document.removeEventListener("visibilitychange", this._onVisible); this._onVisible = null; }
+    if (this._onAppError) { window.removeEventListener("error", this._onAppError); window.removeEventListener("unhandledrejection", this._onAppError); this._onAppError = null; }
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
     clearInterval(this._refreshTimer); clearInterval(this._alertTimer);
     if (this._onResize) { window.removeEventListener("resize", this._onResize); this._onResize = null; }
@@ -105,6 +106,31 @@ export class SkylightPanel extends HTMLElement {
     this._remUnsub = this._hass.connection.subscribeMessage((r) => this._onReminder(r), { type: "skylight/reminder/subscribe" });
     this._remUnsub.catch(() => { this._remUnsub = null; }); // older server: no reminders
     this._watchConnection();
+    // Coming back to the app (iPhone: after another app or the lock screen): redraw and refresh, and clear
+    // anything left over that could block taps (screensaver, stale pop-up, page scrolled out of place).
+    this._onVisible = () => {
+      if (document.visibilityState === "hidden") { this._hiddenAt = Date.now(); return; }
+      if (!this._hiddenAt) return;
+      const away = Date.now() - this._hiddenAt; this._hiddenAt = 0;
+      this._lastActivity = Date.now();
+      if (this.ui.saver && this.isPhone) this.stopSaver();
+      if (away > 30000) { this._eventsKey = ""; this._cvKey = null; this._loadEvents(); this._loadForecast(); }
+      this._settlePage();
+      this.render();
+    };
+    document.addEventListener("visibilitychange", this._onVisible);
+    // Errors from this app's own code show briefly on screen, so a "frozen" screen can be reported.
+    this._onAppError = (ev) => {
+      const err = ev.reason || ev.error || ev;
+      const where = String(err?.stack || ev.filename || "");
+      if (!/\/skylight(-panel\.js|\/src\/)/.test(where)) return;
+      const msg = String(err?.message || ev.message || err).slice(0, 140);
+      if (msg === this._lastAppError) return; // once per message
+      this._lastAppError = msg;
+      this._toast(`⚠️ ${this.appName} error: ${msg}`);
+    };
+    window.addEventListener("error", this._onAppError);
+    window.addEventListener("unhandledrejection", this._onAppError);
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
     this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather" || this.ui.tab === "home") this._loadWeatherFull(); this._loadWxExtra(); }, 5 * 60000);
     this._alertTimer = setInterval(() => this._loadAlerts(), 2 * 60000);
@@ -124,7 +150,18 @@ export class SkylightPanel extends HTMLElement {
       };
       window.addEventListener("resize", this._onResize);
       if (window.ResizeObserver) {
-        this._ro = new ResizeObserver(() => this._onResize());
+        // At most once per frame, and never more than ~3 per second for long (loop brake).
+        this._ro = new ResizeObserver(() => {
+          if (this._roPending) return;
+          this._roPending = true;
+          requestAnimationFrame(() => {
+            this._roPending = false;
+            const now = Date.now();
+            this._roTimes = (this._roTimes || []).filter((t) => now - t < 3000); this._roTimes.push(now);
+            if (this._roTimes.length > 30) { this._ro?.disconnect(); console.warn("Lyding Strike: size kept changing; stopped watching it"); return; }
+            this._onResize?.();
+          });
+        });
         this._ro.observe(this.$app);
       }
     }
@@ -176,6 +213,10 @@ export class SkylightPanel extends HTMLElement {
   _buildShadow() {
     if (this._shadowBuilt) return;
     this._shadowBuilt = true;
+    // Escape hatch: open the panel with ?reset_screen=1 to clear this screen's own settings.
+    if (/[?&]reset_screen=1/.test(location.search)) {
+      try { for (const k of Object.keys(localStorage)) if (k.startsWith("skylight.")) localStorage.removeItem(k); } catch (e) { /* private mode */ }
+    }
     this.shadowRoot.innerHTML = `<style>${STYLES}\n${THEME_CSS}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="saver"></div><div id="dim" aria-hidden="true"></div>`;
     this.$dim = this.shadowRoot.getElementById("dim");
     this._safeAreaFallback();
@@ -494,6 +535,10 @@ export class SkylightPanel extends HTMLElement {
         el.checked ? set.add(d.entity) : set.delete(d.entity);
         await this._set("settings", { weather_sensors: [...set] }); break;
       }
+      case "retry-render":
+        this.ui.dialog = null; this.ui.alertPop = null; this.ui.reminderPop = null; this.$dialog.innerHTML = "";
+        this.render(); break;
+      case "reload-page": location.reload(); break;
       case "screen-scheme":
         try { if (el.value) localStorage.setItem("skylight.screenScheme", el.value); else localStorage.removeItem("skylight.screenScheme"); } catch (e) { /* private mode */ }
         this._applyLook(); this.render(); break;
@@ -963,13 +1008,22 @@ export class SkylightPanel extends HTMLElement {
   // Uses only the window size and the panel's position (never its own content), so it can't feed back on itself.
   _fitPhoneHeight() {
     if (!this.isPhone) { this.style.removeProperty("--app-h"); this.style.removeProperty("--lift"); return; }
+    // Brake: if measuring keeps changing the layout (e.g. two answers fighting), stop adjusting instead of
+    // keeping the phone busy forever. More than 20 fits in 2 seconds is never normal.
+    const now = Date.now();
+    this._fitTimes = (this._fitTimes || []).filter((t) => now - t < 2000);
+    this._fitTimes.push(now);
+    if (this._fitStopped || this._fitTimes.length > 20) {
+      if (!this._fitStopped) { this._fitStopped = true; this._liftFailed = true; this.style.setProperty("--lift", "0px"); console.warn("Lyding Strike: layout kept changing; stopped re-measuring"); }
+      return;
+    }
     const top = Math.max(0, Math.round(this.getBoundingClientRect().top + (window.scrollY || 0)));
     // iPhone app: when the panel starts just below the status bar, reach up behind it (the header is
     // padded so names and weather sit below the notch). Undone if that strip doesn't actually show us.
     const lift = /iPhone|iPod/.test(navigator.userAgent) && !this._liftFailed && top > 0 && top <= 64 ? top : 0;
-    this.style.setProperty("--lift", `${lift}px`);
+    if (this.style.getPropertyValue("--lift") !== `${lift}px`) this.style.setProperty("--lift", `${lift}px`);
     const h = Math.round(window.innerHeight - top + lift);
-    if (h > 200) this.style.setProperty("--app-h", `${h}px`);
+    if (h > 200 && this.style.getPropertyValue("--app-h") !== `${h}px`) this.style.setProperty("--app-h", `${h}px`);
     if (lift) {
       requestAnimationFrame(() => {
         // What's really on top there: hit-test from the page down through each shadow root.
@@ -984,14 +1038,6 @@ export class SkylightPanel extends HTMLElement {
   }
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
-  // The page's theme color (browsers and possibly the HA phone app use it for the status-bar strip) follows our background.
-  _syncThemeColor() {
-    const meta = document.querySelector('meta[name="theme-color"]');
-    const bg = getComputedStyle(this).getPropertyValue("--bg").trim();
-    if (!meta || !bg || meta.content === bg) return;
-    if (this._origThemeColor === undefined) this._origThemeColor = meta.content;
-    meta.content = bg;
-  }
   _screenScheme() {
     try { return localStorage.getItem("skylight.screenScheme") || ""; } catch (e) { return ""; }
   }
@@ -1013,7 +1059,6 @@ export class SkylightPanel extends HTMLElement {
     const overlay = s.night_dim && !s.brightness_entity && isNightAt({ ...s, dark_mode: mode === "sun" ? "sun" : "scheduled" }, now, rise, set);
     const level = Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
     if (this.$dim) this.$dim.style.opacity = overlay ? String(level) : "0";
-    if (this.isPhone) this._syncThemeColor();
   }
 
   _tickClock() {
@@ -1031,7 +1076,19 @@ export class SkylightPanel extends HTMLElement {
   }
 
   // ---------- rendering ----------
+  // Never fail silently: if drawing the screen throws, show what happened with Try again / Reload
+  // (otherwise the app looks frozen while the rest of Home Assistant keeps working).
   render() {
+    try { this._render(); this._renderError = null; }
+    catch (e) {
+      console.error("Lyding Strike: render failed", e);
+      this._renderError = e;
+      if (this.$app) this.$app.innerHTML = `<div class="empty"><h2>Something went wrong drawing this screen</h2>
+        <p class="hint">${esc(String(e?.message || e))}</p><p class="hint">${esc(String(e?.stack || "").split("\n").slice(0, 3).join(" · "))}</p>
+        <div class="row" style="justify-content:center"><button class="primary" data-action="retry-render">Try again</button><button data-action="reload-page">Reload</button></div></div>`;
+    }
+  }
+  _render() {
     if (!this.$app || !this.data) return;
     this._ensureChoreView();
     const scroll = this._resetScroll ? 0 : this.$app.querySelector(".content")?.scrollTop || 0;
