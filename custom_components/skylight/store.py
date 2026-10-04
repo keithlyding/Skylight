@@ -154,6 +154,7 @@ class SkylightStore:
     def public(self) -> dict[str, Any]:
         """Data safe to send to any logged-in user (no API keys, no PIN hash or salt)."""
         data = dict(self.data)
+        data.pop("reminders_sent", None)
         data["security"] = {"pin_set": bool(data["security"].get("pin_hash"))}
         immich = dict(data["immich"])
         immich["has_key"] = bool(immich.pop("api_key", ""))
@@ -226,6 +227,16 @@ class SkylightStore:
     async def async_flush(self) -> None:
         """Write now (a pending delayed save would be lost on an integration reload)."""
         await self._store.async_save(self.data)
+
+    @callback
+    def changed(self) -> None:
+        """Save soon and tell every screen."""
+        self._changed()
+
+    @callback
+    def save_soon(self) -> None:
+        """Save soon without telling the screens (bookkeeping only)."""
+        self._store.async_delay_save(lambda: self.data, 1)
 
     @callback
     def _changed(self) -> None:

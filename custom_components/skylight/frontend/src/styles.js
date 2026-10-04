@@ -470,6 +470,9 @@ label.check input { width:22px; height:22px; }
 .hintrow p { margin:0; font-size:15px; font-weight:600; line-height:1.35; }
 .hintrow.h-now { background:#e3f0fb; color:#0d3c61; }
 .hintrow.h-alert { background:#fdecea; color:#7f1d1d; }
+.remrow { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 0; border-top:1px solid var(--line); }
+.remrow > b { flex:1 1 160px; } .remrow select { width:auto; }
+.remcard .aphead { background:var(--accent); color:#fff; }
 .alertpop { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
 .apcard { width:min(640px,100%); max-height:90vh; overflow:auto; background:var(--card); color:var(--ink); border-radius:20px; box-shadow:0 12px 40px rgba(0,0,0,.4); border:4px solid var(--ac); }
 .aphead { display:flex; gap:14px; align-items:center; padding:18px 20px; font-size:24px; }

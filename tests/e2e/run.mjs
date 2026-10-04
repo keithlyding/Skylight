@@ -353,6 +353,28 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async reminders(browser, base) {
+    // Reminder set in the event editor is stored for the event; Setup lists phones; this screen pops it up.
+    const p = await open(browser, base, { setup: () => { (window.hass.services ||= {}).notify = { mobile_app_alex: {}, mobile_app_kids: {}, send_message: {} }; } });
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
+    await p.S("#ev-title").fill("Dentist");
+    await p.S("#ev-remind").selectOption("30");
+    await p.S('[data-action="save-event"]').click(); await p.waitForTimeout(800);
+    const meta = await p.evaluate(() => Object.values(D.event_meta || {})[0]);
+    check(meta && meta.summary === "Dentist" && meta.remind === "30" && /^2026-10-05T16:00:00[+-]\d\d:\d\d$/.test(meta.start), `reminder stored: ${JSON.stringify(meta)}`);
+    await p.tab("settings");
+    eq(await text(p.S(".reminders .remrow b")), ["📱 Alex", "📱 Kids", "🖥️ Pop up reminders here"], "phones listed (only mobile apps) plus this screen");
+    await p.S('.reminders select[data-service="mobile_app_kids"]').selectOption("members"); await p.waitForTimeout(300);
+    await p.S('.reminders input[data-service="mobile_app_kids"][data-member="z"]').evaluate((e) => e.click()); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => D.settings.reminder_phones.mobile_app_kids), { mode: "members", members: ["z"] }, "kids' phone: only Sam's events");
+    await p.evaluate(() => window.remCb({ summary: "Dentist", message: "Today at 4:00 PM", members: [] })); await p.waitForTimeout(300);
+    check((await p.S(".remcard").textContent()).includes("Dentist"), "this screen pops up the reminder");
+    await p.S('[data-action="reminder-dismiss"]').click(); await p.waitForTimeout(200);
+    eq(await p.S(".remcard").count(), 0, "dismissed");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES } from "./helpers.js?v=1.40.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.41.0";
 
 export class SettingsView {
 
@@ -371,6 +371,8 @@ export class SettingsView {
           ${this.data.places?.has_google_key ? `<button data-action="places-clear">Remove</button>` : ""}</div>
       </section>
 
+      ${this.renderRemindersCard()}
+
       ${this.renderLookCard()}
 
       <section class="card">
@@ -407,4 +409,51 @@ export class SettingsView {
       <p class="hint center">${this.appName} v${PANEL_VERSION}</p>
     </div>`;
   }
+
+  // ---------- reminders: which phones and screens get them ----------
+  _screenReminders() {
+    try { const v = JSON.parse(localStorage.getItem("skylight.reminderScreen") || "null"); if (v) return v; } catch (e) { /* none saved */ }
+    return { mode: this.isPhone ? "off" : "all", members: [] }; // the wall display shows them; phones get push notifications
+  }
+  _remindersPicker(cfg, action, extra) {
+    const mode = cfg.mode || "off";
+    return `<select data-change="${action}" ${extra}>${[["off", "Off"], ["all", "All events"], ["members", "Only events for…"]].map(([v, l]) => `<option value="${v}" ${mode === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      ${mode === "members" ? `<div class="daypick">${this.members.map((m) => `<label class="daychip"><input type="checkbox" data-change="${action}" ${extra} data-member="${m.id}" ${(cfg.members || []).includes(m.id) ? "checked" : ""}><span>${m.avatar} ${esc(m.name)}</span></label>`).join("")}</div>` : ""}`;
+  }
+  renderRemindersCard() {
+    const phones = Object.keys(this._hass.services?.notify || {}).filter((s) => s.startsWith("mobile_app_")).sort();
+    const nice = (s) => s.replace(/^mobile_app_/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const cfgs = this.settings.reminder_phones || {};
+    return `<section class="card reminders">
+      <h2>⏰ Reminders</h2>
+      <p class="hint">Set a reminder on any event in the event editor. Home Assistant sends it to the phones below (even with the app closed) and shows it on screens that have reminders turned on.</p>
+      <label class="inline">Default for new events <select data-change="setting" data-key="default_reminder">${REMINDERS.map(([v, l]) => `<option value="${v}" ${(this.settings.default_reminder || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <h3>Phones</h3>
+      ${phones.length ? phones.map((s) => `<div class="remrow"><b>📱 ${esc(nice(s))}</b>${this._remindersPicker(cfgs[s] || {}, "reminder-phone", `data-service="${s}"`)}</div>`).join("")
+        : `<p class="hint">No phones found. Install the Home Assistant app on a phone and log in; it appears here as notify.mobile_app_….</p>`}
+      <h3>This screen</h3>
+      <div class="remrow"><b>🖥️ Pop up reminders here</b>${this._remindersPicker(this._screenReminders(), "reminder-screen", "")}</div>
+      <p class="hint">Each screen chooses for itself (saved on this device).</p>
+    </section>`;
+  }
+  // A reminder going off: show it if this screen wants it.
+  _onReminder(r) {
+    const cfg = this._screenReminders();
+    if (cfg.mode === "off") return;
+    if (cfg.mode === "members" && !(r.members || []).some((m) => (cfg.members || []).includes(m))) return;
+    this.ui.reminderPop = [...(this.ui.reminderPop || []), r];
+    if (this.ui.saver) this.stopSaver();
+    this._lastActivity = Date.now();
+    if (this.settings.alert_sound !== false) this._chime();
+    this.render();
+  }
+  renderReminderPop() {
+    const r = (this.ui.reminderPop || [])[0];
+    if (!r) return "";
+    return `<div class="alertpop" role="alertdialog" aria-label="Reminder">
+      <div class="apcard remcard"><div class="aphead"><span class="apicon">⏰</span><div><b>${esc(r.summary)}</b><small>${esc(r.message || "")}</small></div></div>
+        ${this.ui.reminderPop.length > 1 ? `<div class="apbody"><p class="hint">+ ${this.ui.reminderPop.length - 1} more</p></div>` : ""}
+        <div class="apbtns"><button class="primary" data-action="reminder-dismiss">OK</button></div></div></div>`;
+  }
+
 }

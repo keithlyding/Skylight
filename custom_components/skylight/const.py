@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.40.3"
+VERSION = "1.41.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -50,6 +50,10 @@ DEFAULT_DATA = {
     # Birthdays of people who aren't members, anniversaries, other yearly dates:
     # [{"id", "title", "type": "birthday"|"anniversary"|"other", "month", "day", "year"?, "members"?: [ids], "emoji"?}]
     "occasions": [],
+    # Reminders set in the event editor (see reminders.py), keyed by event uid (or calendar|title|start).
+    "event_meta": {},
+    # Reminders already sent ("key|start|when" -> time sent), kept a few days so none is sent twice.
+    "reminders_sent": {},
     # api_key is never sent to the browser (see SkylightStore.public).
     "immich": {"url": "", "api_key": "", "albums": [], "favorites": False},
     # Optional Google Places key for location lookup (never sent to the browser).
@@ -71,6 +75,9 @@ DEFAULT_DATA = {
         "weather_alerts": True,
         # Weather alert types (see ALERT_TYPES in the panel) that don't pop up or show in the banner.
         "alert_hide": [],
+        # Phones (notify.mobile_app_*) that get reminders: {service: {"mode": "off"|"all"|"members", "members": [...]}}
+        "reminder_phones": {},
+        "default_reminder": "",  # reminder preselected for new events ("" = none; see reminders.CHOICES)
         "allow_uploads": True,
         "unlock_minutes": 5,
         # Set by the v1.29 migration; the Settings banner asks to check Adult/Kid until dismissed.

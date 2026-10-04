@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.40.3";
+export const PANEL_VERSION = "1.41.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -313,3 +313,8 @@ export const ALERT_TYPES = [
 ];
 export const alertType = (event) => (ALERT_TYPES.find(([, , re]) => re.test(event || "")) || ["other"])[0];
 export const ALERT_TYPE_LABELS = Object.fromEntries([...ALERT_TYPES.map(([k, l]) => [k, l]), ["other", "⚠️ Other"]]);
+
+// Event reminder choices (minutes before, or "eve" = 7 PM the evening before). Must match reminders.py.
+export const REMINDERS = [["", "None"], ["0", "At the start"], ["5", "5 minutes before"], ["10", "10 minutes before"],
+  ["15", "15 minutes before"], ["30", "30 minutes before"], ["60", "1 hour before"], ["120", "2 hours before"],
+  ["1440", "1 day before"], ["eve", "The evening before (7 PM)"]];

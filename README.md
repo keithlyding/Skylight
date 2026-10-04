@@ -112,6 +112,16 @@ Lyding Strike → Setup → **Set a setup PIN** (4–8 digits, entered twice). A
 - The check happens on the Home Assistant server, not just on screen. The PIN is stored only as a salted hash and is never sent to any screen.
 - **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Lyding Strike** → **Configure** and ticks *Remove the setup PIN*.
 
+## Event reminders
+
+Home Assistant can't attach a reminder to a Google (or other) calendar event, so Lyding Strike sends them itself:
+
+- In the event editor, pick a **Reminder**: at the start, 5/10/15/30 minutes, 1 or 2 hours, 1 day before, or the evening before (7 PM). Setup → **⏰ Reminders** sets the default for new events.
+- **Phones:** every phone with the Home Assistant app (`notify.mobile_app_…`) is listed under Setup → Reminders with **Off / All events / Only events for…** (pick people), e.g. a shared kids' phone that only gets the kids' events. Home Assistant sends a push notification, so it arrives with the app closed.
+- **Screens:** each screen showing the panel chooses for itself (saved on that device) whether reminders pop up there with a chime. The wall display defaults to all events; phones default to off, since they get push notifications.
+- Reminders follow the event: Home Assistant looks up the event's current time before reminding, so moving it in Google Calendar moves the reminder. Each reminder is sent once.
+- Limits: reminders exist only in Lyding Strike (they don't show in the Google Calendar app), and only for events you set one on here. For a repeating Google event, the reminder covers the occurrence you edited; on a Local Calendar it covers every repeat.
+
 ## Look and night mode
 
 Setup → **Look & night mode**:
@@ -198,11 +208,11 @@ Nothing is sent to the author of Lyding Strike, and there is no tracking or anal
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 99 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 103 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 29 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 30 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend is a plain web component with no build step: the browser loads the files as they are.

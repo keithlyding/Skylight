@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.40.3";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.41.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -270,6 +270,7 @@ export class CalendarView {
         <label class="locfield">Location<input id="ev-loc" value="${esc(ev?.location)}" autocomplete="off" placeholder="Type a place or business name">
           <div id="loc-sugg" class="sugg" hidden></div></label>
         <label>Notes<textarea id="ev-desc" rows="2">${esc(ev?.description)}</textarea></label>
+        <label>Reminder<select id="ev-remind">${REMINDERS.map(([v, l]) => `<option value="${v}" ${v === (ev ? this._eventMeta(ev)?.remind || "" : this.settings.default_reminder || "") ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <div class="actions">
           ${ev ? `<button class="danger" data-action="delete-event">Delete</button>` : ""}
           <span class="spacer"></span>
@@ -477,7 +478,35 @@ export class CalendarView {
       for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
       for (const c of plan.remove) await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
     }
+    await this._saveReminder(ev, form, plan);
     this.closeDialog(); this._eventsKey = ""; this._mealKey = ""; this._loadEvents();
+  }
+
+  // ---------- reminders (sent by Home Assistant; see reminders.py) ----------
+  _metaKey(m) { return m.uid || `${m.entity}|${m.summary}|${m.start}`; }
+  // The reminder stored for an event shown on screen, if any.
+  _eventMeta(ev) {
+    const metas = Object.values(this.data.event_meta || {});
+    const uids = new Set((ev.copies || [ev]).map((c) => c.uid).filter(Boolean));
+    const start = +ev.start;
+    return metas.find((m) => (m.uid && uids.has(m.uid)) || (!m.uid && m.summary === (ev.raw ?? ev.summary) && +new Date(m.start) === start)) || null;
+  }
+  async _saveReminder(ev, form, plan) {
+    const remind = this.shadowRoot.getElementById("ev-remind")?.value || "";
+    const old = ev ? this._eventMeta(ev) : null;
+    if (!remind && !old) return;
+    const payload = this._eventPayload(form);
+    const keep = plan.keep[0];
+    // Calendars that edit in place keep the event's id (covers every repeat); others (e.g. Google in
+    // Home Assistant) replace the event, so it's found again by calendar + title + start.
+    const stable = keep && keep.uid && this._canUpdate(keep.entity);
+    const meta = remind ? {
+      entity: keep?.entity || plan.create[0] || form.entity, remind, summary: payload.summary,
+      start: localIso(form.allDay ? startOfDay(form.start) : form.start), members: [...(this.ui.dialog.who || [])],
+      ...(stable ? { uid: keep.uid } : {}),
+    } : null;
+    try { await this._ws({ type: "skylight/reminder/set", key: old ? this._metaKey(old) : "", meta }); }
+    catch (e) { this._toast(`Saved, but the reminder wasn't: ${e.message || e}`); }
   }
 
   // CalendarEntityFeature.UPDATE_EVENT = 4 (create = 1, delete = 2).
@@ -533,6 +562,8 @@ export class CalendarView {
       if (!scope) return;
     } else if (!confirm(`Delete "${ev.summary}"${copies.length > 1 ? ` from ${copies.length} calendars` : ""}?`)) return;
     for (const c of copies) await this._deleteCopy(c, scope);
+    const meta = this._eventMeta(ev);
+    if (meta && scope !== "this") await this._ws({ type: "skylight/reminder/set", key: this._metaKey(meta), meta: null }).catch(() => {});
     this.closeDialog(); this._eventsKey = ""; this._loadEvents();
   }
 

@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.3";
-import { STYLES } from "./styles.js?v=1.40.3";
-import { CalendarView } from "./calendar.js?v=1.40.3";
-import { WeatherView } from "./weather.js?v=1.40.3";
-import { HomeView } from "./home.js?v=1.40.3";
-import { ChoresView } from "./chores.js?v=1.40.3";
-import { MealsView } from "./meals.js?v=1.40.3";
-import { ListsView } from "./lists.js?v=1.40.3";
-import { PhotosView } from "./photos.js?v=1.40.3";
-import { SettingsView } from "./settings.js?v=1.40.3";
-import { PickersView } from "./pickers.js?v=1.40.3";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.41.0";
+import { STYLES } from "./styles.js?v=1.41.0";
+import { CalendarView } from "./calendar.js?v=1.41.0";
+import { WeatherView } from "./weather.js?v=1.41.0";
+import { HomeView } from "./home.js?v=1.41.0";
+import { ChoresView } from "./chores.js?v=1.41.0";
+import { MealsView } from "./meals.js?v=1.41.0";
+import { ListsView } from "./lists.js?v=1.41.0";
+import { PhotosView } from "./photos.js?v=1.41.0";
+import { SettingsView } from "./settings.js?v=1.41.0";
+import { PickersView } from "./pickers.js?v=1.41.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -87,6 +87,7 @@ export class SkylightPanel extends HTMLElement {
       this._connWatched = null; clearTimeout(this._lostTimer); this._lostAt = null;
     }
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
+    if (this._remUnsub) { this._remUnsub.then((u) => u && u()).catch(() => {}); this._remUnsub = null; }
     clearInterval(this._clockTimer); clearInterval(this._idleTimer); clearInterval(this._slideTimer);
     clearInterval(this._refreshTimer); clearInterval(this._alertTimer);
     if (this._onResize) { window.removeEventListener("resize", this._onResize); this._onResize = null; }
@@ -100,6 +101,9 @@ export class SkylightPanel extends HTMLElement {
     this._buildShadow();
     this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
     this._unsub.catch((e) => this._fatal(e));
+    // Reminders going off right now (each screen decides in Setup whether to show them).
+    this._remUnsub = this._hass.connection.subscribeMessage((r) => this._onReminder(r), { type: "skylight/reminder/subscribe" });
+    this._remUnsub.catch(() => { this._remUnsub = null; }); // older server: no reminders
     this._watchConnection();
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
     this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather" || this.ui.tab === "home") this._loadWeatherFull(); this._loadWxExtra(); }, 5 * 60000);
@@ -489,6 +493,23 @@ export class SkylightPanel extends HTMLElement {
         const set = new Set(this.settings.weather_sensors || []);
         el.checked ? set.add(d.entity) : set.delete(d.entity);
         await this._set("settings", { weather_sensors: [...set] }); break;
+      }
+      case "reminder-dismiss": this.ui.reminderPop = (this.ui.reminderPop || []).slice(1); this.render(); break;
+      case "reminder-screen": {
+        const cfg = this._screenReminders();
+        if (d.member) { const s = new Set(cfg.members || []); if (el.checked) s.add(d.member); else s.delete(d.member); cfg.members = [...s]; }
+        else cfg.mode = el.value;
+        try { localStorage.setItem("skylight.reminderScreen", JSON.stringify(cfg)); } catch (e) { /* private mode */ }
+        this.render(); break;
+      }
+      case "reminder-phone": {
+        const phones = JSON.parse(JSON.stringify(this.settings.reminder_phones || {}));
+        const cfg = phones[d.service] || { mode: "off", members: [] };
+        if (d.member) { const s = new Set(cfg.members || []); if (el.checked) s.add(d.member); else s.delete(d.member); cfg.members = [...s]; }
+        else cfg.mode = el.value;
+        phones[d.service] = cfg;
+        await this._set("settings", { reminder_phones: phones });
+        break;
       }
       case "alert-dismiss": this._markAlertsSeen(this.ui.alertPop || []); this.ui.alertPop = null; this.render(); break;
       case "alert-details": this._markAlertsSeen(this.ui.alertPop || []); this.ui.alertPop = null; this.ui.tab = "weather"; this._resetScroll = true; this.render(); break;
@@ -1036,7 +1057,7 @@ export class SkylightPanel extends HTMLElement {
         ${this.renderConnBanner()}
         ${this.renderAlertBanner()}
         <div class="content">${body}</div>
-      </main>${this.renderAlertPopup()}`;
+      </main>${this.renderAlertPopup()}${this.renderReminderPop()}`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
     for (const bar of this.$app.querySelectorAll("header, .rail")) { // new elements each render: no duplicates
       bar.addEventListener("touchstart", this._barTouchStart, { passive: true });
