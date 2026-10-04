@@ -311,6 +311,22 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async keyboardshift(browser, base) {
+    // iPhone keyboard: after typing in a dialog the page can be left scrolled up. Closing the dialog
+    // (or the keyboard) puts it back, so the tab bar is at the bottom again with no gap.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05")); await p.waitForTimeout(300);
+    await p.S("#ev-title").fill("Haircut");
+    await p.evaluate(() => { document.body.style.paddingBottom = "300px"; window.scrollTo(0, 250); }); // what iOS does
+    check(await p.evaluate(() => window.scrollY) > 0, "page scrolled up (simulated keyboard)");
+    await p.evaluate(() => el.closeDialog()); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => window.scrollY), 0, "page back in place after the dialog closes");
+    const m = await p.evaluate(() => ({ bottom: Math.max(...[...el.shadowRoot.querySelectorAll(".rail .tab")].map((t) => t.getBoundingClientRect().bottom)), h: innerHeight }));
+    check(m.bottom <= m.h + 1 && m.bottom > m.h - 60, `tab bar at the bottom (${m.bottom} of ${m.h})`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

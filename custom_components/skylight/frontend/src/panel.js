@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.0";
-import { STYLES } from "./styles.js?v=1.40.0";
-import { CalendarView } from "./calendar.js?v=1.40.0";
-import { WeatherView } from "./weather.js?v=1.40.0";
-import { HomeView } from "./home.js?v=1.40.0";
-import { ChoresView } from "./chores.js?v=1.40.0";
-import { MealsView } from "./meals.js?v=1.40.0";
-import { ListsView } from "./lists.js?v=1.40.0";
-import { PhotosView } from "./photos.js?v=1.40.0";
-import { SettingsView } from "./settings.js?v=1.40.0";
-import { PickersView } from "./pickers.js?v=1.40.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.1";
+import { STYLES } from "./styles.js?v=1.40.1";
+import { CalendarView } from "./calendar.js?v=1.40.1";
+import { WeatherView } from "./weather.js?v=1.40.1";
+import { HomeView } from "./home.js?v=1.40.1";
+import { ChoresView } from "./chores.js?v=1.40.1";
+import { MealsView } from "./meals.js?v=1.40.1";
+import { ListsView } from "./lists.js?v=1.40.1";
+import { PhotosView } from "./photos.js?v=1.40.1";
+import { SettingsView } from "./settings.js?v=1.40.1";
+import { PickersView } from "./pickers.js?v=1.40.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -183,6 +183,8 @@ export class SkylightPanel extends HTMLElement {
     this.$saver = this.shadowRoot.getElementById("saver");
     this.$cook = this.shadowRoot.getElementById("cook");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
+    this.shadowRoot.addEventListener("focusout", () => this._settlePage()); // keyboard closing
+    window.visualViewport?.addEventListener("resize", () => this._settlePage());
     this.shadowRoot.addEventListener("focusin", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); e.target.select(); } });
     this.shadowRoot.addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".tpick")) this._closeTimeLists(); }, true);
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
@@ -805,7 +807,19 @@ export class SkylightPanel extends HTMLElement {
   }
 
   // ---------- dialogs ----------
-  closeDialog() { this.ui.dialog = null; this.$dialog.innerHTML = ""; }
+  closeDialog() { this.ui.dialog = null; this.$dialog.innerHTML = ""; this._settlePage(); }
+  // iPhone: the on-screen keyboard scrolls the whole page up and often leaves it there, which cuts off
+  // the top, leaves a gap under the tab bar and makes taps land in the wrong place. Put it back.
+  _settlePage() {
+    clearTimeout(this._settleTimer);
+    this._settleTimer = setTimeout(() => {
+      const typing = this.shadowRoot.activeElement?.matches?.("input, textarea, select, [contenteditable]");
+      if (typing) return;
+      if (window.scrollY || window.scrollX || document.scrollingElement?.scrollTop) window.scrollTo(0, 0);
+      if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+      this._fitPhoneHeight();
+    }, 250);
+  }
   renderDialog() {
     if (this._renderingDialog) return; // a blur/change fired while replacing the dialog
     this._renderingDialog = true;
