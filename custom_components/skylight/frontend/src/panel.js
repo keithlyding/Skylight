@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.3";
-import { choreDone } from "./chore-rules.js?v=1.36.3";
-import { STYLES } from "./styles.js?v=1.36.3";
-import { CalendarView } from "./calendar.js?v=1.36.3";
-import { WeatherView } from "./weather.js?v=1.36.3";
-import { HomeView } from "./home.js?v=1.36.3";
-import { ChoresView } from "./chores.js?v=1.36.3";
-import { MealsView } from "./meals.js?v=1.36.3";
-import { ListsView } from "./lists.js?v=1.36.3";
-import { PhotosView } from "./photos.js?v=1.36.3";
-import { SettingsView } from "./settings.js?v=1.36.3";
-import { PickersView } from "./pickers.js?v=1.36.3";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.4";
+import { choreDone } from "./chore-rules.js?v=1.36.4";
+import { STYLES } from "./styles.js?v=1.36.4";
+import { CalendarView } from "./calendar.js?v=1.36.4";
+import { WeatherView } from "./weather.js?v=1.36.4";
+import { HomeView } from "./home.js?v=1.36.4";
+import { ChoresView } from "./chores.js?v=1.36.4";
+import { MealsView } from "./meals.js?v=1.36.4";
+import { ListsView } from "./lists.js?v=1.36.4";
+import { PhotosView } from "./photos.js?v=1.36.4";
+import { SettingsView } from "./settings.js?v=1.36.4";
+import { PickersView } from "./pickers.js?v=1.36.4";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -869,8 +869,6 @@ export class SkylightPanel extends HTMLElement {
     const top = Math.max(0, Math.round(this.getBoundingClientRect().top + (window.scrollY || 0)));
     const h = Math.round(window.innerHeight - top);
     if (h > 200) this.style.setProperty("--app-h", `${h}px`);
-    this._vpInfo = { w: window.innerWidth, h: window.innerHeight, top, app: h, safe: this._safeReported ?? null,
-      fallback: this.style.getPropertyValue("--safe-bottom") || "none", dvh: window.visualViewport ? Math.round(window.visualViewport.height) : null };
   }
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
@@ -933,7 +931,7 @@ export class SkylightPanel extends HTMLElement {
     this.$app.innerHTML = `
       <nav class="rail">
         <div class="logo" title="${this.appName}">⚡</div>
-        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
+        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${id === "settings" && this.isPhone ? "Setup" : label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
       </nav>
       <main>
         ${this.renderHeader()}

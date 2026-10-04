@@ -99,6 +99,12 @@ const SCENARIOS = {
       return { bottom: Math.max(...tabs.map((b) => b.bottom)), h: innerHeight, n: tabs.length };
     });
     check(m.n > 0 && m.bottom <= m.h + 1, `bottom bar on screen (${m.bottom} > ${m.h})`);
+    // "Setup" fits on a phone, also with the PIN lock badge
+    const label = () => p.evaluate(() => { const s = el.shadowRoot.querySelector('.tab[data-tab="settings"] span'); return [s.textContent.trim(), s.scrollWidth <= s.clientWidth + 1]; });
+    eq(await label(), ["Setup", true], "settings label on phone");
+    await p.evaluate(() => { el.data.security = { ...(el.data.security || {}), pin_set: true }; el.render(); }); await p.waitForTimeout(200);
+    const [txt, fits] = await label();
+    check(txt.startsWith("Setup") && fits, `label with lock fits (${txt})`);
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

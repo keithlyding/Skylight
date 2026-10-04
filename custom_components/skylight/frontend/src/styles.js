@@ -589,6 +589,8 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .tab { flex:1 1 0; min-width:0; padding:5px 0; gap:1px; font-size:9.5px; border-radius:10px; }
   .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tab ha-icon { --mdc-icon-size:22px; }
+  .tab { position:relative; }
+  .tab .lockmark { position:absolute; top:1px; left:calc(50% + 6px); font-size:10px; font-style:normal; }
   header { padding:8px 12px 2px; gap:6px; }
   .when { display:none; } /* the phone shows the time already: give the space to the calendar */
   header .members { order:0; flex:1 1 0; min-width:0; flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; padding-bottom:2px; }
