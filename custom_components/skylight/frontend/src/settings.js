@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.41.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.42.0";
 
 export class SettingsView {
 
@@ -103,17 +103,18 @@ export class SettingsView {
 
   // ---------- Setup: theme, dark mode, night dimming ----------
   renderLookCard() {
-    const s = this.settings, mode = s.dark_mode || "follow";
+    const s = this.settings, mine = this._screenScheme() || "follow";
     const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
-    const showTimes = mode === "scheduled" || (s.night_dim && mode !== "sun");
+    const showTimes = s.night_by !== "sun";
     return `<section class="card">
       <h2>Look &amp; night mode</h2>
       <label class="inline">Theme <select data-change="setting" data-key="theme">${Object.entries(THEMES).map(([k, t]) => `<option value="${k}" ${(s.theme || "warm") === k ? "selected" : ""}>${t.label}</option>`).join("")}</select></label>
       <label class="inline">Seasonal accents ${s.seasonal ? seasonFor(new Date()).emoji : ""} <input type="checkbox" ${s.seasonal ? "checked" : ""} data-change="setting" data-key="seasonal"></label>
       <p class="hint">Changes the accent color and adds a small emoji by the clock for spring, summer, July 4th, fall, Halloween, Thanksgiving week, Christmas and winter.</p>
-      <label class="inline">Dark mode <select data-change="setting" data-key="dark_mode">${[["follow", "Follow tablet"], ["light", "Always light"], ["dark", "Always dark"], ["scheduled", "Scheduled"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${mode === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-      <label class="inline">This screen <select data-change="screen-scheme">${[["", "Use the setting above"], ["follow", "Follow this device's light/dark"], ["light", "Always light"], ["dark", "Always dark"]].map(([v, l]) => `<option value="${v}" ${this._screenScheme() === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-      <p class="hint">Only for this screen (saved on this device). On a phone, "Follow this device" keeps the app dark whenever the phone is in Dark Mode, so the phone's own clock and battery at the top stay readable.</p>
+      <label class="inline">This screen <select data-change="screen-scheme">${[["follow", "Follow this device's light/dark"], ["light", "Always light"], ["dark", "Always dark"], ["night", "Dark at night"]].map(([v, l]) => `<option value="${v}" ${mine === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <p class="hint">Light or dark is chosen on each screen and saved on that device, so every phone and the wall display can differ. "Follow this device" uses the phone's or tablet's own Dark Mode.</p>
+      <label class="inline">Night is <select data-change="setting" data-key="night_by">${[["schedule", "Between set times"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${(s.night_by || "schedule") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <p class="hint">For everyone: screens set to "Dark at night" and night dimming use this.</p>
       ${showTimes ? `<div class="row"><label class="inline">Night starts <input type="time" value="${esc(s.night_start || "21:00")}" data-change="setting" data-key="night_start"></label>
         <label class="inline">ends <input type="time" value="${esc(s.night_end || "06:30")}" data-change="setting" data-key="night_end"></label></div>` : ""}
       <label class="inline">Dim the screen at night <input type="checkbox" ${s.night_dim ? "checked" : ""} data-change="setting" data-key="night_dim"></label>

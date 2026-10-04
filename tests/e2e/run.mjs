@@ -393,21 +393,23 @@ const SCENARIOS = {
   },
 
   async screenscheme(browser, base) {
-    // A phone in Dark Mode can follow its own setting while the family setting stays "Always light".
+    // Light/dark is per screen: the default follows the device; a choice is saved on that device only.
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" });
     const p = await ctx.newPage(); p.errors = []; p.on("pageerror", (e) => p.errors.push(e.message));
     await p.goto(base); await p.waitForTimeout(1200);
-    await p.evaluate(() => { el.ui.alertPop = null; D.settings.dark_mode = "light"; push(); }); await p.waitForTimeout(300);
-    eq(await p.evaluate(() => el.dataset.scheme), "light", "family setting: always light");
+    await p.evaluate(() => { el.ui.alertPop = null; el.render(); });
+    eq(await p.evaluate(() => el.dataset.scheme), "dark", "default: follows this device (in Dark Mode)");
     await p.evaluate(() => { el.ui.tab = "settings"; el.render(); }); await p.waitForTimeout(300);
-    await p.locator("skylight-panel").locator('select[data-change="screen-scheme"]').selectOption("follow"); await p.waitForTimeout(300);
-    eq(await p.evaluate(() => el.dataset.scheme), "dark", "this phone follows its own Dark Mode");
-    eq(await p.evaluate(() => D.settings.dark_mode), "light", "family setting unchanged");
+    check((await p.locator("skylight-panel").locator('select[data-key="dark_mode"]').count()) === 0, "no family-wide dark mode any more");
+    await p.locator("skylight-panel").locator('select[data-change="screen-scheme"]').selectOption("light"); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.dataset.scheme), "light", "this screen: always light");
+    eq(await p.evaluate(() => "dark_mode" in D.settings || "screenScheme" in D.settings), false, "nothing saved for the family");
     await p.reload(); await p.waitForTimeout(1200);
-    eq(await p.evaluate(() => el.dataset.scheme), "dark", "remembered on this device");
+    eq(await p.evaluate(() => el.dataset.scheme), "light", "remembered on this device");
     eq(p.errors, [], "page errors");
     await ctx.close();
   },
+
 
   async savercaption(browser, base) {
     // Screensaver on phones: the clock never covers the photo's date and place.
@@ -677,11 +679,13 @@ const SCENARIOS = {
     const p = await open(browser, base, { at: "2026-10-20T22:30:00" });
     const look = () => p.evaluate(() => [el.dataset.theme, el.dataset.scheme, getComputedStyle(el).getPropertyValue("--bg").trim(), el.$dim.style.opacity]);
     const set = async (v) => { await p.evaluate((v) => { Object.assign(D.settings, v); push(); }, v); await wait(p, 300); };
-    await set({ theme: "cool", dark_mode: "scheduled", night_start: "21:00", night_end: "06:30" });
-    eq(await look(), ["cool", "dark", "#0f1720", "0"], "scheduled dark at 22:30 (crosses midnight)");
+    await p.evaluate(() => localStorage.setItem("skylight.screenScheme", "night")); // this screen: dark at night
+    await set({ theme: "cool", night_by: "schedule", night_start: "21:00", night_end: "06:30" });
+    eq(await look(), ["cool", "dark", "#0f1720", "0"], "dark at night at 22:30 (window crosses midnight)");
     await set({ night_start: "23:00" });
     eq((await look())[1], "light", "before the window");
-    await set({ dark_mode: "light", seasonal: true, night_dim: true, brightness_entity: null, night_brightness: 30, night_start: "21:00" });
+    await p.evaluate(() => localStorage.setItem("skylight.screenScheme", "light"));
+    await set({ seasonal: true, night_dim: true, brightness_entity: null, night_brightness: 30, night_start: "21:00" });
     eq((await look())[3], "0.7", "dim overlay at night without a brightness entity");
     eq(await p.S(".season").textContent(), "🎃", "Halloween accent");
     await p.context().close();

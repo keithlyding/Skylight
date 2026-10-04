@@ -52,8 +52,8 @@ def sun_is_down(next_rising: datetime | None, next_setting: datetime | None) -> 
 
 
 def night_source(settings: dict[str, Any]) -> str:
-    """Night hours follow the sun when dark mode does; otherwise the start/end times."""
-    return "sun" if settings.get("dark_mode") == "sun" else "schedule"
+    """Night is sunset to sunrise, or the start/end times (Setup > Look & night mode > Night is)."""
+    return "sun" if settings.get("night_by") == "sun" else "schedule"
 
 
 def is_night(settings: dict[str, Any], now: datetime, next_rising: datetime | None = None,

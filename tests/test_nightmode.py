@@ -38,7 +38,7 @@ def test_window_same_day_and_across_midnight():
 
 
 def test_sunset_to_sunrise():
-    s = {"dark_mode": "sun"}
+    s = {"night_by": "sun"}
     now = datetime(2026, 6, 1, 23, 0, tzinfo=timezone.utc)
     rise, set_ = now + timedelta(hours=7), now + timedelta(hours=21)  # after sunset: next event is sunrise
     assert nightmode.is_night(s, now, rise, set_) is True
@@ -56,9 +56,9 @@ def test_js_night_rules_match_python():
 const ws = {json.dumps(windows)}, ts = {json.dumps(times)};
 const out = ws.map(([a, b]) => ts.map(([h, m]) => isNightAt({{night_start: a, night_end: b}}, new Date(2026, 0, 15, h, m))));
 const now = new Date(2026, 5, 1, 23);
-out.push([isNightAt({{dark_mode: "sun"}}, now, new Date(+now + 7 * 3.6e6), new Date(+now + 21 * 3.6e6)),
-          isNightAt({{dark_mode: "sun"}}, now, new Date(+now + 31 * 3.6e6), new Date(+now + 8 * 3.6e6)),
-          isNightAt({{dark_mode: "sun"}}, now)]);
+out.push([isNightAt({{night_by: "sun"}}, now, new Date(+now + 7 * 3.6e6), new Date(+now + 21 * 3.6e6)),
+          isNightAt({{night_by: "sun"}}, now, new Date(+now + 31 * 3.6e6), new Date(+now + 8 * 3.6e6)),
+          isNightAt({{night_by: "sun"}}, now)]);
 console.log(JSON.stringify(out));"""
     try:
         js = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
@@ -138,3 +138,13 @@ async def test_brightness_follows_night(hass: HomeAssistant, tmp_path):
     # unsupported domain is ignored safely
     store.data["settings"].update({"night_dim": True, "brightness_entity": "switch.something"})
     assert nightmode.brightness_call(hass, "switch.something", 50) is None
+
+
+def test_family_dark_mode_becomes_night_by():
+    """v1.42: light/dark is per screen; the old family dark mode only decides when night is."""
+    from custom_components.skylight.store import migrate
+    sun = {"settings": {"dark_mode": "sun"}}
+    assert migrate(sun) and sun["settings"] == {"night_by": "sun"}
+    sched = {"settings": {"dark_mode": "scheduled", "night_start": "21:00"}}
+    assert migrate(sched) and sched["settings"] == {"night_by": "schedule", "night_start": "21:00"}
+    assert nightmode.night_source({"night_by": "sun"}) == "sun" and nightmode.night_source({}) == "schedule"

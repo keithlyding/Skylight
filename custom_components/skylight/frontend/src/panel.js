@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.41.3";
-import { STYLES } from "./styles.js?v=1.41.3";
-import { CalendarView } from "./calendar.js?v=1.41.3";
-import { WeatherView } from "./weather.js?v=1.41.3";
-import { HomeView } from "./home.js?v=1.41.3";
-import { ChoresView } from "./chores.js?v=1.41.3";
-import { MealsView } from "./meals.js?v=1.41.3";
-import { ListsView } from "./lists.js?v=1.41.3";
-import { PhotosView } from "./photos.js?v=1.41.3";
-import { SettingsView } from "./settings.js?v=1.41.3";
-import { PickersView } from "./pickers.js?v=1.41.3";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.42.0";
+import { STYLES } from "./styles.js?v=1.42.0";
+import { CalendarView } from "./calendar.js?v=1.42.0";
+import { WeatherView } from "./weather.js?v=1.42.0";
+import { HomeView } from "./home.js?v=1.42.0";
+import { ChoresView } from "./chores.js?v=1.42.0";
+import { MealsView } from "./meals.js?v=1.42.0";
+import { ListsView } from "./lists.js?v=1.42.0";
+import { PhotosView } from "./photos.js?v=1.42.0";
+import { SettingsView } from "./settings.js?v=1.42.0";
+import { PickersView } from "./pickers.js?v=1.42.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1048,15 +1048,16 @@ export class SkylightPanel extends HTMLElement {
     const rise = sun.next_rising ? new Date(sun.next_rising) : null, set = sun.next_setting ? new Date(sun.next_setting) : null;
     const night = isNightAt(s, now, rise, set);
     // A screen can override the family setting for itself (e.g. a phone that follows its own Dark Mode).
-    const mode = this._screenScheme() || s.dark_mode || "follow";
-    const dark = mode === "dark" || ((mode === "scheduled" || mode === "sun") && night) || (mode === "follow" && !!this._mq?.matches);
+    // Light/dark is per screen (saved on this device): follow the device, always light/dark, or dark at night.
+    const mode = this._screenScheme() || "follow";
+    const dark = mode === "dark" || (mode === "night" && night) || (mode === "follow" && !!this._mq?.matches);
     const theme = THEMES[s.theme] ? s.theme : "warm";
     if (this.dataset.theme !== theme) this.dataset.theme = theme;
     if (this.dataset.scheme !== (dark ? "dark" : "light")) this.dataset.scheme = dark ? "dark" : "light";
     const accent = s.seasonal ? seasonFor(now).accent : "";
     if (accent) this.style.setProperty("--accent", accent); else this.style.removeProperty("--accent");
     // Without a brightness entity, dim pixels with an overlay at night (also over the photo screensaver).
-    const overlay = s.night_dim && !s.brightness_entity && isNightAt({ ...s, dark_mode: mode === "sun" ? "sun" : "scheduled" }, now, rise, set);
+    const overlay = s.night_dim && !s.brightness_entity && night;
     const level = Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
     if (this.$dim) this.$dim.style.opacity = overlay ? String(level) : "0";
   }

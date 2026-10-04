@@ -128,8 +128,8 @@ Setup → **Look & night mode**:
 
 - **Theme:** Warm (default), Cool, Slate (dark neutral) or High contrast. Each has a light and a dark version. Only surfaces, text and the accent color change; family members keep their own colors.
 - **Seasonal accents** (off by default): a different accent color and a small emoji by the clock for spring, summer, July 4th (Jul 1–5), fall, Halloween (Oct 15–31), Thanksgiving week, Christmas (Dec 1–26) and winter.
-- **Dark mode:** Follow tablet, Always light, Always dark, Scheduled (start and end times; can cross midnight) or Sunset to sunrise (from Home Assistant's `sun.sun`).
-- **This screen:** any screen can override the family setting for itself (saved on that device): follow that device's own light/dark, always light or always dark. Handy on phones: with *Follow this device*, a phone in Dark Mode shows the app dark too, so the phone's own clock at the top (white in Dark Mode) stays readable.
+- **Light or dark is chosen on each screen** (saved on that device, so every phone and the wall display can differ): **Follow this device** (the default; uses the phone's or tablet's own Dark Mode), **Always light**, **Always dark** or **Dark at night**. Handy on phones: following the phone keeps the app dark whenever the phone is in Dark Mode, so the phone's own clock at the top stays readable.
+- **Night is** (for everyone): between set start and end times (can cross midnight) or sunset to sunrise (from Home Assistant's `sun.sun`). Used by screens set to *Dark at night* and by night dimming. Upgrading from v1.41 or earlier keeps your old choice of sunset-to-sunrise or times; each screen starts on *Follow this device*.
 - **Dim the screen at night:** pick a **screen brightness entity** and Home Assistant sets it to your day or night level whenever night starts or ends. With Fully Kiosk Browser, add its Home Assistant integration and choose its "Screen brightness" entity; lights and `input_number` entities work too. A manual brightness change stays until the next switch. Without an entity, Lyding Strike darkens the picture with an overlay instead; that dims pixels, not the backlight. Night hours are the dark-mode schedule (or sunset to sunrise), and the photo screensaver is dimmed too.
 
 ## Birthdays and anniversaries
@@ -209,7 +209,7 @@ Nothing is sent to the author of Lyding Strike, and there is no tracking or anal
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 103 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 104 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium

@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.41.3";
+export const PANEL_VERSION = "1.42.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -246,7 +246,7 @@ export const seasonFor = (d) => {
 export const parseHM = (v, dflt) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(v || "")); if (!m) return dflt; const x = Number(m[1]) * 60 + Number(m[2]); return x < 1440 ? x : dflt; };
 export const inWindow = (now, start, end) => (start === end ? false : start < end ? now >= start && now < end : now >= start || now < end);
 export const sunIsDown = (rise, set) => (rise && set ? rise < set : null);
-export const isNightAt = (settings, now, rise = null, set = null) => (settings?.dark_mode === "sun"
+export const isNightAt = (settings, now, rise = null, set = null) => (settings?.night_by === "sun"
   ? !!sunIsDown(rise, set)
   : inWindow(now.getHours() * 60 + now.getMinutes(), parseHM(settings?.night_start, 21 * 60), parseHM(settings?.night_end, 6 * 60 + 30)));
 

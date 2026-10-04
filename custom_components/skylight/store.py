@@ -30,6 +30,12 @@ ROLES = ("adult", "kid", "home")  # home = Household (house maintenance etc.): h
 def migrate(data: dict[str, Any]) -> bool:
     """Bring older stored data up to date in place. Returns True if anything changed."""
     changed = False
+    # v1.42: light/dark is chosen per screen; the family setting only keeps when night is.
+    settings = data.get("settings")
+    if isinstance(settings, dict) and "dark_mode" in settings:
+        settings.setdefault("night_by", "sun" if settings.get("dark_mode") == "sun" else "schedule")
+        settings.pop("dark_mode")
+        changed = True
     # v1.28: stars and rewards were removed; chore completion history is kept.
     removed = [k for k in ("stars", "rewards") if k in data]
     for k in removed:

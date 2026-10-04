@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.41.3"
+VERSION = "1.42.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -88,7 +88,9 @@ DEFAULT_DATA = {
         # Look: theme preset, seasonal accents, dark mode and night dimming.
         "theme": "warm",            # warm | cool | slate | contrast
         "seasonal": False,
-        "dark_mode": "follow",      # follow | light | dark | scheduled | sun
+        # When "night" is (night dimming, and screens set to "Dark at night"): schedule (night_start/end) | sun.
+        # Light/dark itself is chosen on each screen (saved on that device), not here.
+        "night_by": "schedule",
         "night_start": "21:00",
         "night_end": "06:30",
         "night_dim": False,
