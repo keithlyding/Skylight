@@ -584,7 +584,8 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .content { padding-bottom:14px; }
   /* Bottom bar: clear of the home indicator / rounded corners. --safe-bottom is a fallback for the
      Home Assistant iPhone app, where iOS can report the safe area as 0 (see _safeAreaFallback). */
-  .rail { padding:4px 2px calc(4px + max(env(safe-area-inset-bottom), var(--safe-bottom, 0px))); gap:0; justify-content:stretch; }
+  /* iOS reserves ~34px for the home-indicator line; the icons only need about half of it to stay clear. */
+  .rail { padding:4px 2px max(6px, calc(max(env(safe-area-inset-bottom), var(--safe-bottom, 0px)) - 16px)); gap:0; justify-content:stretch; }
   .tab { flex:1 1 0; min-width:0; padding:5px 0; gap:1px; font-size:9.5px; border-radius:10px; }
   .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tab ha-icon { --mdc-icon-size:22px; }
