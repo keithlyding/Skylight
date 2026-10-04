@@ -136,8 +136,8 @@ const SCENARIOS = {
   },
 
   async notch(browser, base) {
-    // iPhone app with the panel starting below the status bar (47 px): the app reaches up behind it and the
-    // header clears the notch; if something else covers that strip, it backs off again.
+    // iPhone app with the panel starting below the status bar (47 px): the app fits the space below it,
+    // with the tab bar on screen (it no longer tries to reach up behind the status bar; see v1.42.1).
     const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Home Assistant/2025.1";
     for (const covered of [false, true]) {
       const ctx = await browser.newContext({ viewport: { width: 390, height: 797 }, isMobile: true, hasTouch: true, userAgent: UA });
@@ -157,8 +157,8 @@ const SCENARIOS = {
         const tabs = [...el.shadowRoot.querySelectorAll(".rail .tab")].map((t) => t.getBoundingClientRect().bottom);
         return { appTop: Math.round(app.top), contentTop: Math.round(first?.top ?? chips.top), barBottom: Math.max(...tabs), h: innerHeight };
       });
-      if (covered) eq(m.appTop, 47, "covered strip: app stays below it");
-      else { eq(m.appTop, 0, "app reaches up behind the status bar"); check(m.contentTop >= 47, `header content clears the notch (${m.contentTop})`); }
+      eq(m.appTop, 47, "app starts where the panel starts");
+      check(m.contentTop >= 47, `header content below the status bar (${m.contentTop})`);
       check(m.barBottom <= m.h + 1, `bottom bar on screen (${m.barBottom} > ${m.h})`);
       eq(p.errors, [], "page errors");
       await ctx.close();

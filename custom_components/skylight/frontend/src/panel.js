@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.42.0";
-import { STYLES } from "./styles.js?v=1.42.0";
-import { CalendarView } from "./calendar.js?v=1.42.0";
-import { WeatherView } from "./weather.js?v=1.42.0";
-import { HomeView } from "./home.js?v=1.42.0";
-import { ChoresView } from "./chores.js?v=1.42.0";
-import { MealsView } from "./meals.js?v=1.42.0";
-import { ListsView } from "./lists.js?v=1.42.0";
-import { PhotosView } from "./photos.js?v=1.42.0";
-import { SettingsView } from "./settings.js?v=1.42.0";
-import { PickersView } from "./pickers.js?v=1.42.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.42.1";
+import { STYLES } from "./styles.js?v=1.42.1";
+import { CalendarView } from "./calendar.js?v=1.42.1";
+import { WeatherView } from "./weather.js?v=1.42.1";
+import { HomeView } from "./home.js?v=1.42.1";
+import { ChoresView } from "./chores.js?v=1.42.1";
+import { MealsView } from "./meals.js?v=1.42.1";
+import { ListsView } from "./lists.js?v=1.42.1";
+import { PhotosView } from "./photos.js?v=1.42.1";
+import { SettingsView } from "./settings.js?v=1.42.1";
+import { PickersView } from "./pickers.js?v=1.42.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1007,34 +1007,22 @@ export class SkylightPanel extends HTMLElement {
   // than the area the Home Assistant iPhone app gives the panel, which pushed the bottom bar off screen.
   // Uses only the window size and the panel's position (never its own content), so it can't feed back on itself.
   _fitPhoneHeight() {
-    if (!this.isPhone) { this.style.removeProperty("--app-h"); this.style.removeProperty("--lift"); return; }
-    // Brake: if measuring keeps changing the layout (e.g. two answers fighting), stop adjusting instead of
-    // keeping the phone busy forever. More than 20 fits in 2 seconds is never normal.
+    if (!this.isPhone) { this.style.removeProperty("--app-h"); return; }
+    // Brake: if measuring keeps changing the layout, stop adjusting instead of keeping the phone busy.
+    // More than 20 fits in 2 seconds is never normal.
     const now = Date.now();
     this._fitTimes = (this._fitTimes || []).filter((t) => now - t < 2000);
     this._fitTimes.push(now);
     if (this._fitStopped || this._fitTimes.length > 20) {
-      if (!this._fitStopped) { this._fitStopped = true; this._liftFailed = true; this.style.setProperty("--lift", "0px"); console.warn("Lyding Strike: layout kept changing; stopped re-measuring"); }
+      if (!this._fitStopped) { this._fitStopped = true; console.warn("Lyding Strike: layout kept changing; stopped re-measuring"); }
       return;
     }
+    // (v1.37-1.42 also tried to reach up behind the iPhone status bar and checked it with a hit-test
+    // through nested shadow roots. On iPhones that check could loop forever and freeze all of Home
+    // Assistant, and the HA app keeps that strip for itself anyway, so it was removed in v1.42.1.)
     const top = Math.max(0, Math.round(this.getBoundingClientRect().top + (window.scrollY || 0)));
-    // iPhone app: when the panel starts just below the status bar, reach up behind it (the header is
-    // padded so names and weather sit below the notch). Undone if that strip doesn't actually show us.
-    const lift = /iPhone|iPod/.test(navigator.userAgent) && !this._liftFailed && top > 0 && top <= 64 ? top : 0;
-    if (this.style.getPropertyValue("--lift") !== `${lift}px`) this.style.setProperty("--lift", `${lift}px`);
-    const h = Math.round(window.innerHeight - top + lift);
+    const h = Math.round(window.innerHeight - top);
     if (h > 200 && this.style.getPropertyValue("--app-h") !== `${h}px`) this.style.setProperty("--app-h", `${h}px`);
-    if (lift) {
-      requestAnimationFrame(() => {
-        // What's really on top there: hit-test from the page down through each shadow root.
-        const x = window.innerWidth / 2, y = Math.max(1, lift / 2);
-        let hit = document.elementFromPoint(x, y);
-        while (hit?.shadowRoot) { const inner = hit.shadowRoot.elementFromPoint(x, y); if (!inner || inner === hit) break; hit = inner; }
-        const ours = hit && this.shadowRoot.contains(hit);
-        if (ours && !this.$app?.contains(hit)) return; // our own pop-up or screensaver is on top: check again later
-        if (!ours) { this._liftFailed = true; this._fitPhoneHeight(); }
-      });
-    }
   }
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.

@@ -640,10 +640,7 @@ button.busy { opacity:.55; cursor:progress; }
   .rsb small { font-size:9px; }
   .rsb:nth-child(even) small { visibility:hidden; }
   .tab .lockmark { position:absolute; top:1px; left:calc(50% + 6px); font-size:10px; font-style:normal; }
-  /* --lift: how far the app reaches up behind the iPhone status bar (see _fitPhoneHeight) */
-  :host { display:flow-root; } /* keeps .app's negative margin inside (no margin collapsing) */
-  .app { margin-top:calc(-1 * var(--lift, 0px)); }
-  header { padding:max(8px, calc(var(--lift, 0px) + 4px), env(safe-area-inset-top)) 12px 2px; gap:6px; }
+  header { padding:max(8px, env(safe-area-inset-top)) 12px 2px; gap:6px; }
   .when { display:none; } /* the phone shows the time already: give the space to the calendar */
   header .members { order:0; flex:1 1 0; min-width:0; flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; padding-bottom:2px; }
   header .mchip { flex:none; padding:4px 10px 4px 4px; font-size:14px; }

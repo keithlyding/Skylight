@@ -97,3 +97,9 @@ def test_alert_types():
         import pytest
         pytest.skip("node not installed")
     assert dict(zip(events, got)) == events
+
+
+def test_no_hit_testing_through_shadow_roots():
+    """v1.42.1: walking elementFromPoint down nested shadow roots could loop forever on iPhones (WebKit)
+    and freeze all of Home Assistant. Don't bring it back."""
+    assert "elementFromPoint" not in ALL and "elementsFromPoint" not in ALL
