@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-const PANEL_VERSION = "1.33.3";
+const PANEL_VERSION = "1.33.4";
 // Profile colors: each column is a color family, rows go light -> dark.
 const MEMBER_COLORS = [
   // light
@@ -479,6 +479,7 @@ class SkylightPanel extends HTMLElement {
     this._shadowBuilt = true;
     this.shadowRoot.innerHTML = `<style>${STYLES}\n${THEME_CSS}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="saver"></div><div id="dim" aria-hidden="true"></div>`;
     this.$dim = this.shadowRoot.getElementById("dim");
+    this._safeAreaFallback();
     // "Follow tablet" dark mode: react when the device switches.
     this._mq = window.matchMedia?.("(prefers-color-scheme: dark)");
     this._mq?.addEventListener?.("change", () => this._applyLook());
@@ -3111,6 +3112,21 @@ class SkylightPanel extends HTMLElement {
     return parts.join("");
   }
 
+  // iPhones with a home indicator and rounded corners need room at the bottom. Inside the Home
+  // Assistant app iOS can report that safe area as 0; then reserve it ourselves.
+  _safeAreaFallback() {
+    const ios = /iPhone|iPod/.test(navigator.userAgent);
+    if (!ios) return;
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)";
+    this.shadowRoot.appendChild(probe);
+    const reported = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+    probe.remove();
+    // Home-indicator iPhones are 812pt or taller in either direction; older ones (Home button) need nothing.
+    const tall = Math.max(screen.width, screen.height) >= 812;
+    if (!reported && tall) this.style.setProperty("--safe-bottom", "22px");
+  }
+
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
   _applyLook() {
     if (!this.data) return;
@@ -4664,16 +4680,18 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .rail { width:100%; }
   header { padding:max(8px, env(safe-area-inset-top)) 12px 2px; }
   .content { padding-bottom:14px; }
-  .rail { padding:2px 2px calc(2px + env(safe-area-inset-bottom)); gap:0; justify-content:stretch; }
+  /* Bottom bar: clear of the home indicator / rounded corners. --safe-bottom is a fallback for the
+     Home Assistant iPhone app, where iOS can report the safe area as 0 (see _safeAreaFallback). */
+  .rail { padding:4px 2px calc(4px + max(env(safe-area-inset-bottom), var(--safe-bottom, 0px))); gap:0; justify-content:stretch; }
   .tab { flex:1 1 0; min-width:0; padding:5px 0; gap:1px; font-size:9.5px; border-radius:10px; }
   .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tab ha-icon { --mdc-icon-size:22px; }
   header { padding:8px 12px 2px; gap:6px; }
-  .clock { font-size:26px; } .date { font-size:13px; }
-  header .members { order:3; flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; padding-bottom:2px; }
+  .when { display:none; } /* the phone shows the time already: give the space to the calendar */
+  header .members { order:0; flex:1 1 0; min-width:0; flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; padding-bottom:2px; }
   header .mchip { flex:none; padding:4px 10px 4px 4px; font-size:14px; }
   header .mchip .av { width:26px; height:26px; font-size:15px; }
-  header .weather { font-size:22px; margin-left:auto; }
+  header .weather { font-size:20px; margin-left:auto; flex:none; } header .weather b { font-size:22px; }
   .alertbar { margin:4px 12px 0; padding:6px 10px; font-size:13px; }
   .content { padding:6px 10px 14px; }
   .toolbar h1 { font-size:20px; }
@@ -4709,7 +4727,7 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .tab { width:56px; padding:4px 2px; gap:1px; font-size:9px; }
   .tab ha-icon { --mdc-icon-size:20px; }
   header { padding:max(4px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 2px 12px; gap:8px; flex-wrap:nowrap; }
-  .clock { font-size:22px; } .date { font-size:12px; } .when { min-width:0; }
+  .when { display:none; }
   header .members { flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; }
   header .mchip { flex:none; padding:2px 8px 2px 2px; font-size:13px; }
   header .mchip .av { width:22px; height:22px; font-size:13px; }
