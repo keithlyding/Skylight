@@ -295,7 +295,7 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 label { display:flex; flex-direction:column; gap:4px; font-weight:700; font-size:14px; margin:8px 0; flex:1; }
 label.inline { flex-direction:row; align-items:center; justify-content:space-between; gap:12px; }
 label.inline select, label.inline input:not([type=checkbox]) { width:auto; min-width:160px; }
-label.check { flex-direction:row; align-items:center; gap:10px; font-weight:600; margin:4px 0; }
+label.check { flex-direction:row; align-items:center; gap:10px; font-weight:600; margin:4px 0; flex:0 0 auto; width:fit-content; max-width:100%; } /* only the box and its text are tappable, not the whole row */
 label.check input { width:22px; height:22px; }
 .label { font-weight:700; font-size:14px; margin:12px 0 6px; }
 .checklist { display:flex; flex-direction:column; max-height:260px; overflow-y:auto; }

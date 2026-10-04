@@ -375,6 +375,23 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async checkboxrow(browser, base) {
+    // Tapping empty space to the right of "All day" must not toggle it; tapping the box or its text does.
+    for (const [w, h, mobile] of [[1300, 912, false], [390, 844, true]]) {
+      const p = await open(browser, base, { width: w, height: h, ctx: mobile ? { isMobile: true, hasTouch: true } : {} });
+      await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 9)); await p.waitForTimeout(300);
+      const box = p.S("#ev-allday");
+      const before = await box.isChecked();
+      const dlg = await p.S(".dialog").boundingBox(), row = await p.S("label.check:has(#ev-allday)").boundingBox();
+      await p.mouse.click(dlg.x + dlg.width - 30, row.y + row.height / 2); await p.waitForTimeout(200);
+      eq(await box.isChecked(), before, `${w}px: empty space on the row doesn't toggle All day`);
+      check(row.width < dlg.width * 0.6, `${w}px: the clickable label is just the box and its text (${Math.round(row.width)}px)`);
+      await p.S("label.check:has(#ev-allday)").click({ position: { x: row.width - 5, y: row.height / 2 } }); await p.waitForTimeout(200);
+      eq(await box.isChecked(), !before, `${w}px: tapping the words still toggles it`);
+      await p.context().close();
+    }
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
