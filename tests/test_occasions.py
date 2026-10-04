@@ -9,12 +9,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from panel_js import ALL, HELPERS
+
 DOMAIN = "skylight"
-JS = (pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/skylight-panel.js").read_text()
+JS = ALL
 
 
 def _run(expr: str):
-    helpers = JS[JS.index("const pad = "):JS.index("class SkylightPanel")]
+    helpers = HELPERS
     try:
         out = subprocess.run(["node", "-e", helpers + f"\nconsole.log(JSON.stringify({expr}));"],
                              capture_output=True, text=True, check=True).stdout

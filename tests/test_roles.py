@@ -9,8 +9,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from panel_js import ALL, HELPERS
+
 DOMAIN = "skylight"
-JS = (pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/skylight-panel.js").read_text()
+JS = ALL
 
 
 async def _load(hass, tmp_path, hass_storage, data):
@@ -75,7 +77,7 @@ async def test_list_owners_are_adults_only(hass, tmp_path, hass_storage, hass_ws
 
 
 def _node(script: str):
-    helpers = JS[JS.index("const pad = "):JS.index("class SkylightPanel")]
+    helpers = HELPERS
     try:
         out = subprocess.run(["node", "-e", helpers + script], capture_output=True, text=True, check=True).stdout
     except FileNotFoundError:

@@ -4,6 +4,8 @@ import importlib.util
 import pathlib
 from datetime import date
 
+from panel_js import ALL, HELPERS
+
 _spec = importlib.util.spec_from_file_location(
     "chores", pathlib.Path(__file__).parents[1] / "custom_components/skylight/chores.py"
 )
@@ -84,9 +86,7 @@ def test_js_rule_matches_python():
     import subprocess
     from datetime import timedelta
 
-    js_path = pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/skylight-panel.js"
-    src = js_path.read_text()
-    helpers = src[src.index("const pad = "):src.index("class SkylightPanel")]
+    helpers = HELPERS
     cases = [
         {"repeat": "days", "days": [4], "every_weeks": 2, "start": "2026-10-02"},
         {"repeat": "days", "days": [0, 3], "every_weeks": 3, "start": "2026-09-30"},

@@ -3,7 +3,9 @@
 import pathlib
 import re
 
-JS = (pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/skylight-panel.js").read_text()
+from panel_js import ALL, HELPERS
+
+JS = ALL
 
 
 def _defined_methods() -> set[str]:
@@ -43,3 +45,31 @@ def test_linked_list_fields_not_commented_out():
     assert "//" not in line
     for field in ("name: this.entityName(e)", "owner:", "color:", "canMove:"):
         assert field in line
+
+
+def test_module_imports_are_versioned():
+    """Every import between panel files carries ?v=<version>, so an update never mixes old and new files."""
+    import json
+    from panel_js import FILES
+    version = json.loads((pathlib.Path(__file__).parents[1] / "custom_components/skylight/manifest.json").read_text())["version"]
+    for f in FILES:
+        for spec in re.findall(r'^import .* from "([^"]+)";$', f.read_text(), re.M):
+            target, _, query = spec.partition("?")
+            assert query == f"v={version}", f"{f.name}: {spec}"
+            assert (f.parent / target).resolve().is_file(), f"{f.name}: {spec} does not exist"
+
+
+def test_helpers_used_are_imported():
+    """A file that uses a shared helper must import it (otherwise it fails only when that code runs)."""
+    from panel_js import SRC, FILES
+    shared = {}
+    for mod in ("helpers", "chore-rules", "styles"):
+        for name in re.findall(r"^export const ([A-Za-z_$][\w$]*)", (SRC / f"{mod}.js").read_text(), re.M):
+            shared[name] = mod
+    for f in FILES:
+        text = f.read_text()
+        own = set(re.findall(r"^export const ([A-Za-z_$][\w$]*)", text, re.M))
+        imported = {n.strip() for group in re.findall(r"^import \{([^}]*)\} from", text, re.M) for n in group.split(",")}
+        code = re.sub(r"^import .*$", "", text, flags=re.M)
+        used = {n for n in shared if n not in own and re.search(r"(?<![\w$.])" + re.escape(n) + r"(?![\w$])", code)}
+        assert used <= imported, f"{f.name} uses {sorted(used - imported)} without importing"

@@ -5,6 +5,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from panel_js import ALL, HELPERS
+
 DOMAIN = "skylight"
 
 
@@ -69,8 +71,7 @@ def test_done_items_in_completion_order():
     import json
     import pathlib
     import subprocess
-    js = (pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/skylight-panel.js").read_text()
-    helpers = js[js.index("const pad = "):js.index("class SkylightPanel")]
+    helpers = HELPERS
     items = [{"id": "x", "done": True, "done_at": "2026-09-29T10:00:00Z"}, {"id": "a"},
              {"id": "old1", "done": True}, {"id": "y", "done": True, "done_at": "2026-09-28T10:00:00Z"},
              {"id": "b"}, {"id": "old2", "done": True}]

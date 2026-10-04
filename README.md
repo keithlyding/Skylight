@@ -198,14 +198,25 @@ Nothing is sent to the author of Skylight, and there is no tracking or analytics
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 90 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 92 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 15 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 16 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
-The frontend (`custom_components/skylight/frontend/skylight-panel.js`) is a single plain web component with no build step.
+The frontend is a plain web component with no build step: the browser loads the files as they are.
+
+| File (`custom_components/skylight/frontend/`) | What's in it |
+|---|---|
+| `skylight-panel.js` | Entry point: registers the `<skylight-panel>` element |
+| `src/panel.js` | The element itself: start-up, data, tap/change handling, layout, header |
+| `src/helpers.js` | Constants and DOM-free helpers (dates, themes, night mode, birthdays) |
+| `src/chore-rules.js` | Chore scheduling rules, mirrored from `chores.py` (tests check they agree) |
+| `src/styles.js` | All CSS |
+| `src/calendar.js`, `weather.js`, `home.js`, `chores.js`, `meals.js`, `lists.js`, `photos.js`, `settings.js`, `pickers.js` | One file per area; their methods are mixed into the panel element |
+
+Files import each other with `?v=<version>` so an update never mixes old and new files. Change the version with `python3 tools/bump_version.py X.Y.Z`, which updates every place it appears; a test fails if any import is out of step.
 
 ## License
 

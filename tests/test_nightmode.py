@@ -13,8 +13,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.skylight import nightmode
 
+from panel_js import ALL, HELPERS
+
 DOMAIN = "skylight"
-JS = (pathlib.Path(__file__).parents[1] / "custom_components/skylight/frontend/skylight-panel.js").read_text()
+JS = ALL
 
 
 def _t(h, m=0):
@@ -47,7 +49,7 @@ def test_sunset_to_sunrise():
 
 
 def test_js_night_rules_match_python():
-    helpers = JS[JS.index("const pad = "):JS.index("class SkylightPanel")]
+    helpers = HELPERS
     windows = [("21:00", "06:30"), ("13:00", "15:00"), ("00:00", "00:00"), ("22:15", "07:45"), ("bad", "06:00")]
     times = [(h, m) for h in range(24) for m in (0, 14, 15, 29, 30, 45, 59)]
     script = helpers + f"""
@@ -70,7 +72,7 @@ console.log(JSON.stringify(out));"""
 def test_every_theme_defines_every_variable():
     vars_ = json.loads(re.search(r"const THEME_VARS = (\[[^\]]*\]);", JS).group(1))
     assert {"--bg", "--card", "--ink", "--muted", "--line", "--accent"} <= set(vars_)
-    helpers = JS[JS.index("const pad = "):JS.index("class SkylightPanel")]
+    helpers = HELPERS
     try:
         themes = json.loads(subprocess.run(["node", "-e", helpers + "console.log(JSON.stringify(THEMES))"],
                                            capture_output=True, text=True, check=True).stdout)
@@ -87,7 +89,7 @@ def test_every_theme_defines_every_variable():
 
 
 def test_seasons():
-    helpers = JS[JS.index("const pad = "):JS.index("class SkylightPanel")]
+    helpers = HELPERS
     days = ["2026-07-01", "2026-07-05", "2026-07-06", "2026-10-15", "2026-10-31", "2026-11-23", "2026-11-26", "2026-11-29",
             "2026-11-30", "2026-12-01", "2026-12-26", "2026-12-27", "2026-03-19", "2026-03-20", "2026-06-21", "2026-09-22"]
     script = helpers + f"console.log(JSON.stringify({json.dumps(days)}.map((d) => seasonFor(parseYmd(d)).key)))"

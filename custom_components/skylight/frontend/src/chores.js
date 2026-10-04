@@ -1,0 +1,183 @@
+/* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
+
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.35.0";
+import { EVERY_WEEKS, EVERY_MONTHS, LOOKBACK_DAYS, choreScheduled, choreCarries, choreDone, choreDue, choreOverdueSince } from "./chore-rules.js?v=1.35.0";
+
+export class ChoresView {
+
+  openChoreDialog(c, memberId) {
+    const dlg = {
+      type: "chore", chore: c, repeat: c?.repeat || "daily", icon: c?.icon || "✅", iconOpen: false,
+      html: () => `
+        <h2>${c ? "Edit" : "New"} chore</h2>
+        ${!this.members.length ? `<p class="hint">Add family members in Settings first.</p>` : ""}
+        <div class="row">
+          <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
+          <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
+        </div>
+        <label>Who<select id="c-member">${choreOwnersOf(this.members).map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Repeats<select id="c-repeat" data-change="chore-repeat">
+          <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
+          <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days of the week</option>
+          <option value="weekly" ${dlg.repeat === "weekly" ? "selected" : ""}>Once a week (any day)</option>
+          <option value="monthly" ${dlg.repeat === "monthly" ? "selected" : ""}>Monthly, on certain dates</option>
+          <option value="once" ${dlg.repeat === "once" ? "selected" : ""}>Just once</option></select></label>
+        <div class="dayopts" ${dlg.repeat === "days" ? "" : "hidden"}>
+          <div class="daypick">${WEEKDAYS.map((w, i) => `<label class="daychip"><input type="checkbox" class="c-day" id="cd-${i}" value="${i}" ${(c?.days || [0, 1, 2, 3, 4]).includes(i) ? "checked" : ""}><span>${w}</span></label>`).join("")}</div>
+          <label>Every<select id="c-every" data-change="chore-every">${EVERY_WEEKS.map((n) => `<option value="${n}" ${n === (Number(c?.every_weeks) || 1) ? "selected" : ""}>${n === 1 ? "week" : `${n} weeks`}</option>`).join("")}</select></label>
+          <p class="hint">For every other week, pick "2 weeks" and a start date in a week the chore happens (e.g. this Friday's recycling week).</p>
+        </div>
+        <div class="monthopts" ${dlg.repeat === "monthly" ? "" : "hidden"}>
+          <div class="daypick monthpick">${[...Array(31)].map((_, i) => i + 1).concat([-1]).map((n) => `<label class="daychip"><input type="checkbox" class="c-mday" value="${n}" ${(c?.month_days || [1]).includes(n) ? "checked" : ""}><span>${n === -1 ? "Last" : n}</span></label>`).join("")}</div>
+          <label>Every<select id="c-every-months">${EVERY_MONTHS.map((n) => `<option value="${n}" ${n === (Number(c?.every_months) || 1) ? "selected" : ""}>${n === 1 ? "month" : n === 12 ? "year (12 months)" : `${n} months`}</option>`).join("")}</select></label>
+          <p class="hint">Dates 29–31 fall on the last day of shorter months. For every 3 or 6 months, the start date sets which months.</p>
+        </div>
+        <div class="startopt" ${["days", "monthly"].includes(dlg.repeat) ? "" : "hidden"}>
+          <label>Starting<input type="date" id="c-start" value="${c?.start || ymd(new Date())}"></label>
+          <label class="check"><input type="checkbox" id="c-carry" ${(c ? c.carry : false) ? "checked" : ""}> Keep showing until done</label>
+          <p class="hint">If it's missed, it stays on the list each day (marked "since …") until someone checks it off. Good for filters and maintenance.</p>
+        </div>
+        <div class="actions">
+          ${c ? `<button class="danger" data-action="delete-chore">Delete</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-chore" ${this.members.length ? "" : "disabled"}>Save</button>
+        </div>`,
+    };
+    this._openDialog(dlg);
+  }
+  _syncChoreDialog() {
+    const q = (sel) => this.shadowRoot.querySelector(sel);
+    const r = this.ui.dialog.repeat;
+    if (q(".dayopts")) q(".dayopts").hidden = r !== "days";
+    if (q(".monthopts")) q(".monthopts").hidden = r !== "monthly";
+    if (q(".startopt")) q(".startopt").hidden = r !== "days" && r !== "monthly";
+    // New chores: default "keep showing until done" on for monthly and for every 2+ weeks.
+    const carry = q("#c-carry");
+    if (carry && !this.ui.dialog.chore) carry.checked = r === "monthly" || (r === "days" && Number(q("#c-every")?.value) > 1);
+  }
+  async saveChore() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const c = this.ui.dialog.chore;
+    const title = $("c-title").value.trim();
+    if (!title) { this._toast("Please name the chore"); return; }
+    const rec = {
+      ...(c || { id: uid(), completions: [], created: ymd(new Date()) }),
+      title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value,
+      repeat: $("c-repeat").value,
+      days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
+      every_weeks: Number($("c-every").value) || 1,
+      month_days: [...this.shadowRoot.querySelectorAll(".c-mday:checked")].map((i) => Number(i.value)),
+      every_months: Number($("c-every-months").value) || 1,
+      carry: $("c-carry").checked,
+      start: $("c-start").value || ymd(new Date()),
+    };
+    if (rec.repeat === "days" && !rec.days.length) { this._toast("Pick at least one day"); return; }
+    if (rec.repeat === "monthly" && !rec.month_days.length) { this._toast("Pick at least one date"); return; }
+    const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
+    await this._set("chores", chores); this.closeDialog();
+  }
+
+  // ---------- Mealie ----------
+  async _reloadMealie() { this._mealieKey = ""; await this._loadMealie(); }
+
+  // "since Oct 1" on a chore that was missed and is kept on the list until done.
+  _sinceNote(c, day) {
+    const since = choreOverdueSince(c, day);
+    return since ? ` <small class="since">since ${since.toLocaleDateString([], { month: "short", day: "numeric" })}</small>` : "";
+  }
+
+  // Chore completion between two days (inclusive, never past today): {due, done}.
+  // Days before a chore existed don't count against it. "Weekly" chores count once per week.
+  completionStats(memberId, from, to) {
+    const today = startOfDay(new Date());
+    const end = startOfDay(to) > today ? today : startOfDay(to);
+    let due = 0, done = 0;
+    for (const c of (this.data.chores || []).filter((x) => x.member_id === memberId)) {
+      const firstDone = (c.completions || [])[0];
+      const began = c.created || firstDone || c.start;
+      let d = startOfDay(from);
+      if (began && parseYmd(began) > d) d = parseYmd(began);
+      if (!began && d < this.weekStart(today)) d = this.weekStart(today); // no history: count from this week
+      if (choreCarries(c)) {
+        // One per scheduled occurrence; done if checked off before the next occurrence.
+        for (; d <= end; d = addDays(d, 1)) {
+          if (!choreScheduled(c, d)) continue;
+          due++;
+          let next = addDays(d, 1);
+          for (let i = 0; i < LOOKBACK_DAYS && !choreScheduled(c, next); i++) next = addDays(next, 1);
+          const a = ymd(d), b = ymd(next);
+          if ((c.completions || []).some((x) => x >= a && x < b)) done++;
+        }
+        continue;
+      }
+      if (c.repeat === "weekly") {
+        for (let w = this.weekStart(d); w <= end; w = addDays(w, 7)) {
+          due++;
+          if ([...Array(7)].some((_, i) => addDays(w, i) <= end && choreDone(c, addDays(w, i)))) done++;
+        }
+        continue;
+      }
+      for (; d <= end; d = addDays(d, 1)) {
+        if (!choreDue(c, d)) continue;
+        due++;
+        if (choreDone(c, d)) done++;
+      }
+    }
+    return { due, done };
+  }
+
+  // Progress: last 4 weeks of chore completion per person with chores (read-only).
+  renderProgress() {
+    const people = kidsOf(this.members).filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
+    if (!people.length) return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
+    const thisWeek = this.weekStart(new Date());
+    const weeks = [3, 2, 1, 0].map((k) => addDays(thisWeek, -7 * k));
+    const label = (w, k) => (k === 3 ? "This week" : w.toLocaleDateString([], { month: "short", day: "numeric" }));
+    return `<div class="toolbar"><div class="nav"><h1>Progress</h1></div><span class="hint">Chores done, last 4 weeks</span></div>
+      <div class="progress">${people.map((m) => `<div class="prow" style="--c:${m.color}">
+        <div class="pwho"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
+        <div class="pbars">${weeks.map((w, k) => {
+          const st = this.completionStats(m.id, w, addDays(w, 6));
+          const pct = st.due ? Math.round((st.done / st.due) * 100) : null;
+          return `<div class="pbar" title="${st.done} of ${st.due} chores">
+            <div class="pcol"><i style="height:${pct === null ? 0 : Math.max(3, pct)}%"></i></div>
+            <b>${pct === null ? "–" : `${pct}%`}</b><small>${label(w, k)}</small></div>`;
+        }).join("")}</div></div>`).join("")}</div>`;
+  }
+
+  renderChores() {
+    const day = this.ui.choreDay;
+    const isToday = sameDay(day, new Date());
+    const kids = choreOwnersOf(this.members);
+    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids (and Household profiles like “Maintenance”). Set someone's type in Settings → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    const cols = kids.map((m) => {
+      const chores = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, day));
+      const done = chores.filter((c) => choreDone(c, day)).length;
+      const pct = chores.length ? done / chores.length : 0;
+      return `<div class="ccol" style="--c:${m.color}">
+        <div class="chead">
+          <div class="ring" style="--p:${pct * 360}deg"><span class="av" style="background:${m.color}">${m.avatar}</span></div>
+          <div><div class="cname">${esc(m.name)}</div><div class="cstars">${done}/${chores.length} today${(() => { const w = this.completionStats(m.id, this.weekStart(day), day); return w.due ? ` · ${Math.round((w.done / w.due) * 100)}% this week` : ""; })()}</div></div>
+        </div>
+        <div class="clist">${chores.map((c) => {
+          const dn = choreDone(c, day);
+          return `<div class="chore ${dn ? "done" : ""}">
+            <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}">
+              <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(c, day)}</span>
+<span class="box">${dn ? "✓" : ""}</span></button>
+            <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`;
+        }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? "No chores" : ""}</p>`}
+        ${chores.length && done === chores.length ? `<div class="alldone">All done! 🎉</div>` : ""}
+        </div>
+        <button class="add wide" data-action="new-chore" data-member="${m.id}">+ Add chore</button>
+      </div>`;
+    }).join("");
+    return `<div class="toolbar"><div class="nav">
+        <button class="icon" data-action="chore-day" data-dir="-1">‹</button>
+        <button data-action="chore-day" data-dir="0">Today</button>
+        <button class="icon" data-action="chore-day" data-dir="1">›</button>
+        <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div></div>
+      <div class="chores">${cols}</div>`;
+  }
+}

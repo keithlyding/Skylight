@@ -27,8 +27,14 @@ PLATFORMS = ["todo"]
 
 
 def _module_url() -> str:
-    """URL that changes whenever the panel file changes, so browsers never run a stale copy."""
-    digest = hashlib.sha1(PANEL_JS.read_bytes()).hexdigest()[:10]
+    """URL that changes whenever any panel file changes, so browsers never run a stale copy.
+
+    The panel's own modules (frontend/src) are imported with ?v=<version>; tests check that.
+    """
+    sha = hashlib.sha1()
+    for path in [PANEL_JS, *sorted((PANEL_JS.parent / "src").glob("*.js"))]:
+        sha.update(path.read_bytes())
+    digest = sha.hexdigest()[:10]
     return f"{URL_FRONTEND}/skylight-panel.js?v={VERSION}-{digest}"
 
 
