@@ -567,6 +567,7 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 .hero { width:calc(100% + 48px); margin:-22px -24px 10px; height:220px; object-fit:cover; border-radius:24px 24px 0 0; }
 .steps li { margin-bottom:8px; line-height:1.4; }
 .ings { max-height:none; }
+button.busy { opacity:.55; cursor:progress; }
 .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#2d2a26; color:#fff; padding:12px 20px; border-radius:14px; z-index:1000; max-width:90vw; }
 @media (max-width: 900px) {
   .app { flex-direction:column-reverse; }

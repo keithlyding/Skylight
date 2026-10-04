@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.2";
-import { STYLES } from "./styles.js?v=1.38.2";
-import { CalendarView } from "./calendar.js?v=1.38.2";
-import { WeatherView } from "./weather.js?v=1.38.2";
-import { HomeView } from "./home.js?v=1.38.2";
-import { ChoresView } from "./chores.js?v=1.38.2";
-import { MealsView } from "./meals.js?v=1.38.2";
-import { ListsView } from "./lists.js?v=1.38.2";
-import { PhotosView } from "./photos.js?v=1.38.2";
-import { SettingsView } from "./settings.js?v=1.38.2";
-import { PickersView } from "./pickers.js?v=1.38.2";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.3";
+import { STYLES } from "./styles.js?v=1.38.3";
+import { CalendarView } from "./calendar.js?v=1.38.3";
+import { WeatherView } from "./weather.js?v=1.38.3";
+import { HomeView } from "./home.js?v=1.38.3";
+import { ChoresView } from "./chores.js?v=1.38.3";
+import { MealsView } from "./meals.js?v=1.38.3";
+import { ListsView } from "./lists.js?v=1.38.3";
+import { PhotosView } from "./photos.js?v=1.38.3";
+import { SettingsView } from "./settings.js?v=1.38.3";
+import { PickersView } from "./pickers.js?v=1.38.3";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -285,7 +285,23 @@ export class SkylightPanel extends HTMLElement {
     this._run(el.dataset.action, el);
   }
   // Errors are already shown as a toast by _ws (or were a cancelled PIN prompt).
-  _run(action, el) { Promise.resolve(this._action(action, el)).catch((err) => { if (err?.code !== "locked") console.debug("Skylight:", err); }); }
+  _run(action, el) {
+    // Save/delete buttons can take a few seconds (e.g. Google Calendar): gray the button out and say so,
+    // and ignore more taps until it's done so nothing is saved twice.
+    const busyText = action.startsWith("save-") ? "Saving…" : action === "delete-event" ? "Deleting…" : null;
+    if (busyText) {
+      if (this._busyAt && Date.now() - this._busyAt < 30000) return; // (expires, so a lost prompt can't block saving)
+      this._busyAt = Date.now();
+      el._idleHtml = el.innerHTML; el.disabled = true; el.classList.add("busy"); el.textContent = busyText;
+    }
+    Promise.resolve(this._action(action, el))
+      .catch((err) => { if (err?.code !== "locked") console.debug("Skylight:", err); })
+      .finally(() => {
+        if (!busyText) return;
+        this._busyAt = 0;
+        if (el.isConnected) { el.disabled = false; el.classList.remove("busy"); el.innerHTML = el._idleHtml; }
+      });
+  }
 
   _onChange(e) {
     const el = e.target;

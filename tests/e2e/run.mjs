@@ -249,6 +249,26 @@ const SCENARIOS = {
     await q.context().close();
   },
 
+  async saving(browser, base) {
+    // A slow save shows "Saving…" on a grayed-out button, and a second tap doesn't save twice.
+    const p = await open(browser, base);
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05")); await p.waitForTimeout(300);
+    await p.S("#ev-title").fill("Haircut");
+    const before = await p.evaluate(() => window.calls.filter((c) => c.type === "calendar/event/create").length);
+    await p.evaluate(() => { window.SLOW = 1500; });
+    const btn = p.S('[data-action="save-event"]');
+    await btn.click(); await p.waitForTimeout(200);
+    eq(await btn.textContent(), "Saving…", "button says Saving…");
+    eq(await btn.isDisabled(), true, "button grayed out");
+    await btn.evaluate((b) => { b.disabled = false; b.click(); }); // even a forced second tap is ignored
+    await p.waitForTimeout(2200);
+    await p.evaluate(() => { window.SLOW = 0; });
+    eq(await p.evaluate(() => window.calls.filter((c) => c.type === "calendar/event/create").length), before + 1, "saved once");
+    eq(await p.S(".dialog").count(), 0, "dialog closed after saving");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

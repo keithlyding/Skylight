@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.38.2";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.38.3";
 
 export class CalendarView {
   calendarOwner(entity) {
