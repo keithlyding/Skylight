@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.40.1";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc } from "./helpers.js?v=1.40.2";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -243,7 +243,7 @@ export class CalendarView {
       html: () => `
         <h2>${ev ? "Edit event" : "New event"}</h2>
         ${!writable.length ? `<p class="hint">No calendars yet. Add one in Setup first.</p>` : ""}
-        <label>Title<input id="ev-title" value="${esc(ev?.raw ?? ev?.summary)}" autofocus placeholder="Soccer practice"></label>
+        <label>Title<input id="ev-title" value="${esc(ev?.raw ?? ev?.summary)}" data-autofocus placeholder="Soccer practice"></label>
         <div class="label">Who</div>
         <div class="whopick">${this.members.map((m) => {
           const can = !!this.targetCalendar(m);
@@ -697,7 +697,7 @@ export class CalendarView {
     this._openDialog({
       type: "search",
       html: () => `<h2>🔍 Search events</h2>
-        <input id="search-q" autocomplete="off" autofocus placeholder="Title, place or notes (e.g. dentist, soccer, Grandma)">
+        <input id="search-q" autocomplete="off" data-autofocus="always" placeholder="Title, place or notes (e.g. dentist, soccer, Grandma)">
         <p class="hint">Searches ${this._searchRangeText()} on every calendar shown in ${this.appName}.</p>
         <div id="search-results" class="sresults"></div>
         <div class="actions"><span class="spacer"></span><button data-action="close">Close</button></div>`,

@@ -1,6 +1,6 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.40.1";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.40.2";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
@@ -16,7 +16,7 @@ export class ChoresView {
         ${!this.members.length ? `<p class="hint">Add family members in Setup first.</p>` : ""}
         <div class="row">
           <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
-          <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
+          <label>Chore<input id="c-title" value="${esc(c?.title)}" data-autofocus placeholder="Make bed"></label>
         </div>
         <label>Who<select id="c-member">${choreOwnersOf(this.members).map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
         <label>Repeats<select id="c-repeat" data-change="chore-repeat">

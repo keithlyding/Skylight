@@ -1,6 +1,6 @@
 /* Skylight panel: lists and linked HA to-do lists (methods mixed into SkylightPanel). */
 
-import { PALETTE, adultsOf, orderItems, groupLists, uid, esc } from "./helpers.js?v=1.40.1";
+import { PALETTE, adultsOf, orderItems, groupLists, uid, esc } from "./helpers.js?v=1.40.2";
 
 export class ListsView {
 
@@ -167,7 +167,7 @@ export class ListsView {
       type: "list", list: l, color: l?.color || PALETTE[(this.data.lists.length * 3) % PALETTE.length],
       html: () => `
         <h2>${l ? "Edit" : "New"} list</h2>
-        <label>Name<input id="l-name" value="${esc(l?.name)}" autofocus placeholder="Packing list"></label>
+        <label>Name<input id="l-name" value="${esc(l?.name)}" data-autofocus placeholder="Packing list"></label>
         <label>Whose list<select id="l-owner"><option value="">👪 Shared</option>${adultsOf(this.members).map((m) => `<option value="${m.id}" ${l?.owner === m.id ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
         <div class="label">Color</div>
         <div class="swatches">${PALETTE.map((c) => `<button class="swatch ${c === dlg.color ? "sel" : ""}" style="background:${c}" data-action="pick-color" data-color="${c}"></button>`).join("")}</div>

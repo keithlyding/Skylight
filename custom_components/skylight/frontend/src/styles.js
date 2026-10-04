@@ -530,6 +530,9 @@ header, .rail { touch-action:pan-x; overscroll-behavior:contain; }
 .rpdays { margin:6px 0; }
 .rpsum { margin:6px 0 2px; font-weight:700; color:var(--ink); }
 .tpick { position:relative; display:block; }
+.tpick.touch { display:flex; gap:6px; align-items:stretch; flex-wrap:wrap; }
+.tpick.touch .tinput { flex:1; min-width:0; cursor:pointer; }
+.tpick.touch .ttype { flex:none; padding:0 12px; font-size:18px; }
 .tlist { position:absolute; z-index:7; left:0; right:0; top:100%; max-height:216px; overflow-y:auto; background:var(--card);
   border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.18); display:flex; flex-direction:column; }
 .tlist button { flex:none; height:36px; text-align:left; padding:0 14px; border-radius:0; box-shadow:none; background:none; font-weight:600; }

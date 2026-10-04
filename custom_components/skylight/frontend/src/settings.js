@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES } from "./helpers.js?v=1.40.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES } from "./helpers.js?v=1.40.2";
 
 export class SettingsView {
 
@@ -18,7 +18,7 @@ export class SettingsView {
         return `
         <h2>${m ? "Edit" : "Add"} family member</h2>
         <div class="avatar-preview" style="background:${dlg.color}">${dlg.avatar}</div>
-        <label>Name<input id="m-name" value="${esc(m?.name)}" autofocus placeholder="Name"></label>
+        <label>Name<input id="m-name" value="${esc(m?.name)}" data-autofocus placeholder="Name"></label>
         <div class="label">Birthday <small class="hint">(optional; year optional too)</small></div>
         ${this._dateFields("m-bday", m?.birthday)}
         <div class="label">This person is</div>
@@ -163,7 +163,7 @@ export class SettingsView {
       html: () => `
         <h2>${o ? "Edit" : "Add"} ${dlg.kind === "anniversary" ? "anniversary" : dlg.kind === "birthday" ? "birthday" : "date"}</h2>
         <div class="seg"><button class="${dlg.kind === "birthday" ? "on" : ""}" data-action="occ-kind" data-kind="birthday">🎂 Birthday</button><button class="${dlg.kind === "anniversary" ? "on" : ""}" data-action="occ-kind" data-kind="anniversary">💍 Anniversary</button><button class="${dlg.kind === "other" ? "on" : ""}" data-action="occ-kind" data-kind="other">📅 Other</button></div>
-        <label>Title<input id="o-title" value="${esc(o?.title || "")}" placeholder="${dlg.kind === "anniversary" ? "Mom & Dad's anniversary" : dlg.kind === "birthday" ? "Grandma's birthday" : "Adoption day"}" autofocus></label>
+        <label>Title<input id="o-title" value="${esc(o?.title || "")}" placeholder="${dlg.kind === "anniversary" ? "Mom & Dad's anniversary" : dlg.kind === "birthday" ? "Grandma's birthday" : "Adoption day"}" data-autofocus></label>
         ${this._dateFields("o", o)}
         <p class="hint" style="margin-top:-4px">With a year, ${this.appName} shows the age or number of years.</p>
         <label>Emoji <small class="hint">(optional)</small><input id="o-emoji" value="${esc(o?.emoji || "")}" maxlength="8" placeholder="${OCCASION_EMOJI[dlg.kind]}"></label>

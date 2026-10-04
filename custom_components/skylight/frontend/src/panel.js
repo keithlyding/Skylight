@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.1";
-import { STYLES } from "./styles.js?v=1.40.1";
-import { CalendarView } from "./calendar.js?v=1.40.1";
-import { WeatherView } from "./weather.js?v=1.40.1";
-import { HomeView } from "./home.js?v=1.40.1";
-import { ChoresView } from "./chores.js?v=1.40.1";
-import { MealsView } from "./meals.js?v=1.40.1";
-import { ListsView } from "./lists.js?v=1.40.1";
-import { PhotosView } from "./photos.js?v=1.40.1";
-import { SettingsView } from "./settings.js?v=1.40.1";
-import { PickersView } from "./pickers.js?v=1.40.1";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.40.2";
+import { STYLES } from "./styles.js?v=1.40.2";
+import { CalendarView } from "./calendar.js?v=1.40.2";
+import { WeatherView } from "./weather.js?v=1.40.2";
+import { HomeView } from "./home.js?v=1.40.2";
+import { ChoresView } from "./chores.js?v=1.40.2";
+import { MealsView } from "./meals.js?v=1.40.2";
+import { ListsView } from "./lists.js?v=1.40.2";
+import { PhotosView } from "./photos.js?v=1.40.2";
+import { SettingsView } from "./settings.js?v=1.40.2";
+import { PickersView } from "./pickers.js?v=1.40.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -187,6 +187,10 @@ export class SkylightPanel extends HTMLElement {
     window.visualViewport?.addEventListener("resize", () => this._settlePage());
     this.shadowRoot.addEventListener("focusin", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); e.target.select(); } });
     this.shadowRoot.addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".tpick")) this._closeTimeLists(); }, true);
+    // Every tap on a time box opens its list (focus alone missed taps on a box that was already selected).
+    this.shadowRoot.addEventListener("click", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); } });
+    // After typing a time on a touch screen, go back to "tap for the list, no keyboard".
+    this.shadowRoot.addEventListener("focusout", (e) => { if (e.target.classList?.contains("tinput") && e.target.closest(".tpick.touch")) e.target.readOnly = true; });
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
     // iPhone: an up/down drag that starts on the header or the tab bar would rubber-band the whole page.
@@ -383,6 +387,11 @@ export class SkylightPanel extends HTMLElement {
     const D = this.data;
     switch (action) {
       // navigation
+      case "time-type": { // switch a time box to typing (opens the keyboard)
+        const input = this.shadowRoot.getElementById(d.for);
+        if (input) { input.readOnly = false; input.focus(); input.select(); }
+        break;
+      }
       case "chores-mode": this.ui.choresMode = d.mode; this._resetScroll = true; this.render(); break;
       case "tab": if (d.tab === "progress") { d.tab = "chores"; this.ui.choresMode = "progress"; } else if (d.tab === "chores") this.ui.choresMode = "day";
         if (d.tab === "photos") d.tab = "settings";
@@ -837,7 +846,10 @@ export class SkylightPanel extends HTMLElement {
       if (!i || i.dataset.fresh) continue;
       if (i.type === "checkbox") i.checked = v; else i.value = v;
     }
-    this.$dialog.querySelector("[autofocus]")?.focus();
+    // Focus the first box only where there's a real keyboard; on touch screens wait for a tap, so the
+    // on-screen keyboard doesn't pop up every time a dialog opens. (Search always focuses: you open it to type.)
+    const first = this.$dialog.querySelector("[data-autofocus]");
+    if (first && (first.dataset.autofocus === "always" || !window.matchMedia?.("(pointer: coarse)").matches)) first.focus();
   }
   _openDialog(dlg) { this.ui.dialog = dlg; this.$dialog.innerHTML = ""; this.renderDialog(); }
 

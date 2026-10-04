@@ -1,6 +1,6 @@
 /* Skylight panel: location lookup, time picker and emoji/icon pickers (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.40.1";
+import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.40.2";
 
 export class PickersView {
 
@@ -54,8 +54,10 @@ export class PickersView {
   fmtHM(h, m) { return this.fmtTime(new Date(2000, 0, 1, h, m)); }
   timeInput(id, hm) {
     const [h, m] = hm.split(":").map(Number);
-    return `<span class="tpick"><input type="text" id="${id}" class="tinput" inputmode="text" autocomplete="off"
-      value="${this.fmtHM(h, m)}" data-hm="${hm}" data-change="time-norm" data-enter="time-norm"><span class="tlist" hidden></span></span>`;
+    // Touch screens: tapping the time opens the 15-minute list without the keyboard; ⌨ switches to typing.
+    const touch = !!window.matchMedia?.("(pointer: coarse)").matches;
+    return `<span class="tpick ${touch ? "touch" : ""}"><input type="text" id="${id}" class="tinput" inputmode="text" autocomplete="off" ${touch ? "readonly" : ""}
+      value="${this.fmtHM(h, m)}" data-hm="${hm}" data-change="time-norm" data-enter="time-norm">${touch ? `<button type="button" class="ttype" data-action="time-type" data-for="${id}" aria-label="Type a time" title="Type a time">⌨</button>` : ""}<span class="tlist" hidden></span></span>`;
   }
   // "4", "4p", "4pm", "4:10", "4:10 pm", "410p", "16:10", "1610" -> [h, m] (null if not a time).
   _parseTime(text, prevH = 12) {

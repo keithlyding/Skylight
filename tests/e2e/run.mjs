@@ -327,6 +327,27 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async touchforms(browser, base) {
+    // Touch screens: dialogs don't pop the keyboard on their own; time boxes open a list (no keyboard)
+    // on every tap; ⌨ switches a time box to typing.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    check(await p.evaluate(() => matchMedia("(pointer: coarse)").matches), "emulating a touch screen");
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 9)); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.shadowRoot.activeElement?.id || null), null, "no text box focused when the dialog opens");
+    const start = p.S("#ev-start");
+    eq(await start.evaluate((e) => e.readOnly), true, "time box is tap-for-list");
+    await start.tap(); await p.waitForTimeout(200);
+    check(await p.S("#ev-start + .ttype + .tlist").isVisible(), "tap opens the list");
+    await p.S('#ev-start ~ .tlist [data-h="10"][data-m="30"]').tap(); await p.waitForTimeout(200);
+    eq(await start.inputValue(), "10:30 AM", "picked from the list");
+    await start.tap(); await p.waitForTimeout(200);
+    check(await p.S("#ev-start ~ .tlist").isVisible(), "a second tap opens the list again");
+    await p.S('[data-action="time-type"][data-for="ev-start"]').tap(); await p.waitForTimeout(200);
+    eq(await start.evaluate((e) => [e.readOnly, el.shadowRoot.activeElement === e]), [false, true], "⌨ switches to typing");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
