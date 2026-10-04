@@ -1,8 +1,8 @@
-/* Skylight panel: chore rules (mirror of chores.py; tests check they agree). */
+// Test double only: a stand-in for Home Assistant's chores.py, so the fake HA page can answer
+// skylight/chores/view. The real panel has no chore rules; the Python tests cover the real ones.
 
-import { ymd, parseYmd, addDays, startOfDay, pyWeekday, isoWeek } from "./helpers.js?v=1.36.5";
-
-// ---------- chore rules (mirror of chores.py; tests check they agree day by day) ----------
+import { ymd, parseYmd, addDays, startOfDay, pyWeekday, isoWeek } from "/src/helpers.js";
+// ---------- the rules, as the panel had them before v1.37 (when chores.py became the only copy) ----------
 export const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
 export const EVERY_MONTHS = [1, 2, 3, 4, 6, 12];
 export const CARRY_REPEATS = ["days", "monthly"]; // repeats that can "keep showing until done"
@@ -69,3 +69,57 @@ export const choreOverdueSince = (c, day) => {
   const since = choreLastOccurrence(c, day);
   return since && ymd(since) < ymd(day) ? since : null;
 };
+
+const weekStartOf = (d, ws) => addDays(startOfDay(d), -((d.getDay() - ws + 7) % 7));
+const stats = (c, from, to, ws) => {
+  const today = startOfDay(new Date());
+  const end = startOfDay(to) > today ? today : startOfDay(to);
+  let due = 0, done = 0;
+  const firstDone = (c.completions || [])[0];
+  const began = c.created || firstDone || c.start;
+  let d = startOfDay(from);
+  if (began && parseYmd(began) > d) d = parseYmd(began);
+  if (!began && d < weekStartOf(today, ws)) d = weekStartOf(today, ws);
+  if (choreCarries(c)) {
+    for (; d <= end; d = addDays(d, 1)) {
+      if (!choreScheduled(c, d)) continue;
+      due++;
+      let next = addDays(d, 1);
+      for (let i = 0; i < LOOKBACK_DAYS && !choreScheduled(c, next); i++) next = addDays(next, 1);
+      if ((c.completions || []).some((x) => x >= ymd(d) && x < ymd(next))) done++;
+    }
+    return [due, done];
+  }
+  if (c.repeat === "weekly") {
+    for (let w = weekStartOf(d, ws); w <= end; w = addDays(w, 7)) {
+      due++;
+      if ([...Array(7)].some((_, i) => addDays(w, i) <= end && choreDone(c, addDays(w, i)))) done++;
+    }
+    return [due, done];
+  }
+  for (; d <= end; d = addDays(d, 1)) if (choreDue(c, d)) { due++; if (choreDone(c, d)) done++; }
+  return [due, done];
+};
+
+// Same shape as the real skylight/chores/view result.
+export function choreView(D, msg) {
+  const days = {};
+  for (const c of D.chores || []) {
+    const out = (days[c.id] = {});
+    for (let d = parseYmd(msg.start); ymd(d) <= msg.end; d = addDays(d, 1)) {
+      if (!choreDue(c, d)) continue;
+      const since = choreOverdueSince(c, d);
+      out[ymd(d)] = [choreDone(c, d), since ? ymd(since) : null];
+    }
+  }
+  const ws = Number(D.settings?.week_start || 0);
+  const statsOut = (msg.ranges || []).map(([a, b]) => {
+    const per = {};
+    for (const c of D.chores || []) {
+      const [due, done] = stats(c, parseYmd(a), parseYmd(b), ws);
+      const t = (per[c.member_id || ""] ||= [0, 0]); t[0] += due; t[1] += done;
+    }
+    return per;
+  });
+  return { today: ymd(new Date()), days, stats: statsOut };
+}

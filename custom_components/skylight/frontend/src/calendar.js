@@ -242,7 +242,7 @@ export class CalendarView {
       who: new Set(ev ? (ev.members || []) : this.ui.filter && this.targetCalendar(this.member(this.ui.filter)) ? [this.ui.filter] : []),
       html: () => `
         <h2>${ev ? "Edit event" : "New event"}</h2>
-        ${!writable.length ? `<p class="hint">No calendars yet. Add one in Settings first.</p>` : ""}
+        ${!writable.length ? `<p class="hint">No calendars yet. Add one in Setup first.</p>` : ""}
         <label>Title<input id="ev-title" value="${esc(ev?.raw ?? ev?.summary)}" autofocus placeholder="Soccer practice"></label>
         <div class="label">Who</div>
         <div class="whopick">${this.members.map((m) => {
@@ -250,7 +250,7 @@ export class CalendarView {
           return `<button class="whochip ${dlg.who.has(m.id) ? "on" : ""}" style="--c:${m.color}" ${can ? `data-action="who" data-member="${m.id}"` : `disabled title="${esc(m.name)} has no calendar yet"`}>
             <span class="av" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}</button>`;
         }).join("")}</div>
-        ${this.members.some((m) => !this.targetCalendar(m)) ? `<p class="hint">Grayed-out people have no calendar yet. Give them one in Settings → Family members, or use their title prefix.</p>` : ""}
+        ${this.members.some((m) => !this.targetCalendar(m)) ? `<p class="hint">Grayed-out people have no calendar yet. Give them one in Setup → Family members, or use their title prefix.</p>` : ""}
         <label class="calpick" ${dlg.who.size ? "hidden" : ""}>Calendar <small class="hint">(when no one is selected)</small><select id="ev-cal">${writable.map((e) => `<option value="${e}" ${e === defaultCal ? "selected" : ""}>${esc(calLabel(e))}</option>`).join("")}</select></label>
         <p class="hint whohint" ${dlg.who.size ? "" : "hidden"}>📍 Will be saved to: <b>${[...new Set([...dlg.who].map((id) => this.targetCalendar(this.member(id))).filter(Boolean))].map((e) => esc(this.calName(e))).join(", ")}</b>${dlg.who.size > 1 ? " — shown once, in everyone's colors" : ""}.</p>
         <label class="check"><input type="checkbox" id="ev-allday" data-change="event-allday" ${ev?.allDay ? "checked" : ""}> All day</label>
@@ -556,7 +556,7 @@ export class CalendarView {
       <button class="icon searchbtn" data-action="search-open" title="Search events">🔍</button>
       <button class="primary fab" data-action="new-event">+ Event</button>
     </div>`;
-    if (noCals) return toolbar + `<div class="empty"><h2>No calendars connected yet</h2><p>Open <b>Settings</b> to add family members and create or link calendars.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    if (noCals) return toolbar + `<div class="empty"><h2>No calendars connected yet</h2><p>Open <b>Setup</b> to add family members and create or link calendars.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     const body = v === "month" ? this.renderMonth()
       : v === "agenda" ? this.renderSchedule()
       : this.renderTimeGrid([...Array(viewDays(v) || 7)].map((_, i) => addDays(a, i)), { labels: (d) => this.dayLabel(d, viewDays(v)) });

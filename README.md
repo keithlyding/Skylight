@@ -2,7 +2,7 @@
 
 [![Validate](https://github.com/keithlyding/Skylight/actions/workflows/validate.yml/badge.svg)](https://github.com/keithlyding/Skylight/actions/workflows/validate.yml) [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 
-A family display for Home Assistant in the style of a Skylight Calendar, built for a wall-mounted Android tablet. It's called **Lyding Strike** by default; rename it under Settings → Display → *Name* (the sidebar, the integration and the to-do list names follow).
+A family display for Home Assistant in the style of a Skylight Calendar, built for a wall-mounted Android tablet. It's called **Lyding Strike** by default; rename it under Setup → Display → *Name* (the sidebar, the integration and the to-do list names follow).
 **Everything is set up from the touchscreen**: family members, calendars, events, chores,
 meals, lists, photos and display settings. No YAML editing.
 
@@ -13,7 +13,7 @@ A **Lyding Strike** entry in the Home Assistant sidebar that opens a full-screen
 | Tab | What it does |
 |---|---|
 | **Today** | Overview: Agenda or a 1, 3, 5 or 7-day time-block calendar (remembered per device) with weather; plain-language weather tips; tonight's dinner (tap to cook); **Upcoming** birthdays and anniversaries; each kid's and Household chores for today (tap to check off) and adults' to-do lists. Opens by default. |
-| **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), optional air-quality / pollen / UV sensors, and official **US National Weather Service alerts** (cards on the Weather tab plus a banner on every screen). Tap a forecast day for the written day/night forecast. Uses the weather integration chosen in Settings; the **NWS** integration is recommended in the US for rain chances and forecast text. |
+| **Weather** | Current conditions, 24-hour temperature chart with rain bars, multi-day forecast with high/low ranges, sunrise/sunset, moon phase, a live radar map (Windy or RainViewer), optional air-quality / pollen / UV sensors, and official **US National Weather Service alerts** (cards on the Weather tab plus a banner on every screen). Tap a forecast day for the written day/night forecast. Uses the weather integration chosen in Setup; the **NWS** integration is recommended in the US for rain chances and forecast text. |
 | **Weather extras** | **Today's tips** in plain language on the Today screen and Weather tab (umbrella for an outdoor event, jacket this morning, freeze tonight, gusty, high UV, poor air, high pollen, much colder than yesterday). **Rain in the next 2 hours** in 15-minute steps ("Rain starting in about 30 min"). **Alert pop-ups**: a new NWS warning covers the screen (and wakes the photo screensaver) with an optional chime until someone taps OK. **Radar layers** (radar, rain forecast, storms, wind, gusts, temperature, clouds, satellite), **air quality** (US AQI with a 24-hour outlook), **pollen**, **comparisons** (yesterday, this day last year, rain over the last 7/30 days) and a **moon** card with the next phases. Rain-soon, air quality and comparisons come from Open-Meteo (free, no key). US pollen uses the Google Pollen API with the Google key from Location lookup. |
 | **Calendar** | Agenda, Day, 3, 5 and 7-day (a Google/Outlook-style time grid fitted to 7 AM–8 PM, like the Today screen), and Month views, color-coded per person. Tap a name to filter. Tap a day or **+ Event** to add an event, and tap an event to edit or delete it. For a repeating event you choose **This event / This and following events / All events**. Daily weather is shown. |
 | **Chores** | One column per **kid** and **Household** profile with today's progress ring and **this week's completion %**. Tap a chore to check it off. Chores repeat daily, on certain weekdays (every 1 to 52 weeks), once a week on any day, **monthly on chosen dates** (e.g. the 1st and 15th, or the last day; every 1, 2, 3, 4, 6 or 12 months), or once. Weekday and monthly chores can **keep showing until done**: a missed one stays on the list, marked "since Oct 1", until it's checked off. You can page back and forth by day. |
@@ -21,7 +21,7 @@ A **Lyding Strike** entry in the Home Assistant sidebar that opens a full-screen
 | **Meals** | A weekly grid synced two-way with **Mealie**: add recipes, pick a random one, and send ingredients to a shopping list. **📖 Recipes** browses your whole Mealie library, and **cook mode** shows a recipe full screen with scalable servings and a QR code for your phone. Other meal apps can be shown read-only through their calendar feed. |
 | **Lists** | Your own lists, plus any Home Assistant to-do list (Mealie shopping lists, HA Shopping list) kept in sync. Lists are grouped as **Shared** and then by adult (e.g. a honey-do list), each with that person's color and avatar. Reorder items by dragging the **≡** handle (finger or mouse); items slide into place, and checked-off items slide to the bottom in the order they were checked. |
 | **Photos** | Show **Immich** albums and/or favorites, or upload from the tablet or your phone. After a set idle time the photos play full screen with a clock, like a Skylight frame's photo mode. |
-| **Settings** | Add, edit and reorder family members (name, **Adult/Kid/Household**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **settings PIN** (see below). |
+| **Setup** | Add, edit and reorder family members (name, **Adult/Kid/Household**, color, avatar, their calendars). Create new calendars, subscribe to calendar links, choose shared family and meal calendars, connect Immich, birthdays & anniversaries, theme and night mode, and set the weather source, week start, 24-hour clock and screensaver timing. Protected by an optional **setup PIN** (see below). |
 
 Every screen showing the panel (tablet, phones, PC) stays in sync live.
 
@@ -37,15 +37,15 @@ Every screen showing the panel (tablet, phones, PC) stays in sync live.
 Copy `custom_components/skylight` into your Home Assistant `config/custom_components/` folder and restart.
 
 ### Then
-**Settings → Devices & Services → Add Integration → "Lyding Strike"**. A **Lyding Strike** item appears in the sidebar. Open it, go to **Settings**, and add your family.
+**Settings → Devices & Services → Add Integration → "Lyding Strike"**. A **Lyding Strike** item appears in the sidebar. Open it, go to **Setup**, and add your family.
 
 Requires Home Assistant **2024.7 or newer**. The automated tests run against 2026.2.
 
 ## Calendars
 
-- **Create calendar** in Lyding Strike Settings creates a Home Assistant *Local Calendar* stored on your HA server. This works from the kiosk tablet without an admin account.
+- **Create calendar** in Lyding Strike Setup creates a Home Assistant *Local Calendar* stored on your HA server. This works from the kiosk tablet without an admin account.
 - **Google / iCloud / Outlook**: an admin adds the matching integration once (Google Calendar, CalDAV, or a remote-calendar integration) under Settings → Devices & Services. Those calendars then show up in Lyding Strike's member and family calendar pickers. Whether you can *add* events to them from the tablet depends on that integration: Local and Google calendars support it, while read-only feeds such as ICS URLs do not.
-- **Subscribe to a calendar link** (iCal / webcal) from Lyding Strike Settings for school, sports or Plan to Eat. This uses HA's *Remote Calendar* integration (HA 2025.4+), and the calendar is read-only.
+- **Subscribe to a calendar link** (iCal / webcal) from Lyding Strike Setup for school, sports or Plan to Eat. This uses HA's *Remote Calendar* integration (HA 2025.4+), and the calendar is read-only.
 - A calendar assigned to a person uses that person's color. Calendars ticked as **Shared family calendars** use the family color.
 
 ## Meal planning with Mealie (recommended)
@@ -55,7 +55,7 @@ Lyding Strike uses Home Assistant's built-in **Mealie** integration, so the tabl
 **One-time setup (admin):**
 1. In Mealie: click your avatar, then **API Tokens**, create a token and copy it.
 2. In Home Assistant: **Settings → Devices & Services → Add Integration → Mealie**. Enter the Mealie URL as *Home Assistant* reaches it; with Docker that's the port you published, often `http://<server-ip>:9925` (Mealie listens on 9000 inside its container), not `localhost`. Paste the token.
-3. Reload the Lyding Strike page. Settings → **Mealie** should show ✅ Connected.
+3. Reload the Lyding Strike page. Setup → **Mealie** should show ✅ Connected.
 4. Optional: in the same section, tick the **Mealie shopping list** (and HA's own Shopping list) to show them in the Lists tab.
 
 **On the tablet:**
@@ -69,52 +69,52 @@ Lyding Strike uses Home Assistant's built-in **Mealie** integration, so the tabl
 - Tap any recipe (or **Tonight's dinner** on the Today screen) for **cook mode**: a full-screen recipe with large text, ingredients to tick off, and one highlighted step at a time. Use Next/Back or swipe. The screensaver stays off while cooking.
 - **Servings −/+** rescales ingredient amounts (for ingredients Mealie has parsed into amount/unit/food; plain-text ingredients are shown as written).
 - **Delete a recipe:** open it, then press and hold its picture at the top-left of cook mode for 5 seconds. A red **🗑 Delete** button appears for 15 seconds; tapping it asks for confirmation. Deleting is permanent in Mealie and affects everyone. For bigger clean-ups, use Mealie itself.
-- **📱 On my phone** shows a QR code that opens the recipe in Mealie. If your phone reaches Mealie by a different address than Home Assistant does, set it under Settings → Mealie → *Link for phones*.
+- **📱 On my phone** shows a QR code that opens the recipe in Mealie. If your phone reaches Mealie by a different address than Home Assistant does, set it under Setup → Mealie → *Link for phones*.
 
 Rows map to Mealie types: Breakfast, Lunch, Dinner, and **Snack**, which shows Mealie's snack, side, dessert and drink entries. Adding to Snack uses "snack" on Mealie 3.7+ and "side" on older versions.
 
 Recipe images are passed through Home Assistant, so the tablet never needs to reach Mealie directly.
 
-**Other meal apps (Plan to Eat, etc.):** subscribe to the app's calendar (iCal) link in Settings → Calendars, then tick it under **Meal plan sync**. These meals are read-only on the tablet. They're sorted into rows by the calendar name, a word in the meal name ("Dinner: Tacos"), or the time of day.
+**Other meal apps (Plan to Eat, etc.):** subscribe to the app's calendar (iCal) link in Setup → Calendars, then tick it under **Meal plan sync**. These meals are read-only on the tablet. They're sorted into rows by the calendar name, a word in the meal name ("Dinner: Tacos"), or the time of day.
 
 ## Photos from Immich
 
 1. In Immich: **Account Settings → API Keys → New API Key**. If Immich asks for permissions, give it album and asset read access.
-2. In Lyding Strike → Settings → **Photos from Immich**: enter your server URL (e.g. `http://192.168.1.20:2283`) and the key. Tap **Load albums**, tick albums and/or *Include my favorites*, then tap **Save**.
+2. In Lyding Strike → Setup → **Photos from Immich**: enter your server URL (e.g. `http://192.168.1.20:2283`) and the key. Tap **Load albums**, tick albums and/or *Include my favorites*, then tap **Save**.
 
-The slideshow shows each photo's **date taken and place** in the bottom-right corner (turn off under Settings → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
+The slideshow shows each photo's **date taken and place** in the bottom-right corner (turn off under Setup → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
 
 The API key stays on your HA server and is never sent to the tablet. Immich images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
 
-**Uploaded photos** need a Home Assistant login to view. Screens get signed links that expire after 24 hours, the same as Immich photos. Uploads can be switched off under Settings → Display → *Allow photo uploads*; photos already uploaded keep showing until you delete them.
+**Uploaded photos** need a Home Assistant login to view. Screens get signed links that expire after 24 hours, the same as Immich photos. Uploads can be switched off under Setup → Display → *Allow photo uploads*; photos already uploaded keep showing until you delete them.
 
 ## Android tablet setup
 
 1. Install **Fully Kiosk Browser** from the Play Store (the free version works; Plus adds remote control).
 2. **Start URL**: `http://<your-ha-address>:8123/skylight`
 3. Log in with a dedicated non-admin HA user, such as "kitchen". Tick *Keep me logged in*.
-4. Lyding Strike hides Home Assistant's own sidebar and header for **non-admin** users automatically, so it fills the screen (Settings → Display → *Hide Home Assistant's sidebar for non-admin users*). Admin accounts always keep them. This is a convenience, not a lock: also turn on Fully Kiosk's kiosk mode (*Kiosk Mode → Enable*, with its own PIN) so the browser can't be left, and keep the tablet's account a non-admin user.
+4. Lyding Strike hides Home Assistant's own sidebar and header for **non-admin** users automatically, so it fills the screen (Setup → Display → *Hide Home Assistant's sidebar for non-admin users*). Admin accounts always keep them. This is a convenience, not a lock: also turn on Fully Kiosk's kiosk mode (*Kiosk Mode → Enable*, with its own PIN) so the browser can't be left, and keep the tablet's account a non-admin user.
 5. In Fully Kiosk: **Keep screen on**, **Launch on boot**, and disable **Pull to refresh**.
-6. Optional: add the **Fully Kiosk Browser** integration in Home Assistant and pick its *Screen brightness* entity in Lyding Strike → Settings → Look & night mode to dim the screen at night. Fully Kiosk's motion detection or schedule can also turn the screen off.
+6. Optional: add the **Fully Kiosk Browser** integration in Home Assistant and pick its *Screen brightness* entity in Lyding Strike → Setup → Look & night mode to dim the screen at night. Fully Kiosk's motion detection or schedule can also turn the screen off.
 
 Lyding Strike's own photo screensaver runs inside the page, so Fully's screensaver is not needed.
 
 You can also place Lyding Strike on any dashboard as a card (`type: custom:skylight-panel`). It is designed to fill the screen, so the sidebar panel works best.
 
-## Settings PIN (keeps kids out of the setup)
+## Setup PIN (keeps kids out of the setup)
 
-Lyding Strike → Settings → **Set a settings PIN** (4–8 digits, entered twice). After that:
+Lyding Strike → Setup → **Set a setup PIN** (4–8 digits, entered twice). After that:
 
-- **Needs the PIN:** changing Settings, adding/editing/removing family members, adding/editing/deleting chores, choosing calendars, creating or subscribing to calendars, connecting Immich or Google location lookup, deleting uploaded photos, and deleting a Mealie recipe.
+- **Needs the PIN:** changing Setup, adding/editing/removing family members, adding/editing/deleting chores, choosing calendars, creating or subscribing to calendars, connecting Immich or Google location lookup, deleting uploaded photos, and deleting a Mealie recipe.
 - **Never needs the PIN:** checking off chores, list items, adding/editing/deleting calendar events, meal planning, recipes and cook mode, and viewing photos.
-- Unlocking applies to **that screen only**, for 5 minutes (adjustable up to 60). It locks again when you leave Settings or when the photo screensaver starts.
+- Unlocking applies to **that screen only**, for 5 minutes (adjustable up to 60). It locks again when you leave Setup or when the photo screensaver starts.
 - After **5 wrong PINs**, unlocking is blocked for 5 minutes.
 - The check happens on the Home Assistant server, not just on screen. The PIN is stored only as a salted hash and is never sent to any screen.
-- **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Lyding Strike** → **Configure** and ticks *Remove the settings PIN*.
+- **Forgot the PIN?** A Home Assistant admin opens Settings → Devices & Services → **Lyding Strike** → **Configure** and ticks *Remove the setup PIN*.
 
 ## Look and night mode
 
-Settings → **Look & night mode**:
+Setup → **Look & night mode**:
 
 - **Theme:** Warm (default), Cool, Slate (dark neutral) or High contrast. Each has a light and a dark version. Only surfaces, text and the accent color change; family members keep their own colors.
 - **Seasonal accents** (off by default): a different accent color and a small emoji by the clock for spring, summer, July 4th (Jul 1–5), fall, Halloween (Oct 15–31), Thanksgiving week, Christmas (Dec 1–26) and winter.
@@ -124,22 +124,22 @@ Settings → **Look & night mode**:
 ## Birthdays and anniversaries
 
 - **Family members' birthdays:** in each person's editor (month and day; the year is optional).
-- **Everything else** (grandparents' birthdays, anniversaries, other yearly dates): Settings → **Birthdays & anniversaries**. Pick a type, a title, the date, an optional year and emoji, and optionally who it belongs to (for the color).
+- **Everything else** (grandparents' birthdays, anniversaries, other yearly dates): Setup → **Birthdays & anniversaries**. Pick a type, a title, the date, an optional year and emoji, and optionally who it belongs to (for the color).
 - The **Today** screen shows an **Upcoming** card with the next 3 dates within 60 days (both adjustable), e.g. "🎂 Mom's birthday — 12 days (turning 38)" or "💍 Anniversary — 45 days (15 years)". On the day it says **Today! 🎉** and is highlighted. Ages and years only show when a year is set.
 - A **Feb 29** date shows on Feb 28 in years that aren't leap years.
-- The calendar shows them as all-day markers in every view, in the person's color (or the family color). Tapping one points you to Settings; they aren't calendar events and aren't written to any calendar.
-- Adding or changing them needs the settings PIN, like other setup.
+- The calendar shows them as all-day markers in every view, in the person's color (or the family color). Tapping one points you to Setup; they aren't calendar events and aren't written to any calendar.
+- Adding or changing them needs the setup PIN, like other setup.
 
 ## Adults, kids and Household
 
-Every family member is an **Adult**, a **Kid** or **Household** (Settings → family member → *This person is*).
+Every family member is an **Adult**, a **Kid** or **Household** (Setup → family member → *This person is*).
 
 - **Kids** have chores. Kids appear on the Chores and Progress tabs, in the chore editor's *Who* list, and in the Today screen's chores section.
 - **Household** is for things that aren't one person's job, like house maintenance (furnace filter, fridge water filter, smoke detectors). It gets a Chores column, can be picked in the chore editor and shows on the Today screen, but isn't on the Progress tab and can't own lists.
 - **Adults** can own lists. In the list editor, *Whose list* is Shared or one adult; linked Home Assistant to-do lists get the same choice from a picker next to the list name. The Today screen can still show an adult's list.
 - Calendars work the same for everyone.
 - Switching someone with chores to Adult keeps their chores but hides them; the editor warns you and offers **Move chores here**. Switching an adult to Kid makes their lists Shared.
-- **Upgrading from v1.28 or earlier:** people with at least one chore become Kids and everyone else Adults. A banner in Settings asks you to check this until you tap *Looks right*.
+- **Upgrading from v1.28 or earlier:** people with at least one chore become Kids and everyone else Adults. A banner in Setup asks you to check this until you tap *Looks right*.
 
 ## Upgrading from v1.27 or earlier
 
@@ -153,11 +153,11 @@ These entities are for Home Assistant's own tools. Alexa via Home Assistant Clou
 
 ## Backup and restore
 
-Settings → **Backup**:
+Setup → **Backup**:
 
-- **⬇ Download backup** saves a `.json` file with family members, chores and their history, lists, meals, birthdays and anniversaries, and settings. API keys and the settings PIN are never included.
+- **⬇ Download backup** saves a `.json` file with family members, chores and their history, lists, meals, birthdays and anniversaries, and settings. API keys and the setup PIN are never included.
 - **⬆ Restore from file…** replaces those on every screen after asking you to confirm. Your current API keys and PIN stay. Photos in the backup are only kept if the files are still on the server. The data from just before the restore is saved on the server as `config/.storage/skylight.data.before_import`, in case you need to undo it.
-- Both need the settings PIN. On the kiosk tablet the download goes to its Downloads folder; it's easiest from a PC or phone.
+- Both need the setup PIN. On the kiosk tablet the download goes to its Downloads folder; it's easiest from a PC or phone.
 
 ## Privacy: what leaves your home
 
@@ -173,7 +173,7 @@ Lyding Strike keeps family data on your Home Assistant server. Some features ask
 | Windy or RainViewer | Radar map on the Weather tab (loaded by the screen) | Rounded home location, plus whatever those sites log about visitors |
 | Your own Mealie and Immich servers | Recipes, meal plans, photos | Talks only to the addresses you entered |
 
-To avoid a service: turn off weather alerts or the Open-Meteo extras in Settings, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
+To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
 
 Nothing is sent to the author of Lyding Strike, and there is no tracking or analytics.
 
@@ -185,7 +185,7 @@ Nothing is sent to the author of Lyding Strike, and there is no tracking or anal
 
 ## Known limitations
 
-- **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the settings PIN. With no PIN set, anyone using Lyding Strike can do it.
+- **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the setup PIN. With no PIN set, anyone using Lyding Strike can do it.
 - **One PIN for the whole family.** There are no per-person accounts or permissions inside Lyding Strike; the PIN separates "can change the setup" from "everyday use".
 - **Photo links expire after 24 hours** (uploaded and Immich photos both need a Home Assistant login or a signed link). A screen left open for days gets fresh links automatically.
 - **No Google Photos or iCloud album sync** (Immich and uploads only).
@@ -212,9 +212,10 @@ The frontend is a plain web component with no build step: the browser loads the 
 | `skylight-panel.js` | Entry point: registers the `<skylight-panel>` element |
 | `src/panel.js` | The element itself: start-up, data, tap/change handling, layout, header |
 | `src/helpers.js` | Constants and DOM-free helpers (dates, themes, night mode, birthdays) |
-| `src/chore-rules.js` | Chore scheduling rules, mirrored from `chores.py` (tests check they agree) |
 | `src/styles.js` | All CSS |
 | `src/calendar.js`, `weather.js`, `home.js`, `chores.js`, `meals.js`, `lists.js`, `photos.js`, `settings.js`, `pickers.js` | One file per area; their methods are mixed into the panel element |
+
+Chore schedules (what's due on which day, missed chores, weekly totals) are worked out only by Home Assistant in `chores.py`; the panel asks for them (`skylight/chores/view`) and just draws the answer.
 
 Files import each other with `?v=<version>` so an update never mixes old and new files. Change the version with `python3 tools/bump_version.py X.Y.Z`, which updates every place it appears; a test fails if any import is out of step.
 

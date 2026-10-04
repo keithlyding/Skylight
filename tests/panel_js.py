@@ -17,5 +17,5 @@ def _plain(path: pathlib.Path) -> str:
     return re.sub(r"^export ", "", text, flags=re.M)
 
 
-# helpers.js + chore-rules.js, runnable with `node -e HELPERS + "...script..."`.
-HELPERS = _plain(SRC / "helpers.js") + "\n" + _plain(SRC / "chore-rules.js") + "\n"
+# helpers.js, runnable with `node -e HELPERS + "...script..."`.
+HELPERS = _plain(SRC / "helpers.js") + "\n"

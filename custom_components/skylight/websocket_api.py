@@ -14,7 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED, VERSION
-from . import immich, photos, security
+from . import chores, immich, photos, security
 from .photos import async_delete_photo
 
 
@@ -29,6 +29,7 @@ def async_register(hass: HomeAssistant) -> None:
         ws_subscribe,
         ws_set,
         ws_toggle_chore,
+        ws_chore_view,
         ws_move_list_item,
         ws_list_add_item,
         ws_list_update_item,
@@ -230,6 +231,50 @@ async def ws_toggle_chore(hass: HomeAssistant, connection, msg: dict[str, Any]) 
         connection.send_error(msg["id"], "not_found", str(err))
         return
     connection.send_result(msg["id"], {"done": done})
+
+
+MAX_VIEW_DAYS = 400
+
+
+def _day(value: str) -> date:
+    return date.fromisoformat(value)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/chores/view",
+        vol.Required("start"): str,
+        vol.Required("end"): str,
+        # Ranges [from, to] to total up per person (Progress weeks, "this week" on the Chores tab).
+        vol.Optional("ranges", default=[]): vol.All([vol.All([str], vol.Length(min=2, max=2))], vol.Length(max=12)),
+    }
+)
+@callback
+def ws_chore_view(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Which chores show on which days, and completion totals. The panel only draws this."""
+    try:
+        start, end = _day(msg["start"]), _day(msg["end"])
+        ranges = [(_day(a), _day(b)) for a, b in msg["ranges"]]
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid", str(err))
+        return
+    if not start <= end or (end - start).days > MAX_VIEW_DAYS or any((b - a).days > MAX_VIEW_DAYS for a, b in ranges):
+        connection.send_error(msg["id"], "invalid", "date range too long")
+        return
+    data = _store(hass).data
+    today = dt_util.now().date()
+    week_start = int(data["settings"].get("week_start") or 0)
+    days = {c["id"]: chores.day_states(c, start, end) for c in data["chores"]}
+    totals = []
+    for a, b in ranges:
+        per: dict[str, list[int]] = {}
+        for c in data["chores"]:
+            due, done = chores.stats(c, a, b, today, week_start)
+            t = per.setdefault(c.get("member_id") or "", [0, 0])
+            t[0] += due
+            t[1] += done
+        totals.append(per)
+    connection.send_result(msg["id"], {"today": today.isoformat(), "days": days, "stats": totals})
 
 
 @websocket_api.websocket_command(

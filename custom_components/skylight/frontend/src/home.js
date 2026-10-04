@@ -1,7 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
 import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.36.5";
-import { choreDone, choreDue } from "./chore-rules.js?v=1.36.5";
 
 export class HomeView {
 
@@ -56,7 +55,7 @@ export class HomeView {
     const agenda = this.homeAgenda;
     const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${(this.isPhone ? [1, 3] : [1, 3, 5, 7]).map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
     const cal = noCals
-      ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Settings</button></div>`
+      ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Setup</button></div>`
       : agenda ? `<div class="hagenda">${this.renderSchedule()}</div>`
       : this.renderTimeGrid(days, { labels: label });
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
@@ -68,15 +67,15 @@ export class HomeView {
       if (m.today === "none") return "";
       if (m.today === "list") return this.renderHomeList(m, lists.find((l) => l.id === m.today_list));
       if (m.role !== "kid" && m.role !== "home") return ""; // chores are for kids and household profiles
-      const list = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, today));
-      const done = list.filter((c) => choreDone(c, today)).length;
+      const list = this._choresOn(m.id, today);
+      const done = list.filter((x) => x.st.done).length;
       if (!list.length) { free.push(m); return ""; } // summarized in one line below
       return `<div class="hchores" style="--c:${m.color}">
         <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
           <span class="hint">${done}/${list.length}</span></div>
-        ${list.map((c) => { const dn = choreDone(c, today); return `<div class="chore ${dn ? "done" : ""}">
+        ${list.map(({ c, st }) => { const dn = st.done; return `<div class="chore ${dn ? "done" : ""}">
           <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}" data-date="${ymd(today)}">
-            <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(c, today)}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
+            <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(st)}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
           || `<p class="hint">No chores today</p>`}
         ${list.length && done === list.length ? `<div class="alldone">All done! 🎉</div>` : ""}
       </div>`;
@@ -91,14 +90,14 @@ export class HomeView {
         ${this.renderUpcoming()}
         ${chores ? `<div class="hcols">${chores}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
-        ${this.members.length ? "" : `<div class="empty"><p>Add your family in Settings to see chores here.</p></div>`}
+        ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
       </aside></div>`;
   }
 
   // A person's to-do / honey-do list on the Today screen.
   renderHomeList(m, list) {
     if (!list) return `<div class="hchores" style="--c:${m.color}"><div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
-      <p class="hint">List not found. Pick one in Settings → Family members.</p></div>`;
+      <p class="hint">List not found. Pick one in Setup → Family members.</p></div>`;
     const ordered = list.linked ? list.items : orderItems(list.items);
     const open = ordered.filter((i) => !i.done), done = ordered.filter((i) => i.done);
     const shown = [...open, ...done.slice(-2)]; // keep the two most recent check-offs visible

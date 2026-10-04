@@ -17,10 +17,10 @@ const FRONTEND = path.resolve(HERE, "../../custom_components/skylight/frontend")
 function serve() {
   const srv = http.createServer((req, res) => {
     const url = req.url.split("?")[0];
-    const file = url === "/" ? path.join(HERE, "fake_ha.html") : path.join(FRONTEND, path.normalize(url).replace(/^(\.\.[/\\])+/, ""));
+    const file = url === "/" ? path.join(HERE, "fake_ha.html") : url.startsWith("/e2e/") ? path.join(HERE, path.basename(url)) : path.join(FRONTEND, path.normalize(url).replace(/^(\.\.[/\\])+/, ""));
     if (!file.startsWith(HERE) && !file.startsWith(FRONTEND)) { res.writeHead(403); return res.end(); }
     if (!fs.existsSync(file)) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, { "content-type": file.endsWith(".js") ? "text/javascript" : "text/html" });
+    res.writeHead(200, { "content-type": /\.m?js$/.test(file) ? "text/javascript" : "text/html" });
     res.end(fs.readFileSync(file));
   });
   return new Promise((ok) => srv.listen(0, () => ok(srv)));

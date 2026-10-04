@@ -62,7 +62,7 @@ export class SettingsView {
             <option value="__new__" ${!dlg.todayList ? "selected" : ""}>＋ New list for ${esc(m?.name || "this person")}</option></select></label>
         </div>
         <div class="label">Calendars</div>
-        <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Settings → Calendars.</p>`}</div>
+        <div class="checklist">${cals.length ? cals.map((e) => `<label class="check"><input type="checkbox" class="m-cal" id="mc-${e}" value="${e}" ${mine.has(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") : `<p class="hint">No calendars found. Create one in Setup → Calendars.</p>`}</div>
         <div class="actions">
           ${m ? `<button class="danger" data-action="delete-member">Remove</button>` : ""}
           <span class="spacer"></span>
@@ -101,7 +101,7 @@ export class SettingsView {
     this._eventsKey = ""; this._mealKey = ""; this.closeDialog();
   }
 
-  // ---------- Settings: theme, dark mode, night dimming ----------
+  // ---------- Setup: theme, dark mode, night dimming ----------
   renderLookCard() {
     const s = this.settings, mode = s.dark_mode || "follow";
     const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
@@ -126,7 +126,7 @@ export class SettingsView {
     </section>`;
   }
 
-  // ---------- Settings: birthdays & anniversaries ----------
+  // ---------- Setup: birthdays & anniversaries ----------
   _dateFields(prefix, v) {
     return `<div class="row datefields">
       <label>Month<select id="${prefix}-month"><option value="">—</option>${MONTHS.map((n, i) => `<option value="${i + 1}" ${v?.month === i + 1 ? "selected" : ""}>${n}</option>`).join("")}</select></label>
@@ -225,7 +225,7 @@ export class SettingsView {
     if (this.unlocked) return Promise.resolve(true);
     if (this._unlocking) return this._unlocking;
     this._unlocking = this.promptPin({
-      title: "Enter settings PIN", sub: "Settings are locked so they can't be changed by accident.",
+      title: "Enter setup PIN", sub: "Setup is locked so it can't be changed by accident.",
       check: async (pin) => {
         try {
           const r = await this._hass.callWS({ type: "skylight/unlock", pin });
@@ -242,14 +242,14 @@ export class SettingsView {
     this._hass.callWS({ type: "skylight/lock" }).catch(() => {});
   }
   async pinSetup() {
-    const first = await this.promptPin({ title: "Choose a settings PIN", sub: "4 to 8 digits. Needed to change Settings, family members and chores." });
+    const first = await this.promptPin({ title: "Choose a setup PIN", sub: "4 to 8 digits. Needed to change Setup, family members and chores." });
     if (first === null) return;
     const second = await this.promptPin({ title: "Enter the PIN again", check: async (p) => (p === first ? null : "Those didn't match. Try again.") });
     if (second === null) return;
     try {
       const r = await this._ws({ type: "skylight/pin/set", pin: first });
       this._unlockUntil = Date.now() + (r.seconds_left || 300) * 1000;
-      this._toast("Settings PIN set");
+      this._toast("Setup PIN set");
     } catch (e) { /* toast shown */ }
     this.render();
   }
@@ -263,29 +263,29 @@ export class SettingsView {
     try {
       const r = await this._ws({ type: "skylight/pin/set", pin: first, current });
       this._unlockUntil = Date.now() + (r.seconds_left || 300) * 1000;
-      this._toast("Settings PIN changed");
+      this._toast("Setup PIN changed");
     } catch (e) { /* toast shown */ }
     this.render();
   }
   async pinRemove() {
-    const current = await this.promptPin({ title: "Current PIN", sub: "Removing the PIN leaves Settings open to everyone." });
+    const current = await this.promptPin({ title: "Current PIN", sub: "Removing the PIN leaves Setup open to everyone." });
     if (current === null) return;
-    try { await this._ws({ type: "skylight/pin/clear", current }); this._unlockUntil = 0; this._toast("Settings PIN removed"); }
+    try { await this._ws({ type: "skylight/pin/clear", current }); this._unlockUntil = 0; this._toast("Setup PIN removed"); }
     catch (e) { /* toast shown */ }
     this.render();
   }
   renderPinCard() {
     const s = this.settings;
     return `<section class="card" id="pin-card">
-      <h2>Settings PIN</h2>
+      <h2>Setup PIN</h2>
       ${this.pinSet ? `
-        <p class="hint">${this.unlocked ? "🔓 Unlocked on this screen. It locks again when you leave Settings, when the photo screensaver starts, or after the time below." : "🔒 Locked. Changes ask for the PIN."}</p>
+        <p class="hint">${this.unlocked ? "🔓 Unlocked on this screen. It locks again when you leave Setup, when the photo screensaver starts, or after the time below." : "🔒 Locked. Changes ask for the PIN."}</p>
         <div class="row">${this.unlocked ? `<button data-action="pin-lock">🔒 Lock now</button>` : `<button class="primary" data-action="pin-unlock">🔓 Unlock</button>`}
           <button data-action="pin-change">Change PIN</button><button data-action="pin-remove">Remove PIN</button></div>
         <label class="inline">Stay unlocked for (minutes) <input type="number" min="1" max="60" value="${Number(s.unlock_minutes) || 5}" data-change="setting" data-key="unlock_minutes"></label>
         <p class="hint">Forgot it? A Home Assistant admin can remove it: Settings → Devices &amp; Services → ${this.appName} → Configure.</p>`
-      : `<p class="hint">No PIN set: anyone using this display can change Settings, family members and chores.</p>
-        <button class="primary" data-action="pin-setup">Set a settings PIN</button>`}
+      : `<p class="hint">No PIN set: anyone using this display can change Setup, family members and chores.</p>
+        <button class="primary" data-action="pin-setup">Set a setup PIN</button>`}
     </section>`;
   }
 
@@ -295,7 +295,7 @@ export class SettingsView {
     const weathers = Object.keys(this._hass.states).filter((e) => e.startsWith("weather.")).sort();
     const fam = new Set(this.data.family_calendars || []);
     return `<div class="settings">
-      ${this.pinSet ? "" : `<div class="pinbanner">🔒 <b>Set a settings PIN</b> so kids can use the display without changing its setup. <button class="primary" data-action="pin-setup">Set PIN</button></div>`}
+      ${this.pinSet ? "" : `<div class="pinbanner">🔒 <b>Set a setup PIN</b> so kids can use the display without changing its setup. <button class="primary" data-action="pin-setup">Set PIN</button></div>`}
       ${this.settings.roles_review ? `<div class="pinbanner">🧒 <b>Check each person's Adult/Kid setting.</b> People with chores were set to Kid, everyone else to Adult. <button class="primary" data-action="roles-reviewed">Looks right</button></div>` : ""}
       ${this.renderPinCard()}
       <section class="card">
@@ -311,7 +311,7 @@ export class SettingsView {
       ${this.renderOccasionsCard()}
       <section class="card">
         <h2>Backup</h2>
-        <p class="hint">Saves family members, chores and their history, lists, meals, birthdays and settings to a file. API keys and the settings PIN aren't included. Restoring replaces what's here now; the current data is kept on the Home Assistant server first (<code>.storage/skylight.data.before_import</code>).</p>
+        <p class="hint">Saves family members, chores and their history, lists, meals, birthdays and settings to a file. API keys and the setup PIN aren't included. Restoring replaces what's here now; the current data is kept on the Home Assistant server first (<code>.storage/skylight.data.before_import</code>).</p>
         <div class="row"><button data-action="backup-export">⬇ Download backup</button>
           <input type="file" id="backup-file" accept=".json,application/json" hidden data-change="backup-import">
           <button data-action="backup-pick">⬆ Restore from file…</button></div>

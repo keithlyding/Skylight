@@ -1,7 +1,10 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
 import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.36.5";
-import { EVERY_WEEKS, EVERY_MONTHS, LOOKBACK_DAYS, choreScheduled, choreCarries, choreDone, choreDue, choreOverdueSince } from "./chore-rules.js?v=1.36.5";
+
+// Choices offered in the chore editor.
+const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
+const EVERY_MONTHS = [1, 2, 3, 4, 6, 12];
 
 export class ChoresView {
 
@@ -10,7 +13,7 @@ export class ChoresView {
       type: "chore", chore: c, repeat: c?.repeat || "daily", icon: c?.icon || "✅", iconOpen: false,
       html: () => `
         <h2>${c ? "Edit" : "New"} chore</h2>
-        ${!this.members.length ? `<p class="hint">Add family members in Settings first.</p>` : ""}
+        ${!this.members.length ? `<p class="hint">Add family members in Setup first.</p>` : ""}
         <div class="row">
           <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
           <label>Chore<input id="c-title" value="${esc(c?.title)}" autofocus placeholder="Make bed"></label>
@@ -81,50 +84,57 @@ export class ChoresView {
   // ---------- Mealie ----------
   async _reloadMealie() { this._mealieKey = ""; await this._loadMealie(); }
 
-  // "since Oct 1" on a chore that was missed and is kept on the list until done.
-  _sinceNote(c, day) {
-    const since = choreOverdueSince(c, day);
-    return since ? ` <small class="since">since ${since.toLocaleDateString([], { month: "short", day: "numeric" })}</small>` : "";
+  // ---------- chore schedule: worked out by Home Assistant (chores.py); the panel only draws it ----------
+  // The days and weekly totals this screen needs: about 5 weeks back to a month ahead, plus the
+  // Chores tab's day and the Progress weeks.
+  _choreRequest() {
+    const today = startOfDay(new Date()), day = startOfDay(this.ui.choreDay);
+    const lo = addDays(today, -35), hi = addDays(today, 30);
+    const start = addDays(day, -1) < lo ? addDays(day, -1) : lo;
+    const end = addDays(day, 1) > hi ? addDays(day, 1) : hi;
+    const thisWeek = this.weekStart(today);
+    const ranges = [3, 2, 1, 0].map((k) => { const w = addDays(thisWeek, -7 * k); return [ymd(w), ymd(addDays(w, 6))]; });
+    ranges.push([ymd(this.weekStart(day)), ymd(day)]);
+    return { start: ymd(start), end: ymd(end), ranges };
   }
-
-  // Chore completion between two days (inclusive, never past today): {due, done}.
-  // Days before a chore existed don't count against it. "Weekly" chores count once per week.
+  // Fetch again whenever chores change, the day changes or another range is needed; redraw when it arrives.
+  _ensureChoreView() {
+    if (!this.data || !(this.data.chores || []).length) { this._cv = { days: {}, stats: {} }; return; }
+    const req = this._choreRequest();
+    const key = `${this._dataRev || 0}|${JSON.stringify(req)}`;
+    if (key === this._cvKey) return;
+    this._cvKey = key;
+    this._hass.callWS({ type: "skylight/chores/view", ...req }).then((r) => {
+      if (key !== this._cvKey) return;
+      const stats = {};
+      req.ranges.forEach(([a, b], i) => { stats[`${a}|${b}`] = r.stats[i] || {}; });
+      this._cv = { days: r.days || {}, stats };
+      this._cvError = null;
+      this.render();
+    }).catch((e) => {
+      if (key !== this._cvKey) return;
+      this._cvKey = null; // try again on the next redraw
+      this._cvError = /unknown command/i.test(e?.message || "") ? `Restart Home Assistant to finish updating ${this.appName}.` : e?.message || "Couldn't load chores";
+    });
+  }
+  // null if the chore isn't on that day, else {done, since}.
+  _choreState(c, day) {
+    const s = this._cv?.days?.[c.id]?.[ymd(day)];
+    return s ? { done: !!s[0], since: s[1] ? parseYmd(s[1]) : null } : null;
+  }
+  // A person's chores that show on a day, each with its state.
+  _choresOn(memberId, day) {
+    return (this.data.chores || []).filter((c) => c.member_id === memberId)
+      .map((c) => ({ c, st: this._choreState(c, day) })).filter((x) => x.st);
+  }
+  // "since Oct 1" on a chore that was missed and is kept on the list until done.
+  _sinceNote(st) {
+    return st?.since ? ` <small class="since">since ${st.since.toLocaleDateString([], { month: "short", day: "numeric" })}</small>` : "";
+  }
+  // Chores due / done between two days (totals from Home Assistant).
   completionStats(memberId, from, to) {
-    const today = startOfDay(new Date());
-    const end = startOfDay(to) > today ? today : startOfDay(to);
-    let due = 0, done = 0;
-    for (const c of (this.data.chores || []).filter((x) => x.member_id === memberId)) {
-      const firstDone = (c.completions || [])[0];
-      const began = c.created || firstDone || c.start;
-      let d = startOfDay(from);
-      if (began && parseYmd(began) > d) d = parseYmd(began);
-      if (!began && d < this.weekStart(today)) d = this.weekStart(today); // no history: count from this week
-      if (choreCarries(c)) {
-        // One per scheduled occurrence; done if checked off before the next occurrence.
-        for (; d <= end; d = addDays(d, 1)) {
-          if (!choreScheduled(c, d)) continue;
-          due++;
-          let next = addDays(d, 1);
-          for (let i = 0; i < LOOKBACK_DAYS && !choreScheduled(c, next); i++) next = addDays(next, 1);
-          const a = ymd(d), b = ymd(next);
-          if ((c.completions || []).some((x) => x >= a && x < b)) done++;
-        }
-        continue;
-      }
-      if (c.repeat === "weekly") {
-        for (let w = this.weekStart(d); w <= end; w = addDays(w, 7)) {
-          due++;
-          if ([...Array(7)].some((_, i) => addDays(w, i) <= end && choreDone(c, addDays(w, i)))) done++;
-        }
-        continue;
-      }
-      for (; d <= end; d = addDays(d, 1)) {
-        if (!choreDue(c, d)) continue;
-        due++;
-        if (choreDone(c, d)) done++;
-      }
-    }
-    return { due, done };
+    const t = this._cv?.stats?.[`${ymd(from)}|${ymd(to)}`]?.[memberId];
+    return t ? { due: t[0], done: t[1] } : { due: 0, done: 0 };
   }
 
   // Progress: last 4 weeks of chore completion per person with chores (read-only).
@@ -150,21 +160,21 @@ export class ChoresView {
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
     const kids = choreOwnersOf(this.members);
-    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids (and Household profiles like “Maintenance”). Set someone's type in Settings → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids (and Household profiles like “Maintenance”). Set someone's type in Setup → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     const cols = kids.map((m) => {
-      const chores = this.data.chores.filter((c) => c.member_id === m.id && choreDue(c, day));
-      const done = chores.filter((c) => choreDone(c, day)).length;
+      const chores = this._choresOn(m.id, day);
+      const done = chores.filter((x) => x.st.done).length;
       const pct = chores.length ? done / chores.length : 0;
       return `<div class="ccol" style="--c:${m.color}">
         <div class="chead">
           <div class="ring" style="--p:${pct * 360}deg"><span class="av" style="background:${m.color}">${m.avatar}</span></div>
           <div><div class="cname">${esc(m.name)}</div><div class="cstars">${done}/${chores.length} today${(() => { const w = this.completionStats(m.id, this.weekStart(day), day); return w.due ? ` · ${Math.round((w.done / w.due) * 100)}% this week` : ""; })()}</div></div>
         </div>
-        <div class="clist">${chores.map((c) => {
-          const dn = choreDone(c, day);
+        <div class="clist">${chores.map(({ c, st }) => {
+          const dn = st.done;
           return `<div class="chore ${dn ? "done" : ""}">
             <button class="ctoggle" data-action="toggle-chore" data-chore="${c.id}">
-              <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(c, day)}</span>
+              <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(st)}</span>
 <span class="box">${dn ? "✓" : ""}</span></button>
             <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`;
         }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? "No chores" : ""}</p>`}
@@ -178,6 +188,7 @@ export class ChoresView {
         <button data-action="chore-day" data-dir="0">Today</button>
         <button class="icon" data-action="chore-day" data-dir="1">›</button>
         <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div></div>
+      ${this._cvError ? `<p class="hint center">${esc(this._cvError)}</p>` : ""}
       <div class="chores">${cols}</div>`;
   }
 }

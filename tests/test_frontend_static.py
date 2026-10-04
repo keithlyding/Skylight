@@ -63,7 +63,7 @@ def test_helpers_used_are_imported():
     """A file that uses a shared helper must import it (otherwise it fails only when that code runs)."""
     from panel_js import SRC, FILES
     shared = {}
-    for mod in ("helpers", "chore-rules", "styles"):
+    for mod in ("helpers", "styles"):
         for name in re.findall(r"^export const ([A-Za-z_$][\w$]*)", (SRC / f"{mod}.js").read_text(), re.M):
             shared[name] = mod
     for f in FILES:

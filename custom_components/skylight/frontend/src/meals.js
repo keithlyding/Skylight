@@ -80,7 +80,7 @@ export class MealsView {
         <h3>Ingredients</h3>
         <div class="checklist ings">${r.ingredients.map((i) => `<label class="check"><input type="checkbox" class="ing-check" value="${esc(i)}"> ${esc(i)}</label>`).join("") || `<p class="hint">None listed</p>`}</div>
         ${lists.length ? `<div class="additem"><select id="recipe-list">${lists.map((e) => `<option value="${e}">${esc(this.entityName(e))}</option>`).join("")}</select><button data-action="recipe-to-list">Add checked to list</button></div>`
-          : `<p class="hint">Link a shopping list in Settings to send ingredients to it.</p>`}
+          : `<p class="hint">Link a shopping list in Setup to send ingredients to it.</p>`}
         <h3>Steps</h3>
         <ol class="steps">${r.instructions.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
         <div class="actions"><span class="spacer"></span><button class="primary" data-action="close">Close</button></div>`,
@@ -256,7 +256,7 @@ export class MealsView {
         <span>Step ${c.step + 1} of ${r.steps.length}</span>
         <button class="primary" data-action="${c.step >= r.steps.length - 1 ? "cook-close" : "cook-next"}">${c.step >= r.steps.length - 1 ? "Done 🎉" : "Next ›"}</button></div>` : ""}
       ${c.qr ? `<div class="ckqr" data-action="cook-qr"><div class="ckqrcard"><h3>Scan with your phone</h3><div class="qrbox">${c.qrSvg || "…"}</div>
-        <p class="hint">Opens this recipe in Mealie. Your phone must be able to reach Mealie (same Wi-Fi, or a link set in Settings → Mealie).</p><small class="qrurl">${esc(r.link)}</small></div></div>` : ""}`);
+        <p class="hint">Opens this recipe in Mealie. Your phone must be able to reach Mealie (same Wi-Fi, or a link set in Setup → Mealie).</p><small class="qrurl">${esc(r.link)}</small></div></div>` : ""}`);
     [".ckbody", ".ckings", ".cksteps"].forEach((sel, i) => { const el = this.$cook.querySelector(sel); if (el) el.scrollTop = kept[i]; });
     const on = this.$cook.querySelector(".ckstep.on");
     if (on && c.scrollStep) { on.scrollIntoView({ block: "center", behavior: "smooth" }); c.scrollStep = false; }
@@ -274,7 +274,7 @@ export class MealsView {
     this.renderCook();
   }
 
-  // ---------- settings PIN ----------
+  // ---------- setup PIN ----------
   get pinSet() { return !!this.data?.security?.pin_set; }
   get unlocked() { return !this.pinSet || (this._unlockUntil || 0) > Date.now(); }
 

@@ -159,7 +159,7 @@ export const TABS = [
   ["meals", "Meals", "mdi:silverware-fork-knife"],
   ["lists", "Lists", "mdi:format-list-checks"],
   ["photos", "Photos", "mdi:image-multiple"],
-  ["settings", "Settings", "mdi:cog"],
+  ["settings", "Setup", "mdi:cog"],
 ];
 export const WEATHER_ICONS = {
   "clear-night": "🌙", cloudy: "☁️", fog: "🌫️", hail: "🌨️", lightning: "🌩️", "lightning-rainy": "⛈️",

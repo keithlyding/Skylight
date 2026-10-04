@@ -1,4 +1,4 @@
-"""Config flow: one click to add Lyding Strike. Options: admin reset of the settings PIN."""
+"""Config flow: one click to add Lyding Strike. Options: admin reset of the setup PIN."""
 
 from __future__ import annotations
 
@@ -42,5 +42,5 @@ class SkylightOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({vol.Optional("clear_pin", default=False): bool}),
-            description_placeholders={"status": "A settings PIN is set." if pin_set else "No settings PIN is set."},
+            description_placeholders={"status": "A setup PIN is set." if pin_set else "No setup PIN is set."},
         )

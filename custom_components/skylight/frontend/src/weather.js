@@ -303,7 +303,7 @@ export class WeatherView {
 
   renderWeather() {
     const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
-    if (!w) return `<div class="empty"><h2>No weather source</h2><p>Choose one in Settings → Display → Weather.</p><button class="primary" data-action="tab" data-tab="settings">Go to Settings</button></div>`;
+    if (!w) return `<div class="empty"><h2>No weather source</h2><p>Choose one in Setup → Display → Weather.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     this._loadWeatherFull();
     const a = w.attributes, tu = a.temperature_unit || "°", wu = a.wind_speed_unit || "", pu = a.precipitation_unit || "";
     const round = (v) => (v === undefined || v === null ? null : Math.round(Number(v)));
@@ -451,7 +451,7 @@ export class WeatherView {
     const pc = ["#9e9e9e", "#43a047", "#9ccc65", "#f9a825", "#ef6c00", "#c62828"];
     const pol = pollen.length ? `<div class="pollen">${pollen.map((p) => `<div class="pol"><span>${/tree|birch|alder|olive/i.test(p.name) ? "🌳" : /grass/i.test(p.name) ? "🌾" : "🌿"}</span>
         <b>${esc(p.name)}</b><i class="pdots">${[1, 2, 3, 4, 5].map((k) => `<em style="background:${k <= p.level ? pc[Math.min(5, p.level)] : "var(--line)"}"></em>`).join("")}</i><small>${esc(p.category || "")}${p.in_season === false ? " · out of season" : ""}</small></div>`).join("")}</div>`
-      : `<p class="hint">Pollen: add a Google key in Settings → Location lookup and enable the Pollen API to see US pollen.</p>`;
+      : `<p class="hint">Pollen: add a Google key in Setup → Location lookup and enable the Pollen API to see US pollen.</p>`;
     return `<section class="wcard"><h3>Air quality &amp; pollen</h3>${aq}${pol}</section>`;
   }
   _compareCard(tu, pu) {

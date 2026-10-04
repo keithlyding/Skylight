@@ -135,3 +135,87 @@ def toggle(chore: dict, on: date, keep: int = KEEP_COMPLETIONS) -> bool:
     comps.append(on.isoformat())
     chore["completions"] = sorted(comps)[-keep:]
     return True
+
+
+# ----- What the screens show. The panel draws these results; it has no chore rules of its own. -----
+
+def day_states(chore: dict, start: date, end: date) -> dict[str, list]:
+    """Days in [start, end] the chore appears on: {"YYYY-MM-DD": [done, since]}.
+
+    `since` is the ISO day a missed "keep showing until done" chore was scheduled (else None).
+    Same answers as is_due / is_done / overdue_since, but walks the range once.
+    """
+    out: dict[str, list] = {}
+    if end < start:
+        return out
+    if not carries(chore):
+        d = start
+        while d <= end:
+            if is_due(chore, d):
+                out[d.isoformat()] = [is_done(chore, d), None]
+            d += timedelta(days=1)
+        return out
+    comps = sorted(chore.get("completions", []))
+    occ = last_occurrence(chore, start)
+    d = start
+    while d <= end:
+        if scheduled(chore, d):
+            occ = d
+        if occ is not None:
+            a, b = occ.isoformat(), d.isoformat()
+            earlier = any(a <= c < b for c in comps)
+            if not earlier:
+                done = any(c == b for c in comps)
+                out[b] = [done, a if (not done and occ < d) else None]
+        d += timedelta(days=1)
+    return out
+
+
+def _week_start(d: date, week_start: int) -> date:
+    """Start of d's week; week_start 0 = Sunday, 1 = Monday (the display setting)."""
+    first = 6 if week_start == 0 else 0  # Python weekday of the first day
+    return d - timedelta(days=(d.weekday() - first) % 7)
+
+
+def stats(chore: dict, start: date, end: date, today: date, week_start: int = 0) -> tuple[int, int]:
+    """(due, done) between two days (inclusive, never past today). Days before the chore existed
+    don't count; "weekly" chores count once per week; "keep showing until done" chores count once
+    per scheduled date, done if checked off before the next one."""
+    end = min(end, today)
+    comps = chore.get("completions", [])
+    began = chore.get("created") or (comps[0] if comps else None) or chore.get("start")
+    d = start
+    if began and date.fromisoformat(began) > d:
+        d = date.fromisoformat(began)
+    if not began and d < _week_start(today, week_start):
+        d = _week_start(today, week_start)  # no history: count from this week
+    due = done = 0
+    if carries(chore):
+        while d <= end:
+            if scheduled(chore, d):
+                due += 1
+                nxt = d + timedelta(days=1)
+                for _ in range(LOOKBACK_DAYS):
+                    if scheduled(chore, nxt):
+                        break
+                    nxt += timedelta(days=1)
+                a, b = d.isoformat(), nxt.isoformat()
+                if any(a <= c < b for c in comps):
+                    done += 1
+            d += timedelta(days=1)
+        return due, done
+    if chore.get("repeat") == "weekly":
+        w = _week_start(d, week_start)
+        while w <= end:
+            due += 1
+            if any(w + timedelta(days=i) <= end and is_done(chore, w + timedelta(days=i)) for i in range(7)):
+                done += 1
+            w += timedelta(days=7)
+        return due, done
+    while d <= end:
+        if is_due(chore, d):
+            due += 1
+            if is_done(chore, d):
+                done += 1
+        d += timedelta(days=1)
+    return due, done

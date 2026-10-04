@@ -1,7 +1,6 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
 import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.36.5";
-import { choreDone } from "./chore-rules.js?v=1.36.5";
 import { STYLES } from "./styles.js?v=1.36.5";
 import { CalendarView } from "./calendar.js?v=1.36.5";
 import { WeatherView } from "./weather.js?v=1.36.5";
@@ -148,6 +147,7 @@ export class SkylightPanel extends HTMLElement {
   _onData(data) {
     const firstLoad = !this.data;
     this.data = data;
+    this._dataRev = (this._dataRev || 0) + 1; // chores may have changed: ask Home Assistant again
     this._applyHaChrome();
     if (firstLoad) {
       const v = data.settings.default_view || "7day";
@@ -334,7 +334,7 @@ export class SkylightPanel extends HTMLElement {
     return this.isPhone ? Math.min(this._homeDays, 3) : this._homeDays;
   }
   // Phone-width screens (e.g. the Home Assistant app on a phone) get a compact layout.
-  // The display name from Settings (default "Lyding Strike"); HTML-escaped for templates.
+  // The display name from Setup (default "Lyding Strike"); HTML-escaped for templates.
   get appName() { return esc((this.settings?.app_name || "").trim() || DEFAULT_APP_NAME); }
   get isPhone() { return !!window.matchMedia?.("(max-width: 600px), (max-height: 500px) and (orientation: landscape)").matches; }
   // 5- and 7-day grids don't fit on a phone: show 3 days there (the saved choice is kept for bigger screens).
@@ -378,7 +378,7 @@ export class SkylightPanel extends HTMLElement {
         this.render(); this._loadEvents(); break;
       case "open-event": {
         const ev = this.visibleEvents()[Number(d.idx)];
-        if (ev?.occasion) { this._toast("Birthdays and anniversaries are changed in Settings → Birthdays & anniversaries"); break; }
+        if (ev?.occasion) { this._toast("Birthdays and anniversaries are changed in Setup → Birthdays & anniversaries"); break; }
         this.openEventDialog(ev); break;
       }
       case "save-event": await this.saveEvent(); break;
@@ -557,7 +557,7 @@ export class SkylightPanel extends HTMLElement {
       case "toggle-chore": {
         const chore = D.chores.find((c) => c.id === d.chore);
         const day = d.date ? parseYmd(d.date) : this.ui.choreDay;
-        const wasDone = chore && choreDone(chore, day);
+        const wasDone = chore && this._choreState(chore, day)?.done;
         el.classList.add("pop");
         const rect = el.getBoundingClientRect(); // capture before the re-render replaces el
         await this._ws({ type: "skylight/chore/toggle", chore_id: d.chore, date: ymd(day) });
@@ -908,6 +908,7 @@ export class SkylightPanel extends HTMLElement {
   // ---------- rendering ----------
   render() {
     if (!this.$app || !this.data) return;
+    this._ensureChoreView();
     const scroll = this._resetScroll ? 0 : this.$app.querySelector(".content")?.scrollTop || 0;
     this._resetScroll = false;
     const active = this.shadowRoot.activeElement;
@@ -931,7 +932,7 @@ export class SkylightPanel extends HTMLElement {
     this.$app.innerHTML = `
       <nav class="rail">
         <div class="logo" title="${this.appName}">⚡</div>
-        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${id === "settings" && this.isPhone ? "Setup" : label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
+        ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
       </nav>
       <main>
         ${this.renderHeader()}
@@ -978,7 +979,7 @@ export class SkylightPanel extends HTMLElement {
       ${showChips ? `<div class="chips members">${this.members.map((m) => `
         <button class="mchip ${this.ui.filter === m.id ? "on" : this.ui.filter ? "dim" : ""}" style="--c:${m.color}" data-action="filter" data-member="${m.id}">
           <span class="av" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}</button>`).join("")}
-        ${this.members.length ? "" : `<button class="chip" data-action="tab" data-tab="settings">+ Add your family in Settings</button>`}
+        ${this.members.length ? "" : `<button class="chip" data-action="tab" data-tab="settings">+ Add your family in Setup</button>`}
       </div>` : "<div></div>"}
       ${weather}
     </header>`;

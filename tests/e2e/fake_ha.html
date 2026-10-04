@@ -25,7 +25,7 @@ window.hass = {
   connection:{addEventListener:(t,f)=>window.CONN.addEventListener(t,f),removeEventListener:(t,f)=>window.CONN.removeEventListener(t,f),subscribeMessage:(cb,msg)=>{if(msg.type==="todo/item/subscribe"){window.todoCb=cb;setTimeout(()=>cb({items:window.TODO}),0);return Promise.resolve(()=>{})}subs.push(cb);setTimeout(push,0);return Promise.resolve(()=>{})}},
   callApi:async(m,path)=>{const ent=path.split("?")[0].split("/")[1];return (evs[ent]||[]).concat(created.filter(c=>c.entity_id===ent).map(c=>({summary:c.event.summary,start:c.event.dtstart.length===10?{date:c.event.dtstart}:{dateTime:c.event.dtstart},end:c.event.dtend.length===10?{date:c.event.dtend}:{dateTime:c.event.dtend},uid:"new-"+c.entity_id})))},
   callWS:async(msg)=>{calls.push(msg);switch(msg.type){
-    case "skylight/set": if (window.SEC.pin && !window.SEC.unlocked && ["members","settings","chores","family_calendars","meal_calendars","info_calendars","linked_todos"].includes(msg.key)) throw {code:"locked",message:"Settings are locked. Enter the settings PIN."};
+    case "skylight/set": if (window.SEC.pin && !window.SEC.unlocked && ["members","settings","chores","family_calendars","meal_calendars","info_calendars","linked_todos"].includes(msg.key)) throw {code:"locked",message:"Setup is locked. Enter the setup PIN."};
       D[msg.key]= msg.key==="settings"?{...D.settings,...msg.value}:msg.value; push(); return null;
     case "skylight/list/item/add": { const l=D.lists.find(x=>x.id===msg.list_id); const it={id:"n"+Math.random().toString(36).slice(2,8),text:msg.text.trim(),done:false}; l.items=[...l.items.filter(i=>!i.done),it,...l.items.filter(i=>i.done)]; push(); return it; }
     case "skylight/list/item/update": { const l=D.lists.find(x=>x.id===msg.list_id); const it=l.items.find(i=>i.id===msg.item_id); if(msg.text) it.text=msg.text; if(msg.done!==undefined&&msg.done!==it.done){it.done=msg.done; if(msg.done) it.done_at=new Date().toISOString(); else { delete it.done_at; l.items=[...l.items.filter(i=>!i.done&&i!==it),it,...l.items.filter(i=>i.done)]; }} push(); return it; }
@@ -40,6 +40,7 @@ window.hass = {
     case "skylight/lock": window.SEC.unlocked=false; return null;
     case "skylight/pin/set": if (window.SEC.pin && msg.current!==window.SEC.pin) throw {code:"wrong_pin",message:"Wrong PIN"}; window.SEC.pin=msg.pin; window.SEC.unlocked=true; D.security={pin_set:true}; push(); return {seconds_left:300};
     case "skylight/pin/clear": if (msg.current!==window.SEC.pin) throw {code:"wrong_pin",message:"Wrong PIN"}; window.SEC.pin=""; D.security={pin_set:false}; push(); return null;
+    case "skylight/chores/view": return window.FAKE_CHORES.choreView(D, msg);
     case "skylight/chore/toggle": {const c=D.chores.find(x=>x.id===msg.chore_id); const i=c.completions.indexOf(msg.date); if(i>=0){c.completions.splice(i,1);D.stars[c.member_id]-=c.stars}else{c.completions.push(msg.date);D.stars[c.member_id]=(D.stars[c.member_id]||0)+c.stars} push(); return null;}
     case "skylight/stars/adjust": D.stars[msg.member_id]=(D.stars[msg.member_id]||0)+msg.delta; push(); return null;
     case "skylight/reward/redeem": {const r=D.rewards.find(x=>x.id===msg.reward_id); if(D.stars[msg.member_id]<r.cost) return {redeemed:false}; D.stars[msg.member_id]-=r.cost; push(); return {redeemed:true}}
@@ -87,6 +88,8 @@ window.hass = {
 };
 </script>
 <script type="module">
+import { choreView } from "/e2e/fake_chores.mjs";
 import "/skylight-panel.js";
+window.FAKE_CHORES = { choreView };
 const el=document.createElement("skylight-panel"); document.body.appendChild(el); el.hass=window.hass; window.el=el;
 </script></body></html>

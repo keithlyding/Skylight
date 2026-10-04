@@ -80,41 +80,6 @@ def test_weekly_days_without_interval_unchanged():
     assert chores.is_due(c, MON) and not chores.is_due(c, TUE)
 
 
-def test_js_rule_matches_python():
-    """The panel's choreDue must agree with chores.is_due for every day of a year."""
-    import json
-    import subprocess
-    from datetime import timedelta
-
-    helpers = HELPERS
-    cases = [
-        {"repeat": "days", "days": [4], "every_weeks": 2, "start": "2026-10-02"},
-        {"repeat": "days", "days": [0, 3], "every_weeks": 3, "start": "2026-09-30"},
-        {"repeat": "days", "days": [6], "every_weeks": 1, "start": "2026-09-27"},
-        {"repeat": "days", "days": [1, 5]},
-        {"repeat": "monthly", "month_days": [1, 15]},
-        {"repeat": "monthly", "month_days": [31], "start": "2026-09-01"},
-        {"repeat": "monthly", "month_days": [-1], "every_months": 3, "start": "2026-10-10"},
-        {"repeat": "monthly", "month_days": [1], "carry": True, "completions": ["2026-10-03", "2027-01-01"]},
-        {"repeat": "days", "days": [5], "every_weeks": 13, "start": "2026-09-05", "carry": True,
-         "completions": ["2026-09-08", "2027-03-01"]},
-    ]
-    days = [(date(2026, 9, 1) + timedelta(days=i)).isoformat() for i in range(366)]
-    script = helpers + f"""
-const cases = {json.dumps(cases)}, days = {json.dumps(days)};
-console.log(JSON.stringify(cases.map((c) => days.map((d) => [choreDue({{completions: [], ...c}}, parseYmd(d)), choreDone({{completions: [], ...c}}, parseYmd(d))]))));"""
-    try:
-        out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout
-    except FileNotFoundError:
-        import pytest
-        pytest.skip("node not installed")
-    js = json.loads(out)
-    py = [[[chores.is_due({"completions": [], **c}, date.fromisoformat(d)), chores.is_done({"completions": [], **c}, date.fromisoformat(d))]
-           for d in days] for c in cases]
-    assert js == py
-
-
-
 def test_monthly_dates():
     c = {"repeat": "monthly", "month_days": [1, 15], "completions": []}
     assert chores.is_due(c, date(2026, 10, 1)) and chores.is_due(c, date(2026, 10, 15))
@@ -155,3 +120,69 @@ def test_keep_showing_until_done():
     # Without carry, a missed date simply disappears.
     plain = {"repeat": "monthly", "month_days": [1], "completions": []}
     assert not chores.is_due(plain, date(2026, 10, 5))
+
+
+def test_day_states_match_the_rules():
+    """day_states (what screens draw) agrees with is_due / is_done / overdue_since for every day."""
+    from datetime import timedelta
+    cases = [
+        {"repeat": "daily", "completions": ["2026-10-02"]},
+        {"repeat": "weekly", "completions": ["2026-10-07"]},
+        {"repeat": "once", "completions": []},
+        {"repeat": "once", "completions": ["2026-10-09"]},
+        {"repeat": "days", "days": [0, 3], "every_weeks": 2, "start": "2026-09-28", "completions": ["2026-10-12"]},
+        {"repeat": "monthly", "month_days": [1, 15], "completions": ["2026-10-15"]},
+        {"repeat": "monthly", "month_days": [-1], "every_months": 3, "start": "2026-10-01", "carry": True,
+         "completions": ["2026-11-03", "2027-02-01"]},
+        {"repeat": "days", "days": [5], "every_weeks": 13, "start": "2026-09-05", "carry": True,
+         "completions": ["2026-09-08", "2027-03-01"]},
+        {"repeat": "monthly", "month_days": [1], "carry": True, "completions": ["2026-10-03", "2027-01-01"]},
+    ]
+    start, end = date(2026, 9, 1), date(2027, 6, 30)
+    for c in cases:
+        got = chores.day_states(c, start, end)
+        want = {}
+        d = start
+        while d <= end:
+            if chores.is_due(c, d):
+                since = chores.overdue_since(c, d)
+                want[d.isoformat()] = [chores.is_done(c, d), since.isoformat() if since else None]
+            d += timedelta(days=1)
+        assert got == want, c
+
+
+def test_stats_counts():
+    today = date(2026, 10, 14)
+    daily = {"repeat": "daily", "created": "2026-10-05", "completions": ["2026-10-05", "2026-10-06", "2026-10-08"]}
+    assert chores.stats(daily, date(2026, 10, 4), date(2026, 10, 10), today) == (6, 3)  # starts at creation
+    assert chores.stats(daily, date(2026, 10, 12), date(2026, 10, 20), today) == (3, 0)  # never past today
+    weekly = {"repeat": "weekly", "created": "2026-09-01", "completions": ["2026-10-07"]}
+    assert chores.stats(weekly, date(2026, 10, 5), date(2026, 10, 18), today, week_start=1) == (2, 1)
+    filt = {"repeat": "monthly", "month_days": [1], "carry": True, "created": "2026-09-01",
+            "completions": ["2026-09-03"]}
+    assert chores.stats(filt, date(2026, 9, 1), date(2026, 10, 14), today) == (2, 1)  # Sep done late, Oct missed
+
+
+async def test_chore_view_command(hass, tmp_path, hass_storage, hass_ws_client):
+    from homeassistant.setup import async_setup_component
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from homeassistant.util import dt as dt_util
+    hass.config.config_dir = str(tmp_path)
+    today = dt_util.now().date()
+    hass_storage["skylight.data"] = {"version": 1, "key": "skylight.data", "data": {
+        "members": [{"id": "k", "name": "Kid", "role": "kid", "color": "#123456", "avatar": "x", "calendars": []}],
+        "chores": [{"id": "c1", "member_id": "k", "title": "Bed", "repeat": "daily", "created": today.isoformat(),
+                    "completions": [today.isoformat()]}]}}
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain="skylight", data={})
+    e.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(e.entry_id)
+    ws = await hass_ws_client(hass)
+    t = today.isoformat()
+    await ws.send_json({"id": 1, "type": "skylight/chores/view", "start": t, "end": t, "ranges": [[t, t]]})
+    r = await ws.receive_json()
+    assert r["success"], r
+    assert r["result"]["days"] == {"c1": {t: [True, None]}}
+    assert r["result"]["stats"] == [{"k": [1, 1]}]
+    await ws.send_json({"id": 2, "type": "skylight/chores/view", "start": "2020-01-01", "end": "2026-01-01"})
+    assert not (await ws.receive_json())["success"]  # range too long

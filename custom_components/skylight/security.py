@@ -76,7 +76,7 @@ def lock_all(hass: HomeAssistant) -> None:
 
 
 def send_locked(connection, msg_id: int) -> None:
-    connection.send_error(msg_id, "locked", "Settings are locked. Enter the settings PIN.")
+    connection.send_error(msg_id, "locked", "Setup is locked. Enter the setup PIN.")
 
 
 def gated(handler):
