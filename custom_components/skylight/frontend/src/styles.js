@@ -481,6 +481,7 @@ label.check input { width:22px; height:22px; }
 .hintrow p { margin:0; font-size:15px; font-weight:600; line-height:1.35; }
 .hintrow.h-now { background:#e3f0fb; color:#0d3c61; }
 .hintrow.h-alert { background:#fdecea; color:#7f1d1d; }
+.diaglog { width:100%; font-family:monospace; font-size:11px; white-space:pre; }
 .remrow { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 0; border-top:1px solid var(--line); }
 .remrow > b { flex:1 1 160px; } .remrow select { width:auto; }
 .remcard .aphead { background:var(--accent); color:#fff; }

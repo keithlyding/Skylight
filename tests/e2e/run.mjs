@@ -477,6 +477,22 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async diagnostics(browser, base) {
+    // Flight recorder: a session's events survive a reload; Setup shows the previous session and sends it.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    await p.tab("calendar"); await p.tab("lists");
+    await p.waitForTimeout(1300); // saved every second
+    await p.reload(); await p.waitForTimeout(1500);
+    await p.evaluate(() => { el.ui.alertPop = null; el.ui.tab = "settings"; el.render(); }); await p.waitForTimeout(300);
+    const log = await p.S(".diaglog").inputValue();
+    check(log.includes("panel-start") && log.includes("render lists"), `previous session shown: ${log.slice(-200)}`);
+    check((await p.S(".diag").textContent()).includes("Last heartbeat") || (await p.S(".diag").textContent()).includes("last heartbeat"), "heartbeat reported");
+    await p.S('[data-action="diag-send"]').click(); await p.waitForTimeout(300);
+    check((await p.evaluate(() => window.DIAG || "")).includes("Session started"), "report sent to Home Assistant");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

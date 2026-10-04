@@ -13,9 +13,13 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+import logging
+
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED, VERSION
 from . import chores, immich, photos, security
 from .photos import async_delete_photo
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _store(hass: HomeAssistant):
@@ -29,6 +33,7 @@ def async_register(hass: HomeAssistant) -> None:
         ws_subscribe,
         ws_set,
         ws_toggle_chore,
+        ws_diag_report,
         ws_chore_view,
         ws_move_list_item,
         ws_list_add_item,
@@ -232,6 +237,15 @@ async def ws_toggle_chore(hass: HomeAssistant, connection, msg: dict[str, Any]) 
         connection.send_error(msg["id"], "not_found", str(err))
         return
     connection.send_result(msg["id"], {"done": done})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/diag/report", vol.Required("text"): str})
+@callback
+def ws_diag_report(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """A screen's flight-recorder log (Setup > Diagnostics), written to the Home Assistant log."""
+    user = getattr(getattr(connection, "user", None), "name", None) or "unknown user"
+    _LOGGER.warning("Lyding Strike diagnostics from %s:\n%s", user, msg["text"][:30000])
+    connection.send_result(msg["id"])
 
 
 MAX_VIEW_DAYS = 400

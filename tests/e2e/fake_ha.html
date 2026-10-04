@@ -41,6 +41,7 @@ window.hass = {
     case "skylight/pin/set": if (window.SEC.pin && msg.current!==window.SEC.pin) throw {code:"wrong_pin",message:"Wrong PIN"}; window.SEC.pin=msg.pin; window.SEC.unlocked=true; D.security={pin_set:true}; push(); return {seconds_left:300};
     case "skylight/pin/clear": if (msg.current!==window.SEC.pin) throw {code:"wrong_pin",message:"Wrong PIN"}; window.SEC.pin=""; D.security={pin_set:false}; push(); return null;
     case "skylight/reminder/set": {D.event_meta=D.event_meta||{}; delete D.event_meta[msg.key]; let key=null; if(msg.meta){key=msg.meta.uid||`${msg.meta.entity}|${msg.meta.summary}|${msg.meta.start}`; D.event_meta[key]=msg.meta;} push(); return {key};}
+    case "skylight/diag/report": window.DIAG=msg.text; return null;
     case "skylight/chores/view": return window.FAKE_CHORES.choreView(D, msg);
     case "skylight/chore/toggle": {const c=D.chores.find(x=>x.id===msg.chore_id); const i=c.completions.indexOf(msg.date); if(i>=0){c.completions.splice(i,1); if(c.done_log) delete c.done_log[msg.date];}else{c.completions.push(msg.date); c.completions.sort(); (c.done_log||={})[msg.date]={at:new Date().toISOString(),by:"Test User"};} push(); return null;}
     case "skylight/stars/adjust": D.stars[msg.member_id]=(D.stars[msg.member_id]||0)+msg.delta; push(); return null;

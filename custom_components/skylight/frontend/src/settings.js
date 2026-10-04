@@ -1,6 +1,7 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.43.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.44.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.44.0";
 
 export class SettingsView {
 
@@ -376,6 +377,8 @@ export class SettingsView {
 
       ${this.renderRemindersCard()}
 
+      ${this.renderDiagCard()}
+
       ${this.renderLookCard()}
 
       <section class="card">
@@ -458,6 +461,22 @@ export class SettingsView {
       <div class="apcard remcard"><div class="aphead"><span class="apicon">⏰</span><div><b>${esc(r.summary)}</b><small>${esc(r.message || "")}</small></div></div>
         ${this.ui.reminderPop.length > 1 ? `<div class="apbody"><p class="hint">+ ${this.ui.reminderPop.length - 1} more</p></div>` : ""}
         <div class="apbtns"><button class="primary" data-action="reminder-dismiss">OK</button></div></div></div>`;
+  }
+
+
+  // ---------- diagnostics: the flight recorder's previous session (see diag.js) ----------
+  renderDiagCard() {
+    const prev = diagPrevious();
+    const end = prev?.log?.length ? prev.log[prev.log.length - 1].t : prev?.started;
+    const stuck = prev && prev.beat - end < 3000; // heartbeat stopped right after the last event
+    return `<section class="card diag">
+      <h2>🩺 Diagnostics</h2>
+      <p class="hint">If this screen froze: force-close the app, reopen it, and come here. This shows what the app was doing in the previous session (saved on this device).</p>
+      ${prev ? `<p><b>Previous session:</b> started ${esc(new Date(prev.started).toLocaleString())}, last heartbeat ${esc(new Date(prev.beat).toLocaleTimeString())}.
+        ${stuck ? "The heartbeat stopped right after the last thing the app did." : "The heartbeat kept going after the last thing the app did."}</p>
+        <textarea readonly rows="8" class="diaglog">${esc(diagText(prev).split("\n").slice(-60).join("\n"))}</textarea>` : `<p class="hint">No previous session recorded yet.</p>`}
+      <div class="row"><button data-action="diag-send">Send to Home Assistant log</button></div>
+    </section>`;
   }
 
 }

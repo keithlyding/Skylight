@@ -1,16 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.43.1";
-import { STYLES } from "./styles.js?v=1.43.1";
-import { CalendarView } from "./calendar.js?v=1.43.1";
-import { WeatherView } from "./weather.js?v=1.43.1";
-import { HomeView } from "./home.js?v=1.43.1";
-import { ChoresView } from "./chores.js?v=1.43.1";
-import { MealsView } from "./meals.js?v=1.43.1";
-import { ListsView } from "./lists.js?v=1.43.1";
-import { PhotosView } from "./photos.js?v=1.43.1";
-import { SettingsView } from "./settings.js?v=1.43.1";
-import { PickersView } from "./pickers.js?v=1.43.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.44.0";
+import { STYLES } from "./styles.js?v=1.44.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.44.0";
+import { CalendarView } from "./calendar.js?v=1.44.0";
+import { WeatherView } from "./weather.js?v=1.44.0";
+import { HomeView } from "./home.js?v=1.44.0";
+import { ChoresView } from "./chores.js?v=1.44.0";
+import { MealsView } from "./meals.js?v=1.44.0";
+import { ListsView } from "./lists.js?v=1.44.0";
+import { PhotosView } from "./photos.js?v=1.44.0";
+import { SettingsView } from "./settings.js?v=1.44.0";
+import { PickersView } from "./pickers.js?v=1.44.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -34,6 +35,7 @@ export class SkylightPanel extends HTMLElement {
 
   // ---------- HA lifecycle ----------
   set hass(hass) {
+    diag("hass-update");
     const first = !this._hass;
     this._hass = hass;
     if (first) this._start();
@@ -44,7 +46,7 @@ export class SkylightPanel extends HTMLElement {
   setConfig(config) { this.config = config || {}; }
   getCardSize() { return 12; }
 
-  connectedCallback() { if (this._hass && !this._unsub) this._start(); }
+  connectedCallback() { diag("attached"); if (this._hass && !this._unsub) this._start(); }
   // Show a banner when Home Assistant can't be reached (after 10 s, so brief blips don't flash it),
   // and refresh everything once it's back. The data subscription itself resumes automatically.
   _watchConnection() {
@@ -52,12 +54,14 @@ export class SkylightPanel extends HTMLElement {
     if (!conn?.addEventListener || this._connWatched === conn) return;
     this._connWatched = conn;
     this._onConnLost = () => {
+      diag("conn-lost");
       if (this._lostAt) return;
       this._lostAt = Date.now();
       clearTimeout(this._lostTimer);
       this._lostTimer = setTimeout(() => { if (this._lostAt) this.render(); }, 10000);
     };
     this._onConnBack = () => {
+      diag("conn-back");
       const was = this._lostAt;
       this._lostAt = null; clearTimeout(this._lostTimer);
       if (!was) return;
@@ -78,6 +82,7 @@ export class SkylightPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
+    diag("detached");
     if (this._connWatched) {
       this._connWatched.removeEventListener?.("disconnected", this._onConnLost);
       this._connWatched.removeEventListener?.("reconnect-error", this._onConnLost);
@@ -99,6 +104,17 @@ export class SkylightPanel extends HTMLElement {
 
   _start() {
     if (!this.isConnected) return;
+    diagStart(`v${PANEL_VERSION} admin=${!!this._hass.user?.is_admin} ${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio} ${navigator.userAgent}`);
+    diag("panel-start");
+    if (!window.__lydingDiagHooks) { // page-level events, once per page load
+      window.__lydingDiagHooks = true;
+      for (const t of ["pagehide", "pageshow", "focus", "blur", "online", "offline"]) window.addEventListener(t, () => diag(t));
+      document.addEventListener("visibilitychange", () => diag("visibility", document.visibilityState));
+      window.addEventListener("resize", () => diag("resize", `${window.innerWidth}x${window.innerHeight}`));
+      window.visualViewport?.addEventListener("resize", () => diag("vv-resize", `${Math.round(window.visualViewport.width)}x${Math.round(window.visualViewport.height)}`));
+      window.addEventListener("error", (e) => diag("error", `${e.message} @ ${(e.filename || "").split("/").pop()}:${e.lineno}`));
+      window.addEventListener("unhandledrejection", (e) => diag("rejection", e.reason?.message || e.reason));
+    }
     this._buildShadow();
     this._unsub = this._hass.connection.subscribeMessage((data) => this._onData(data), { type: "skylight/subscribe" });
     this._unsub.catch((e) => this._fatal(e));
@@ -188,6 +204,7 @@ export class SkylightPanel extends HTMLElement {
     const asked = (window.__lydingChrome ||= {});
     if (asked.hide === hide) return;
     asked.hide = hide;
+    diag("hide-ha-sidebar", hide);
     window.dispatchEvent(new CustomEvent("hass-kiosk-mode", { detail: { enable: hide } }));
     if (this._hass.dockedSidebar !== dock) {
       this.dispatchEvent(new CustomEvent("hass-dock-sidebar", { detail: { dock }, bubbles: true, composed: true }));
@@ -198,6 +215,7 @@ export class SkylightPanel extends HTMLElement {
     const firstLoad = !this.data;
     this.data = data;
     this._dataRev = (this._dataRev || 0) + 1; // chores may have changed: ask Home Assistant again
+    diag("data");
     this._applyHaChrome();
     if (firstLoad) {
       const v = data.settings.default_view || "7day";
@@ -367,6 +385,7 @@ export class SkylightPanel extends HTMLElement {
   }
 
   async _ws(msg) {
+    diag("ws", msg.type);
     try { return await this._hass.callWS(msg); }
     catch (err) {
       if (err?.code === "locked") {
@@ -442,6 +461,12 @@ export class SkylightPanel extends HTMLElement {
       case "time-type": { // switch a time box to typing (opens the keyboard)
         const input = this.shadowRoot.getElementById(d.for);
         if (input) { input.readOnly = false; input.focus(); input.select(); }
+        break;
+      }
+      case "diag-send": {
+        const text = diagText(diagPrevious()) + "\n\n--- this session so far ---\n" + diagText(diagCurrent());
+        try { await this._hass.callWS({ type: "skylight/diag/report", text }); this._toast("Sent: Settings → System → Logs in Home Assistant"); }
+        catch (e) { this._toast(`Couldn't send: ${e.message || e}`); }
         break;
       }
       case "chores-mode": this.ui.choresMode = d.mode; this._resetScroll = true; this.render(); break;
@@ -1022,7 +1047,7 @@ export class SkylightPanel extends HTMLElement {
     this._fitTimes = (this._fitTimes || []).filter((t) => now - t < 2000);
     this._fitTimes.push(now);
     if (this._fitStopped || this._fitTimes.length > 20) {
-      if (!this._fitStopped) { this._fitStopped = true; console.warn("Lyding Strike: layout kept changing; stopped re-measuring"); }
+      if (!this._fitStopped) { diag("fit-brake"); this._fitStopped = true; console.warn("Lyding Strike: layout kept changing; stopped re-measuring"); }
       return;
     }
     // (v1.37-1.42 also tried to reach up behind the iPhone status bar and checked it with a hit-test
@@ -1076,8 +1101,13 @@ export class SkylightPanel extends HTMLElement {
   // Never fail silently: if drawing the screen throws, show what happened with Try again / Reload
   // (otherwise the app looks frozen while the rest of Home Assistant keeps working).
   render() {
-    try { this._render(); this._renderError = null; }
-    catch (e) {
+    const t0 = performance.now();
+    try {
+      this._render(); this._renderError = null;
+      const ms = Math.round(performance.now() - t0);
+      diag("render", this.ui.tab); if (ms > 150) diag("slow-render", `${this.ui.tab} ${ms}ms`);
+    } catch (e) {
+      diag("render-error", e?.message || e);
       console.error("Lyding Strike: render failed", e);
       this._renderError = e;
       if (this.$app) this.$app.innerHTML = `<div class="empty"><h2>Something went wrong drawing this screen</h2>

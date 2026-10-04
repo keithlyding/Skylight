@@ -194,6 +194,10 @@ Nothing is sent to the author of Lyding Strike, and there is no tracking or anal
 - Photos: `config/skylight_photos/`, also included in backups.
 - Calendar events: in the calendar integrations themselves.
 
+## Diagnostics (a screen froze?)
+
+Each screen keeps a small flight recorder on the device: what the app did (start, going to the background and back, redraws, connection, server calls, errors) plus a heartbeat every second, saved every second so it survives a freeze. After a freeze: force-close the app, reopen it and open Setup → **🩺 Diagnostics** to see the previous session. **Send to Home Assistant log** writes it to Settings → System → Logs. If the heartbeat stopped right after the last event, the app's code was stuck there; if it kept going, the code was running and the screen itself froze.
+
 ## Known limitations
 
 - **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the setup PIN. With no PIN set, anyone using Lyding Strike can do it.
@@ -209,11 +213,11 @@ Nothing is sent to the author of Lyding Strike, and there is no tracking or anal
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 107 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 108 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 35 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 36 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend is a plain web component with no build step: the browser loads the files as they are.

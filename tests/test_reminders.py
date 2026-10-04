@@ -118,3 +118,10 @@ async def test_screens_get_reminders(hass, tmp_path, hass_ws_client):
     hass.bus.async_fire(reminders.EVENT_REMINDER, {"summary": "Soccer", "message": "Today at 4:00 PM"})
     msg = await ws.receive_json()
     assert msg["type"] == "event" and msg["event"]["summary"] == "Soccer"
+
+
+async def test_diag_report_goes_to_the_log(hass, tmp_path, hass_ws_client, caplog):
+    _cal, _sent, ws = await _setup(hass, tmp_path, hass_ws_client)
+    await ws.send_json({"id": 9, "type": "skylight/diag/report", "text": "12:00:01 render home"})
+    assert (await ws.receive_json())["success"]
+    assert "Lyding Strike diagnostics" in caplog.text and "render home" in caplog.text
