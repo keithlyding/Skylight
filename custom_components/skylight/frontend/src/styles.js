@@ -42,7 +42,7 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .mchip.on { border-color:var(--c); }
 .swatches.colorgrid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:5px; max-width:480px; }
 .swatches.colorgrid .swatch { width:100%; height:auto; aspect-ratio:1; border-radius:50%; padding:0; }
-.customcolor { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.customcolor { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; }
 .customcolor .wheel { flex-direction:row; align-items:center; gap:6px; margin:0; flex:0 0 auto; font-weight:700; cursor:pointer; }
 .customcolor .wheel input { width:44px; height:36px; padding:0; border:0; background:none; cursor:pointer; }
 .customcolor #m-hex { width:110px; font-family:monospace; }
@@ -314,7 +314,7 @@ label.check input { width:22px; height:22px; }
 .hagenda .schedule { gap:10px; }
 /* weather tab */
 .wxtab { display:flex; flex-direction:column; gap:14px; max-width:1200px; margin:0 auto; width:100%; }
-.wxgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:14px; }
+.wxgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap:14px; }
 .wnow { display:flex; align-items:center; gap:22px; background:var(--card); border-radius:var(--radius); padding:18px 22px; flex-wrap:wrap; }
 .wbig { font-size:84px; line-height:1; }
 .wtemp { font-size:64px; font-weight:800; line-height:1; }
@@ -590,6 +590,17 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
   .tab span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .tab ha-icon { --mdc-icon-size:22px; }
   .tab { position:relative; }
+  /* Nothing scrolls sideways on a phone except strips made for it (e.g. the 24-hour forecast). */
+  .content { overflow-x:hidden; }
+  .row { flex-wrap:wrap; }
+  label.inline { flex-wrap:wrap; }
+  label.inline select, label.inline input:not([type=checkbox]) { min-width:0; max-width:100%; }
+  label.inline input[type=number] { width:76px; }
+  .wday { grid-template-columns:minmax(0,1fr) 28px 38px 34px minmax(24px,56px) 34px; gap:6px; font-size:15px; }
+  .rsbars { gap:3px; }
+  .rsb { min-width:0; }
+  .rsb small { font-size:9px; }
+  .rsb:nth-child(even) small { visibility:hidden; }
   .tab .lockmark { position:absolute; top:1px; left:calc(50% + 6px); font-size:10px; font-style:normal; }
   header { padding:8px 12px 2px; gap:6px; }
   .when { display:none; } /* the phone shows the time already: give the space to the calendar */

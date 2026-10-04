@@ -109,6 +109,32 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async nosideways(browser, base) {
+    // On a phone nothing may stick out past the right edge, except inside strips made to scroll sideways
+    // (the 24-hour forecast, the member chips, ...). Checks every tab and the main dialogs at 360 px wide.
+    const w = 360;
+    const p = await open(browser, base, { width: w, height: 780, ctx: { isMobile: true, hasTouch: true } });
+    const wide = () => p.evaluate((w) => {
+      const scroller = (e) => { for (let x = e.parentElement; x; x = x.parentElement) { if (/(auto|scroll)/.test(getComputedStyle(x).overflowX) && x.clientWidth < w - 2) return true; } return false; };
+      return [...el.shadowRoot.querySelectorAll(".app *, #dialog *")].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > w + 1 || b.left < -1) && !scroller(e); })
+        .slice(0, 3).map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join(".")} "${(e.textContent || "").trim().slice(0, 30)}"`);
+    }, w);
+    for (const t of ["home", "weather", "calendar", "chores", "progress", "meals", "lists", "photos", "settings"]) {
+      await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t); await p.waitForTimeout(500);
+      eq(await wide(), [], `${t}: nothing sticks out sideways`);
+    }
+    const dialogs = { event: () => el.openEventDialog(null, "2026-10-05"), member: () => el.openMemberDialog(el.members[0]),
+      chore: () => el.openChoreDialog(null), occasion: () => el.openOccasionDialog(), list: () => el.openListDialog(),
+      meal: () => el.openMealDialog("2026-10-05", "dinner") };
+    for (const [name, fn] of Object.entries(dialogs)) {
+      await p.evaluate(`(${fn.toString()})()`); await p.waitForTimeout(300);
+      eq(await wide(), [], `${name} dialog: nothing sticks out sideways`);
+      await p.evaluate(() => el.closeDialog());
+    }
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

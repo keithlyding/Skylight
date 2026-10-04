@@ -202,7 +202,7 @@ pytest            # 93 tests: chores, integration, Immich, feeds, recurring edit
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 18 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 19 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend is a plain web component with no build step: the browser loads the files as they are.
