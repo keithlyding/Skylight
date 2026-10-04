@@ -74,28 +74,36 @@ def _meta(asset: dict[str, Any]) -> dict[str, Any]:
     """Date taken (local wall-clock, YYYY-MM-DD) and place for one Immich asset."""
     exif = asset.get("exifInfo") or {}
     taken = asset.get("localDateTime") or exif.get("dateTimeOriginal") or asset.get("fileCreatedAt")
+    # People Immich recognized and that were given a name (hidden people left out).
+    people = []
+    for person in asset.get("people") or []:
+        name = (person.get("name") or "").strip()
+        if name and not person.get("isHidden") and name not in people:
+            people.append(name)
     return {
         "id": asset["id"],
         "taken": str(taken)[:10] if taken else None,
         "place": place_name(exif.get("city"), exif.get("state"), exif.get("country")),
+        "people": people[:8],
     }
 
 
 async def _search(hass: HomeAssistant, url: str, key: str, criteria: dict[str, Any]) -> list[dict[str, Any]]:
-    """Image assets (id, date taken, place) matching Immich metadata search criteria."""
+    """Image assets (id, date taken, place, people) matching Immich metadata search criteria."""
     found: list[dict[str, Any]] = []
     page: int | None = 1
-    with_exif = True
+    # Ask for place names and people; some Immich versions reject or fail on these (withPeople has had
+    # server errors), so step down: exif + people -> exif only -> plain.
+    extras = [{"withExif": True, "withPeople": True}, {"withExif": True}, {}]
+    level = 0
     while page and len(found) < MAX_ASSETS:
-        body = {**criteria, "type": "IMAGE", "size": PAGE_SIZE, "page": page}
-        if with_exif:
-            body["withExif"] = True
+        body = {**criteria, "type": "IMAGE", "size": PAGE_SIZE, "page": page, **extras[level]}
         try:
             res = await _request(hass, "POST", url, key, "/search/metadata", json=body)
         except ImmichError:
-            if not with_exif:
+            if level == len(extras) - 1:
                 raise
-            with_exif = False  # older Immich rejects unknown fields: retry without place names
+            level += 1
             continue
         assets = res.get("assets", {})
         found += [_meta(a) for a in assets.get("items", [])]
@@ -138,14 +146,14 @@ def invalidate(hass: HomeAssistant) -> None:
 
 
 async def async_signed_items(hass: HomeAssistant, store, refresh_token_id: str | None) -> list[dict[str, Any]]:
-    """Slideshow items: signed proxy URL plus date taken and place."""
+    """Slideshow items: signed proxy URL plus date taken, place and people."""
     cfg = store.data["immich"]
     if not cfg.get("url") or not (cfg.get("albums") or cfg.get("favorites")):
         return []
     return [
         {
             "url": async_sign_path(hass, f"/api/skylight/immich/{a['id']}", timedelta(hours=24), refresh_token_id=refresh_token_id),
-            "taken": a.get("taken"), "place": a.get("place"),
+            "taken": a.get("taken"), "place": a.get("place"), "people": a.get("people") or [],
         }
         for a in await async_assets(hass, cfg)
     ]

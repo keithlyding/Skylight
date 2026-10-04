@@ -301,3 +301,29 @@ async def test_photo_captions_immich_and_upload(hass, setup, hass_ws_client, aio
     assert body["withExif"] is True
     lat = next(str(c[1]) for c in aioclient_mock.mock_calls if "photon" in str(c[1]))
     assert "lat=40.020" in lat and "lon=-105.270" in lat  # ~100 m precision is enough for a town name
+
+
+def test_immich_people_names():
+    from custom_components.skylight import immich
+    meta = immich._meta({"id": "a", "localDateTime": "2025-07-04T10:00:00", "people": [
+        {"name": "Alex"}, {"name": ""}, {"name": "Sam", "isHidden": True}, {"name": "Jordan"}, {"name": "Alex"}]})
+    assert meta["people"] == ["Alex", "Jordan"]  # named, not hidden, once each
+    assert immich._meta({"id": "b"})["people"] == []
+
+
+async def test_immich_search_falls_back_when_people_fail(hass, monkeypatch):
+    """Some Immich versions fail on withPeople: retry with exif only, then plain."""
+    from custom_components.skylight import immich
+    bodies = []
+
+    async def fake_request(hass_, method, url, key, path, **kw):
+        body = kw["json"]
+        bodies.append(dict(body))
+        if body.get("withPeople"):
+            raise immich.ImmichError("HTTP 500")
+        return {"assets": {"items": [{"id": "x", "exifInfo": {"city": "Paris", "country": "France"}}], "nextPage": None}}
+
+    monkeypatch.setattr(immich, "_request", fake_request)
+    found = await immich._search(hass, "http://immich", "k", {"isFavorite": True})
+    assert [b.get("withPeople") for b in bodies] == [True, None]
+    assert found == [{"id": "x", "taken": None, "place": "Paris, France", "people": []}]

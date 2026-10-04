@@ -411,6 +411,16 @@ const SCENARIOS = {
   },
 
 
+  async photopeople(browser, base) {
+    const p = await open(browser, base);
+    const cap = () => p.evaluate(() => el._photoCaption({ taken: "2025-07-04", place: "Paris, France", people: ["Alex", "Jordan", "Sam", "Ava", "Leo"] }));
+    check((await cap()).includes("👥 Alex, Jordan, Sam, Ava +1"), "people in the caption (first four, then +N)");
+    await p.evaluate(() => { D.settings.photo_people = false; push(); }); await p.waitForTimeout(200);
+    check(!(await cap()).includes("👥"), "can be turned off in Setup");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async savercaption(browser, base) {
     // Screensaver on phones: the clock never covers the photo's date and place.
     for (const [w, h] of [[390, 844], [844, 390], [1300, 912]]) {

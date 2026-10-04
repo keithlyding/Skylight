@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.42.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.43.0";
 
 export class SettingsView {
 
@@ -408,6 +408,7 @@ export class SettingsView {
         <p class="hint">On screens logged in as a non-admin Home Assistant user (like the kitchen tablet), Home Assistant's own menu and header are hidden so ${this.appName} fills the screen. Admin accounts always keep them. This isn't a lock: what an account can do is still set by its Home Assistant permissions.</p>
         <label class="inline">Allow photo uploads <input type="checkbox" ${s.allow_uploads !== false ? "checked" : ""} data-change="setting" data-key="allow_uploads"></label>
         <label class="inline">Show date &amp; place on photos <input type="checkbox" ${s.photo_captions !== false ? "checked" : ""} data-change="setting" data-key="photo_captions"></label>
+        <label class="inline">Show who's in the photo (Immich) <input type="checkbox" ${s.photo_people !== false ? "checked" : ""} data-change="setting" data-key="photo_people"></label>
       </section>
       <p class="hint center">${this.appName} v${PANEL_VERSION}</p>
     </div>`;

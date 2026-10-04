@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.42.1";
+import { parseYmd, esc } from "./helpers.js?v=1.43.0";
 
 export class PhotosView {
 
@@ -94,6 +94,11 @@ export class PhotosView {
       parts.push(`<span>📅 ${esc(d.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }))}</span>`);
     }
     if (item.place) parts.push(`<span>📍 ${esc(item.place)}</span>`);
+    // People Immich recognized and named (Setup > Photos from Immich > show people's names)
+    if (this.settings.photo_people !== false && item.people?.length) { // names come from Immich face recognition
+      const names = item.people.length > 4 ? `${item.people.slice(0, 4).join(", ")} +${item.people.length - 4}` : item.people.join(", ");
+      parts.push(`<span>👥 ${esc(names)}</span>`);
+    }
     return parts.join("");
   }
 

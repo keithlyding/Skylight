@@ -82,7 +82,7 @@ Recipe images are passed through Home Assistant, so the tablet never needs to re
 1. In Immich: **Account Settings → API Keys → New API Key**. If Immich asks for permissions, give it album and asset read access.
 2. In Lyding Strike → Setup → **Photos from Immich**: enter your server URL (e.g. `http://192.168.1.20:2283`) and the key. Tap **Load albums**, tick albums and/or *Include my favorites*, then tap **Save**.
 
-The slideshow shows each photo's **date taken and place** in the bottom-right corner (turn off under Setup → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
+The slideshow shows each photo's **date taken and place** (and, for Immich photos, **who's in it**: the people Immich recognized and you've named, hidden people left out; turn off under Setup → *Show who's in the photo*) in the bottom-right corner (turn off under Setup → *Show date & place on photos*). Immich photos use Immich's own date and place names. Uploaded photos use the date and GPS saved in the photo file; the place name is looked up once through OpenStreetMap (Photon). Photos without that information simply show no caption.
 
 The API key stays on your HA server and is never sent to the tablet. Immich images are fetched through HA using links that expire after 24 hours. The album list refreshes every 30 minutes, and at most 500 random photos are used per refresh.
 
@@ -209,11 +209,11 @@ Nothing is sent to the author of Lyding Strike, and there is no tracking or anal
 
 ```bash
 pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
-pytest            # 105 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
+pytest            # 107 tests: chores, integration, Immich, feeds, recurring edits, Mealie, security/PIN, roles, lists, birthdays, night mode (real HA core; some run the panel's JS in Node)
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 34 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 35 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend is a plain web component with no build step: the browser loads the files as they are.
