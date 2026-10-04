@@ -764,6 +764,30 @@ const SCENARIOS = {
       eq(await p.evaluate(() => EVT), admin ? [] : [true], `kiosk mode for ${admin ? "admin" : "non-admin"}`);
       await context.close();
     }
+    // Non-admin phone freeze (v1.43.1): if Home Assistant rebuilds the panel whenever it's asked to hide its
+    // sidebar, each new panel used to ask again -> endless rebuilds. Now it asks once per page load.
+    const context = await browser.newContext();
+    const p = await context.newPage();
+    p.errors = []; p.on("pageerror", (e) => p.errors.push(e.message));
+    await p.addInitScript(() => {
+      window.DOCK = 0;
+      window.addEventListener("hass-dock-sidebar", () => {
+        if (++window.DOCK > 50) return; // safety for the old code
+        setTimeout(() => { // like Home Assistant re-laying-out: a brand-new panel element replaces the old one
+          const old = window.el, fresh = document.createElement("skylight-panel");
+          old.replaceWith(fresh); fresh.hass = window.hass; window.el = fresh;
+        }, 20);
+      });
+    });
+    await p.goto(base); await p.waitForTimeout(300);
+    await p.evaluate(() => { window.hass.user = { id: "u", is_admin: false }; el.hass = window.hass; push(); });
+    await p.waitForTimeout(2500);
+    eq(await p.evaluate(() => window.DOCK), 1, "asked Home Assistant to hide its sidebar once, not over and over");
+    await p.evaluate(() => { window.hass.dockedSidebar = "always_hidden"; delete window.__lydingChrome; push(); });
+    await p.waitForTimeout(500);
+    eq(await p.evaluate(() => window.DOCK), 1, "not asked again when the sidebar is already hidden");
+    eq(p.errors, [], "page errors");
+    await context.close();
   },
 };
 

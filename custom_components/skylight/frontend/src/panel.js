@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.43.0";
-import { STYLES } from "./styles.js?v=1.43.0";
-import { CalendarView } from "./calendar.js?v=1.43.0";
-import { WeatherView } from "./weather.js?v=1.43.0";
-import { HomeView } from "./home.js?v=1.43.0";
-import { ChoresView } from "./chores.js?v=1.43.0";
-import { MealsView } from "./meals.js?v=1.43.0";
-import { ListsView } from "./lists.js?v=1.43.0";
-import { PhotosView } from "./photos.js?v=1.43.0";
-import { SettingsView } from "./settings.js?v=1.43.0";
-import { PickersView } from "./pickers.js?v=1.43.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.43.1";
+import { STYLES } from "./styles.js?v=1.43.1";
+import { CalendarView } from "./calendar.js?v=1.43.1";
+import { WeatherView } from "./weather.js?v=1.43.1";
+import { HomeView } from "./home.js?v=1.43.1";
+import { ChoresView } from "./chores.js?v=1.43.1";
+import { MealsView } from "./meals.js?v=1.43.1";
+import { ListsView } from "./lists.js?v=1.43.1";
+import { PhotosView } from "./photos.js?v=1.43.1";
+import { SettingsView } from "./settings.js?v=1.43.1";
+import { PickersView } from "./pickers.js?v=1.43.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -176,14 +176,22 @@ export class SkylightPanel extends HTMLElement {
   // header: HA's kiosk mode for this browser session, plus the "always hidden" sidebar setting as a
   // fallback on HA versions without kiosk mode. Admins are never affected. Not a security boundary:
   // Home Assistant's user permissions still decide what an account can do.
+  // Non-admin screens (e.g. the kitchen tablet): ask Home Assistant to hide its own sidebar/header.
+  // Asked at most once per page load (not per panel instance: Home Assistant can rebuild the panel when an
+  // app resumes, and re-asking every time could make the two keep re-laying-out each other, freezing all of
+  // Home Assistant on a non-admin phone), and only when Home Assistant's sidebar isn't already that way.
   _applyHaChrome() {
     const user = this._hass?.user;
     if (!user || user.is_admin) return;
     const hide = this.settings.hide_ha_sidebar !== false;
-    if (this._haChromeHidden === hide) return;
-    this._haChromeHidden = hide;
+    const dock = hide ? "always_hidden" : "docked";
+    const asked = (window.__lydingChrome ||= {});
+    if (asked.hide === hide) return;
+    asked.hide = hide;
     window.dispatchEvent(new CustomEvent("hass-kiosk-mode", { detail: { enable: hide } }));
-    this.dispatchEvent(new CustomEvent("hass-dock-sidebar", { detail: { dock: hide ? "always_hidden" : "docked" }, bubbles: true, composed: true }));
+    if (this._hass.dockedSidebar !== dock) {
+      this.dispatchEvent(new CustomEvent("hass-dock-sidebar", { detail: { dock }, bubbles: true, composed: true }));
+    }
   }
 
   _onData(data) {
