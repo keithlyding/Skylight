@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.0";
-import { STYLES } from "./styles.js?v=1.38.0";
-import { CalendarView } from "./calendar.js?v=1.38.0";
-import { WeatherView } from "./weather.js?v=1.38.0";
-import { HomeView } from "./home.js?v=1.38.0";
-import { ChoresView } from "./chores.js?v=1.38.0";
-import { MealsView } from "./meals.js?v=1.38.0";
-import { ListsView } from "./lists.js?v=1.38.0";
-import { PhotosView } from "./photos.js?v=1.38.0";
-import { SettingsView } from "./settings.js?v=1.38.0";
-import { PickersView } from "./pickers.js?v=1.38.0";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.38.1";
+import { STYLES } from "./styles.js?v=1.38.1";
+import { CalendarView } from "./calendar.js?v=1.38.1";
+import { WeatherView } from "./weather.js?v=1.38.1";
+import { HomeView } from "./home.js?v=1.38.1";
+import { ChoresView } from "./chores.js?v=1.38.1";
+import { MealsView } from "./meals.js?v=1.38.1";
+import { ListsView } from "./lists.js?v=1.38.1";
+import { PhotosView } from "./photos.js?v=1.38.1";
+import { SettingsView } from "./settings.js?v=1.38.1";
+import { PickersView } from "./pickers.js?v=1.38.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -187,6 +187,15 @@ export class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".tpick")) this._closeTimeLists(); }, true);
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
+    // iPhone: an up/down drag that starts on the header or the tab bar would rubber-band the whole page.
+    // Sideways drags (the row of family members) still scroll.
+    this.shadowRoot.addEventListener("touchstart", (e) => { const t = e.touches[0]; this._touch0 = t ? [t.clientX, t.clientY] : null; }, { passive: true });
+    this.shadowRoot.addEventListener("touchmove", (e) => {
+      const t = e.touches[0], s = this._touch0;
+      const box = t && s && e.target.closest?.("header, .rail");
+      if (!box || box.scrollHeight > box.clientHeight + 1) return; // e.g. the side menu on a phone on its side can scroll
+      if (Math.abs(t.clientY - s[1]) > Math.abs(t.clientX - s[0]) && e.cancelable) e.preventDefault();
+    }, { passive: false });
     this.shadowRoot.addEventListener("pointerup", (e) => this._swipeEnd(e), { passive: true });
     this.shadowRoot.addEventListener("pointerdown", (e) => this._holdStart(e), { passive: true });
     this.shadowRoot.addEventListener("pointerdown", (e) => this._dragStart(e));

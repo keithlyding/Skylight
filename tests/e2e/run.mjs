@@ -204,6 +204,33 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async nobounce(browser, base) {
+    // iPhone: an up/down drag starting on the header or tab bar is cancelled (no page bounce); sideways
+    // drags there and up/down drags on the content are left alone.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    const drag = (sel, dx, dy) => p.evaluate(([sel, dx, dy]) => {
+      const t0 = el.shadowRoot.querySelector(sel); const r = t0.getBoundingClientRect();
+      const x = r.left + 20, y = r.top + r.height / 2;
+      const mk = (type, X, Y) => new TouchEvent(type, { bubbles: true, cancelable: true, composed: true,
+        touches: [new Touch({ identifier: 1, target: t0, clientX: X, clientY: Y })] });
+      t0.dispatchEvent(mk("touchstart", x, y));
+      const mv = mk("touchmove", x + dx, y + dy); t0.dispatchEvent(mv);
+      return mv.defaultPrevented;
+    }, [sel, dx, dy]);
+    eq(await drag(".rail .tab", 0, -40), true, "vertical drag on the tab bar cancelled");
+    eq(await drag("header", 0, 40), true, "vertical drag on the header cancelled");
+    eq(await drag("header .members", -60, 5), false, "sideways drag on the member chips allowed");
+    eq(await drag(".content", 0, -40), false, "content still scrolls");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+    // Phone on its side: bigger side-menu buttons, all 7 on screen without scrolling.
+    const q = await open(browser, base, { width: 844, height: 390, ctx: { isMobile: true, hasTouch: true } });
+    const m = await q.evaluate(() => { const rail = el.shadowRoot.querySelector(".rail"); const t = rail.querySelector(".tab");
+      return { font: parseFloat(getComputedStyle(t).fontSize), w: t.getBoundingClientRect().width, fits: rail.scrollHeight <= rail.clientHeight + 1 }; });
+    check(m.font >= 10.5 && m.w >= 64 && m.fits, `landscape side menu: ${JSON.stringify(m)}`);
+    await q.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

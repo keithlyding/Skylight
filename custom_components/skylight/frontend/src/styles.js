@@ -511,7 +511,9 @@ label.check input { width:22px; height:22px; }
 @keyframes swr { from { transform:translateX(-40px); opacity:.4; } to { transform:none; opacity:1; } }
 .content.swipe-l { animation:swl .22s ease-out; }
 .content.swipe-r { animation:swr .22s ease-out; }
-.content { touch-action:pan-y; }
+.content { touch-action:pan-y; overscroll-behavior:contain; } /* scrolling to the end doesn't drag the whole page */
+/* The header and the tab bar don't scroll up/down: a vertical drag there must not drag the page (iPhone bounce). */
+header, .rail { touch-action:pan-x; overscroll-behavior:contain; }
 .repeat { background:var(--bg); border-radius:14px; padding:4px 12px 8px; margin:8px 0; }
 .rpdays { margin:6px 0; }
 .rpsum { margin:6px 0 2px; font-weight:700; color:var(--ink); }
@@ -643,15 +645,16 @@ details summary { cursor:pointer; font-weight:700; margin:8px 0; color:var(--mut
 
 /* ---------- phone on its side (short landscape screens) ---------- */
 @media (max-height: 500px) and (orientation: landscape) {
+  .rail { touch-action:pan-y; } /* side menu: may need to scroll up/down */
   .app { height:var(--app-h, 100dvh); }
   .app { flex-direction:row; }
   main { min-height:0; }
   .rail { flex-direction:column; justify-content:flex-start; border-top:0; border-right:1px solid var(--line); overflow-y:auto; overflow-x:hidden; }
   .rail .tab { flex:none; }
-  .rail { width:calc(64px + env(safe-area-inset-left)); gap:2px; padding-top:max(6px, env(safe-area-inset-top)); padding-bottom:max(6px, env(safe-area-inset-bottom)); }
+  .rail { width:calc(76px + env(safe-area-inset-left)); gap:2px; padding-top:max(6px, env(safe-area-inset-top)); padding-bottom:max(6px, env(safe-area-inset-bottom)); }
   .logo { display:none; }
-  .tab { width:56px; padding:4px 2px; gap:1px; font-size:9px; }
-  .tab ha-icon { --mdc-icon-size:20px; }
+  .tab { width:68px; padding:5px 2px; gap:2px; font-size:10.5px; }
+  .tab ha-icon { --mdc-icon-size:24px; }
   header { padding:max(4px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 2px 12px; gap:8px; flex-wrap:nowrap; }
   .when { display:none; }
   header .members { flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; }
