@@ -1,6 +1,6 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.41.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.41.2";
 
 export class SettingsView {
 
@@ -112,6 +112,8 @@ export class SettingsView {
       <label class="inline">Seasonal accents ${s.seasonal ? seasonFor(new Date()).emoji : ""} <input type="checkbox" ${s.seasonal ? "checked" : ""} data-change="setting" data-key="seasonal"></label>
       <p class="hint">Changes the accent color and adds a small emoji by the clock for spring, summer, July 4th, fall, Halloween, Thanksgiving week, Christmas and winter.</p>
       <label class="inline">Dark mode <select data-change="setting" data-key="dark_mode">${[["follow", "Follow tablet"], ["light", "Always light"], ["dark", "Always dark"], ["scheduled", "Scheduled"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${mode === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label class="inline">This screen <select data-change="screen-scheme">${[["", "Use the setting above"], ["follow", "Follow this device's light/dark"], ["light", "Always light"], ["dark", "Always dark"]].map(([v, l]) => `<option value="${v}" ${this._screenScheme() === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <p class="hint">Only for this screen (saved on this device). On a phone, "Follow this device" keeps the app dark whenever the phone is in Dark Mode, so the phone's own clock and battery at the top stay readable.</p>
       ${showTimes ? `<div class="row"><label class="inline">Night starts <input type="time" value="${esc(s.night_start || "21:00")}" data-change="setting" data-key="night_start"></label>
         <label class="inline">ends <input type="time" value="${esc(s.night_end || "06:30")}" data-change="setting" data-key="night_end"></label></div>` : ""}
       <label class="inline">Dim the screen at night <input type="checkbox" ${s.night_dim ? "checked" : ""} data-change="setting" data-key="night_dim"></label>

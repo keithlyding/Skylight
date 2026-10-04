@@ -284,6 +284,17 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .saver-clock { position:absolute; left:36px; bottom:28px; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.6); }
 #sv-time { font-size:72px; font-weight:800; }
 #sv-date { font-size:24px; font-weight:600; }
+/* Phones: a smaller clock at the top, so the photo's date and place have the bottom to themselves. */
+@media (max-width: 600px) {
+  .saver-clock { top:calc(16px + env(safe-area-inset-top)); bottom:auto; left:20px; }
+  #sv-time { font-size:44px; } #sv-date { font-size:16px; }
+  .saver-cap { left:20px; right:20px; max-width:none; bottom:calc(16px + env(safe-area-inset-bottom)); font-size:15px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .saver-clock { left:calc(20px + env(safe-area-inset-left)); bottom:16px; }
+  #sv-time { font-size:40px; } #sv-date { font-size:15px; }
+  .saver-cap { right:calc(20px + env(safe-area-inset-right)); bottom:16px; max-width:50%; font-size:14px; }
+}
 /* settings */
 .settings { display:flex; flex-direction:column; gap:16px; max-width:900px; }
 .card { background:var(--card); border-radius:var(--radius); padding:16px 20px; }

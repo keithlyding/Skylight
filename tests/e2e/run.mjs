@@ -392,6 +392,40 @@ const SCENARIOS = {
     }
   },
 
+  async screenscheme(browser, base) {
+    // A phone in Dark Mode can follow its own setting while the family setting stays "Always light".
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: "dark" });
+    const p = await ctx.newPage(); p.errors = []; p.on("pageerror", (e) => p.errors.push(e.message));
+    await p.goto(base); await p.waitForTimeout(1200);
+    await p.evaluate(() => { el.ui.alertPop = null; D.settings.dark_mode = "light"; push(); }); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.dataset.scheme), "light", "family setting: always light");
+    await p.evaluate(() => { el.ui.tab = "settings"; el.render(); }); await p.waitForTimeout(300);
+    await p.locator("skylight-panel").locator('select[data-change="screen-scheme"]').selectOption("follow"); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.dataset.scheme), "dark", "this phone follows its own Dark Mode");
+    eq(await p.evaluate(() => D.settings.dark_mode), "light", "family setting unchanged");
+    await p.reload(); await p.waitForTimeout(1200);
+    eq(await p.evaluate(() => el.dataset.scheme), "dark", "remembered on this device");
+    eq(p.errors, [], "page errors");
+    await ctx.close();
+  },
+
+  async savercaption(browser, base) {
+    // Screensaver on phones: the clock never covers the photo's date and place.
+    for (const [w, h] of [[390, 844], [844, 390], [1300, 912]]) {
+      const p = await open(browser, base, { width: w, height: h, ctx: w < 1000 ? { isMobile: true, hasTouch: true } : {} });
+      await p.evaluate(() => {
+        el.ui.saver = true; el.render();
+        el.$saver.innerHTML = `<div class="saver"><div class="saver-clock"><div id="sv-time">10:42 AM</div><div id="sv-date">Sunday, October 4</div></div>
+          <div class="saver-cap"><span>September 14, 2025</span><span>Gatlinburg, Tennessee, United States</span></div></div>`;
+      });
+      await p.waitForTimeout(200);
+      const [a, b] = await p.evaluate(() => [".saver-clock", ".saver-cap"].map((s) => { const r = el.shadowRoot.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }));
+      const overlap = a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+      eq(overlap, false, `${w}x${h}: clock and photo caption don't overlap`);
+      await p.context().close();
+    }
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.

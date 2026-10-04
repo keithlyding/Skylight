@@ -129,6 +129,7 @@ Setup → **Look & night mode**:
 - **Theme:** Warm (default), Cool, Slate (dark neutral) or High contrast. Each has a light and a dark version. Only surfaces, text and the accent color change; family members keep their own colors.
 - **Seasonal accents** (off by default): a different accent color and a small emoji by the clock for spring, summer, July 4th (Jul 1–5), fall, Halloween (Oct 15–31), Thanksgiving week, Christmas (Dec 1–26) and winter.
 - **Dark mode:** Follow tablet, Always light, Always dark, Scheduled (start and end times; can cross midnight) or Sunset to sunrise (from Home Assistant's `sun.sun`).
+- **This screen:** any screen can override the family setting for itself (saved on that device): follow that device's own light/dark, always light or always dark. Handy on phones: with *Follow this device*, a phone in Dark Mode shows the app dark too, so the phone's own clock at the top (white in Dark Mode) stays readable.
 - **Dim the screen at night:** pick a **screen brightness entity** and Home Assistant sets it to your day or night level whenever night starts or ends. With Fully Kiosk Browser, add its Home Assistant integration and choose its "Screen brightness" entity; lights and `input_number` entities work too. A manual brightness change stays until the next switch. Without an entity, Lyding Strike darkens the picture with an overlay instead; that dims pixels, not the backlight. Night hours are the dark-mode schedule (or sunset to sunrise), and the photo screensaver is dimmed too.
 
 ## Birthdays and anniversaries
@@ -212,7 +213,7 @@ pytest            # 103 tests: chores, integration, Immich, feeds, recurring edi
 
 npm install       # once: Playwright, for the browser tests
 npx playwright install chromium
-npm run e2e       # 31 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
+npm run e2e       # 33 end-to-end scenarios: the real panel in Chromium against a fake Home Assistant (tests/e2e)
 ```
 
 The frontend is a plain web component with no build step: the browser loads the files as they are.

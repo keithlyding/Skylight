@@ -1,16 +1,16 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.41.1";
-import { STYLES } from "./styles.js?v=1.41.1";
-import { CalendarView } from "./calendar.js?v=1.41.1";
-import { WeatherView } from "./weather.js?v=1.41.1";
-import { HomeView } from "./home.js?v=1.41.1";
-import { ChoresView } from "./chores.js?v=1.41.1";
-import { MealsView } from "./meals.js?v=1.41.1";
-import { ListsView } from "./lists.js?v=1.41.1";
-import { PhotosView } from "./photos.js?v=1.41.1";
-import { SettingsView } from "./settings.js?v=1.41.1";
-import { PickersView } from "./pickers.js?v=1.41.1";
+import { DEFAULT_APP_NAME, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.41.2";
+import { STYLES } from "./styles.js?v=1.41.2";
+import { CalendarView } from "./calendar.js?v=1.41.2";
+import { WeatherView } from "./weather.js?v=1.41.2";
+import { HomeView } from "./home.js?v=1.41.2";
+import { ChoresView } from "./chores.js?v=1.41.2";
+import { MealsView } from "./meals.js?v=1.41.2";
+import { ListsView } from "./lists.js?v=1.41.2";
+import { PhotosView } from "./photos.js?v=1.41.2";
+import { SettingsView } from "./settings.js?v=1.41.2";
+import { PickersView } from "./pickers.js?v=1.41.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -494,6 +494,9 @@ export class SkylightPanel extends HTMLElement {
         el.checked ? set.add(d.entity) : set.delete(d.entity);
         await this._set("settings", { weather_sensors: [...set] }); break;
       }
+      case "screen-scheme":
+        try { if (el.value) localStorage.setItem("skylight.screenScheme", el.value); else localStorage.removeItem("skylight.screenScheme"); } catch (e) { /* private mode */ }
+        this._applyLook(); this.render(); break;
       case "reminder-dismiss": this.ui.reminderPop = (this.ui.reminderPop || []).slice(1); this.render(); break;
       case "reminder-screen": {
         const cfg = this._screenReminders();
@@ -989,13 +992,17 @@ export class SkylightPanel extends HTMLElement {
     if (this._origThemeColor === undefined) this._origThemeColor = meta.content;
     meta.content = bg;
   }
+  _screenScheme() {
+    try { return localStorage.getItem("skylight.screenScheme") || ""; } catch (e) { return ""; }
+  }
   _applyLook() {
     if (!this.data) return;
     const s = this.settings, now = new Date();
     const sun = this._hass.states["sun.sun"]?.attributes || {};
     const rise = sun.next_rising ? new Date(sun.next_rising) : null, set = sun.next_setting ? new Date(sun.next_setting) : null;
     const night = isNightAt(s, now, rise, set);
-    const mode = s.dark_mode || "follow";
+    // A screen can override the family setting for itself (e.g. a phone that follows its own Dark Mode).
+    const mode = this._screenScheme() || s.dark_mode || "follow";
     const dark = mode === "dark" || ((mode === "scheduled" || mode === "sun") && night) || (mode === "follow" && !!this._mq?.matches);
     const theme = THEMES[s.theme] ? s.theme : "warm";
     if (this.dataset.theme !== theme) this.dataset.theme = theme;
