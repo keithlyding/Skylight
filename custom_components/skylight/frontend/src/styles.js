@@ -433,7 +433,10 @@ label.check input { width:22px; height:22px; }
   .ckbody { grid-template-columns:1fr; overflow-y:auto; } .ckings, .cksteps { overflow:visible; } .ckings { border-right:0; border-bottom:1px solid var(--line); }
   .cktitle h2 { font-size:21px; } .cknav button { min-width:0; padding:12px 18px; }
 }
-#dim { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:950; transition:opacity 2s; }
+/* Night dim overlay: only in the page while dimming is on (an always-present, invisible full-screen
+   layer is a needless graphics layer on phones; see v1.44.1). */
+#dim { position:fixed; inset:0; background:#000; pointer-events:none; z-index:950; display:none; }
+#dim.on { display:block; }
 .season { margin-left:6px; font-size:20px; }
 .upcoming { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:10px; }
 .uhead { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:4px; }
@@ -481,6 +484,7 @@ label.check input { width:22px; height:22px; }
 .hintrow p { margin:0; font-size:15px; font-weight:600; line-height:1.35; }
 .hintrow.h-now { background:#e3f0fb; color:#0d3c61; }
 .hintrow.h-alert { background:#fdecea; color:#7f1d1d; }
+.radarbtn { display:flex; align-items:center; justify-content:center; font-size:18px; width:100%; height:110px; }
 .diaglog { width:100%; font-family:monospace; font-size:11px; white-space:pre; }
 .remrow { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 0; border-top:1px solid var(--line); }
 .remrow > b { flex:1 1 160px; } .remrow select { width:auto; }

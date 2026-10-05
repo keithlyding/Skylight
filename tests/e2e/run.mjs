@@ -493,6 +493,28 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async radar(browser, base) {
+    // The embedded radar map: on phones only after a tap; never kept while the app is in the background.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    await p.evaluate(() => { D.settings.weather_radar = "windy"; push(); });
+    await p.tab("weather");
+    eq([await p.S("iframe.wradar").count(), await p.S(".radarbtn").count()], [0, 1], "phone: radar waits for a tap");
+    await p.S(".radarbtn").click(); await p.waitForTimeout(300);
+    eq(await p.S("iframe.wradar").count(), 1, "tap loads the radar map");
+    await p.evaluate(() => { let v = "hidden"; Object.defineProperty(document, "visibilityState", { configurable: true, get: () => v }); document.dispatchEvent(new Event("visibilitychange")); });
+    eq(await p.S("iframe.wradar").count(), 0, "radar map removed while the app is in the background");
+    await p.evaluate(() => { Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" }); el._hiddenAt = Date.now() - 1000; document.dispatchEvent(new Event("visibilitychange")); });
+    await p.waitForTimeout(300);
+    eq([await p.S("iframe.wradar").count(), await p.S(".radarbtn").count()], [0, 1], "back: tap again to show it");
+    await p.context().close();
+    const t = await open(browser, base);
+    await t.evaluate(() => { D.settings.weather_radar = "windy"; push(); });
+    await t.tab("weather");
+    eq(await t.S("iframe.wradar").count(), 1, "tablet: radar shows by itself");
+    eq(t.errors, [], "page errors");
+    await t.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
@@ -707,12 +729,14 @@ const SCENARIOS = {
     const set = async (v) => { await p.evaluate((v) => { Object.assign(D.settings, v); push(); }, v); await wait(p, 300); };
     await p.evaluate(() => localStorage.setItem("skylight.screenScheme", "night")); // this screen: dark at night
     await set({ theme: "cool", night_by: "schedule", night_start: "21:00", night_end: "06:30" });
-    eq(await look(), ["cool", "dark", "#0f1720", "0"], "dark at night at 22:30 (window crosses midnight)");
+    eq(await look(), ["cool", "dark", "#0f1720", ""], "dark at night at 22:30 (window crosses midnight)");
+    eq(await p.evaluate(() => getComputedStyle(el.$dim).display), "none", "no dim layer in the page while not dimming");
     await set({ night_start: "23:00" });
     eq((await look())[1], "light", "before the window");
     await p.evaluate(() => localStorage.setItem("skylight.screenScheme", "light"));
     await set({ seasonal: true, night_dim: true, brightness_entity: null, night_brightness: 30, night_start: "21:00" });
     eq((await look())[3], "0.7", "dim overlay at night without a brightness entity");
+    eq(await p.evaluate(() => getComputedStyle(el.$dim).display), "block", "dim layer shown while dimming");
     eq(await p.S(".season").textContent(), "🎃", "Halloween accent");
     await p.context().close();
   },

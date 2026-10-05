@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.44.0";
-import { STYLES } from "./styles.js?v=1.44.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.44.0";
-import { CalendarView } from "./calendar.js?v=1.44.0";
-import { WeatherView } from "./weather.js?v=1.44.0";
-import { HomeView } from "./home.js?v=1.44.0";
-import { ChoresView } from "./chores.js?v=1.44.0";
-import { MealsView } from "./meals.js?v=1.44.0";
-import { ListsView } from "./lists.js?v=1.44.0";
-import { PhotosView } from "./photos.js?v=1.44.0";
-import { SettingsView } from "./settings.js?v=1.44.0";
-import { PickersView } from "./pickers.js?v=1.44.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.44.1";
+import { STYLES } from "./styles.js?v=1.44.1";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.44.1";
+import { CalendarView } from "./calendar.js?v=1.44.1";
+import { WeatherView } from "./weather.js?v=1.44.1";
+import { HomeView } from "./home.js?v=1.44.1";
+import { ChoresView } from "./chores.js?v=1.44.1";
+import { MealsView } from "./meals.js?v=1.44.1";
+import { ListsView } from "./lists.js?v=1.44.1";
+import { PhotosView } from "./photos.js?v=1.44.1";
+import { SettingsView } from "./settings.js?v=1.44.1";
+import { PickersView } from "./pickers.js?v=1.44.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -125,7 +125,12 @@ export class SkylightPanel extends HTMLElement {
     // Coming back to the app (iPhone: after another app or the lock screen): redraw and refresh, and clear
     // anything left over that could block taps (screensaver, stale pop-up, page scrolled out of place).
     this._onVisible = () => {
-      if (document.visibilityState === "hidden") { this._hiddenAt = Date.now(); return; }
+      if (document.visibilityState === "hidden") {
+        this._hiddenAt = Date.now();
+        this.ui.radarShown = false;
+        for (const f of this.shadowRoot.querySelectorAll("iframe.wradar")) { diag("radar-unload"); f.remove(); } // free the embedded map's graphics
+        return;
+      }
       if (!this._hiddenAt) return;
       const away = Date.now() - this._hiddenAt; this._hiddenAt = 0;
       this._lastActivity = Date.now();
@@ -264,6 +269,7 @@ export class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("focusout", (e) => { if (e.target.classList?.contains("tinput") && e.target.closest(".tpick.touch")) e.target.readOnly = true; });
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
+    this.shadowRoot.addEventListener("pointerdown", (e) => diag("tap", e.target.closest?.("[data-action]")?.dataset.action || e.target.tagName?.toLowerCase()), { passive: true, capture: true });
     // iPhone: an up/down drag that starts on the header or the tab bar would rubber-band the whole page.
     // The guard is attached to just those two (see _guardBars) so scrolling anywhere else never waits on it.
     this._barTouchStart = (e) => { const t = e.touches[0]; this._touch0 = t ? [t.clientX, t.clientY] : null; };
@@ -463,6 +469,7 @@ export class SkylightPanel extends HTMLElement {
         if (input) { input.readOnly = false; input.focus(); input.select(); }
         break;
       }
+      case "radar-show": this.ui.radarShown = true; this.render(); break;
       case "diag-send": {
         const text = diagText(diagPrevious()) + "\n\n--- this session so far ---\n" + diagText(diagCurrent());
         try { await this._hass.callWS({ type: "skylight/diag/report", text }); this._toast("Sent: Settings → System → Logs in Home Assistant"); }
@@ -1080,7 +1087,11 @@ export class SkylightPanel extends HTMLElement {
     // Without a brightness entity, dim pixels with an overlay at night (also over the photo screensaver).
     const overlay = s.night_dim && !s.brightness_entity && night;
     const level = Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
-    if (this.$dim) this.$dim.style.opacity = overlay ? String(level) : "0";
+    if (this.$dim) {
+      this.$dim.classList.toggle("on", !!overlay);
+      const op = overlay ? String(level) : "";
+      if (this.$dim.style.opacity !== op) this.$dim.style.opacity = op;
+    }
   }
 
   _tickClock() {

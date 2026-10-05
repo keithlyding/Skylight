@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.44.0";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.44.1";
 
 export class WeatherView {
 
@@ -13,6 +13,13 @@ export class WeatherView {
   }
   // Alerts of a type turned off in Setup don't pop up and aren't in the banner (the Weather tab still lists them).
   _alertShown(a) { return !(this.settings.alert_hide || []).includes(alertType(a.event)); }
+  // The radar map is an embedded Windy/RainViewer page that draws with the graphics chip. It's left out
+  // while the app is in the background (an embedded map like that can hang the iPhone's web view when the
+  // app comes back), and on phones it loads only when asked (also saves battery and data).
+  _radarAllowed() {
+    if (document.visibilityState === "hidden") return false;
+    return !this.isPhone || !!this.ui.radarShown;
+  }
   alertColor(sev) { return { Extreme: "#7b1fa2", Severe: "#c62828", Moderate: "#ef6c00", Minor: "#f9a825" }[sev] || "#607d8b"; }
   renderAlertBanner() {
     const list = this.settings.weather_alerts === false ? [] : (this.alerts?.alerts || []).filter((a) => this._alertShown(a));
@@ -412,7 +419,8 @@ export class WeatherView {
     const layers = [["radar", "Radar"], ["rain", "Rain forecast"], ["thunder", "Storms"], ["wind", "Wind"], ["gust", "Gusts"], ["temp", "Temperature"], ["clouds", "Clouds"], ["satellite", "Satellite"]];
     const layerPick = this.settings.weather_radar === "rainviewer" ? "" : `<div class="seg layers">${layers.map(([v, l]) => `<button class="${this.radarLayer === v ? "on" : ""}" data-action="radar-layer" data-layer="${v}">${l}</button>`).join("")}</div>`;
     const radar = radarSrc ? `<section class="wcard"><h3>Radar &amp; maps</h3>${layerPick}
-      <iframe class="wradar" src="${radarSrc}" loading="lazy" referrerpolicy="no-referrer" title="Weather radar"></iframe></section>` : "";
+      ${this._radarAllowed() ? `<iframe class="wradar" src="${radarSrc}" loading="lazy" referrerpolicy="no-referrer" title="Weather radar"></iframe>`
+        : `<button class="wradar radarbtn" data-action="radar-show">📡 Show radar map</button>`}</section>` : "";
     const extraIds = (this.settings.weather_sensors || []).filter((e) => this._hass.states[e]);
     const extras = extraIds.length ? `<section class="wcard"><h3>Air &amp; more</h3><div class="wstats">${extraIds.map((e) => {
       const st = this._hass.states[e];
