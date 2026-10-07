@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.44.3";
-import { STYLES } from "./styles.js?v=1.44.3";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.44.3";
-import { CalendarView } from "./calendar.js?v=1.44.3";
-import { WeatherView } from "./weather.js?v=1.44.3";
-import { HomeView } from "./home.js?v=1.44.3";
-import { ChoresView } from "./chores.js?v=1.44.3";
-import { MealsView } from "./meals.js?v=1.44.3";
-import { ListsView } from "./lists.js?v=1.44.3";
-import { PhotosView } from "./photos.js?v=1.44.3";
-import { SettingsView } from "./settings.js?v=1.44.3";
-import { PickersView } from "./pickers.js?v=1.44.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.44.4";
+import { STYLES } from "./styles.js?v=1.44.4";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.44.4";
+import { CalendarView } from "./calendar.js?v=1.44.4";
+import { WeatherView } from "./weather.js?v=1.44.4";
+import { HomeView } from "./home.js?v=1.44.4";
+import { ChoresView } from "./chores.js?v=1.44.4";
+import { MealsView } from "./meals.js?v=1.44.4";
+import { ListsView } from "./lists.js?v=1.44.4";
+import { PhotosView } from "./photos.js?v=1.44.4";
+import { SettingsView } from "./settings.js?v=1.44.4";
+import { PickersView } from "./pickers.js?v=1.44.4";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1130,6 +1130,11 @@ export class SkylightPanel extends HTMLElement {
     if (!this.$app || !this.data) return;
     this._ensureChoreView();
     const scroll = this._resetScroll ? 0 : this.$app.querySelector(".content")?.scrollTop || 0;
+    // Areas that scroll on their own (e.g. the Today screen's right column) keep their place too,
+    // so checking something off doesn't jump back to the top. A tab switch starts fresh.
+    const KEEP = [".hside", ".hagenda", ".tg-adgrid", "header .members", ".checklist", ".chores", ".lists"];
+    const kept = this._resetScroll ? [] : KEEP.flatMap((sel) => [...this.$app.querySelectorAll(sel)].map((el, i) => [sel, i, el.scrollTop, el.scrollLeft]))
+      .filter(([, , t, l]) => t || l);
     this._resetScroll = false;
     const active = this.shadowRoot.activeElement;
     const focusId = active?.id;
@@ -1161,6 +1166,9 @@ export class SkylightPanel extends HTMLElement {
         <div class="content">${body}</div>
       </main>${this.renderAlertPopup()}${this.renderReminderPop()}`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    const restore = () => { for (const [sel, i, t, l] of kept) { const el = this.$app.querySelectorAll(sel)[i]; if (el) { el.scrollTop = t; el.scrollLeft = l; } } };
+    restore();
+    if (kept.length) requestAnimationFrame(restore); // again once heights are fitted (e.g. the Today column)
     for (const bar of this.$app.querySelectorAll("header, .rail")) { // new elements each render: no duplicates
       bar.addEventListener("touchstart", this._barTouchStart, { passive: true });
       bar.addEventListener("touchmove", this._barTouchMove, { passive: false });

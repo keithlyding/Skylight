@@ -543,6 +543,24 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async keepscroll(browser, base) {
+    // Today screen: checking off a chore far down the right column keeps the column where it was.
+    const p = await open(browser, base, { width: 1300, height: 700 });
+    await p.tab("home");
+    const side = p.S(".hside");
+    const can = await side.evaluate((e) => e.scrollHeight > e.clientHeight + 50);
+    check(can, "right column scrolls on this screen size");
+    await side.evaluate((e) => { e.scrollTop = e.scrollHeight; });
+    const before = await side.evaluate((e) => e.scrollTop);
+    await p.S('.hside [data-action="toggle-chore"]').last().click(); await p.waitForTimeout(600);
+    const after = await p.S(".hside").evaluate((e) => e.scrollTop);
+    check(Math.abs(after - before) < 30 && after > 0, `column stays put (${before} -> ${after})`);
+    await p.tab("calendar"); await p.tab("home");
+    eq(await p.S(".hside").evaluate((e) => e.scrollTop), 0, "a tab switch starts at the top");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
