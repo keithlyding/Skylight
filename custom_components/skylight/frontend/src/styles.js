@@ -340,6 +340,11 @@ label.check input { width:22px; height:22px; }
 .hside { display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
 .hcols { column-width:250px; column-gap:10px; }
+.leavenote { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--card); border:0; border-left:6px solid #2e7dd7; border-radius:var(--radius); padding:10px 12px; color:var(--text); font:inherit; cursor:pointer; }
+.leavenote .lvicon { font-size:1.6em; } .leavenote .lvtxt { display:flex; flex-direction:column; min-width:0; }
+.leavenote small { color:var(--muted); } .leavenote b { font-size:1.15em; }
+.leavenote.go { border-left-color:#e53935; } .leavenote.go b, .evleave.go { color:#e53935; font-weight:700; }
+.evleave { display:block; }
 .mlbnote { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--card); border:0; border-left:6px solid #a71930; border-radius:var(--radius); padding:10px 12px; color:var(--text); font:inherit; cursor:pointer; }
 .mlbnote .mlbball { font-size:1.6em; }
 .mlbnote .mlbtxt { display:flex; flex-direction:column; flex:1; min-width:0; }

@@ -948,6 +948,35 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async leave_by(browser, base) {
+    const p = await open(browser, base, { at: "2026-10-07T12:00:00" });
+    await p.evaluate(() => {
+      const at = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+      window.EVS["calendar.family"].push({ summary: "Soccer game", location: "Main Park", start: { dateTime: at(13, 0) }, end: { dateTime: at(14, 0) }, uid: "lv1" });
+      el.ui.alertPop = null; clearInterval(el._alertTimer);
+      el._eventsKey = ""; el._loadEvents();
+    });
+    await wait(p, 1500);
+    await wait(p, 10000);
+    eq(await p.S(".leavenote").count(), 0, "no note without the Waze integration");
+    eq(await p.evaluate(() => el.travel.available), false, "told Waze isn't there");
+    await p.evaluate(() => { window.TRAVEL = { "Main Park": 22 }; el._travelAt = 0; el.travel = null; });
+    await wait(p, 10000);
+    eq(await p.evaluate(() => window.TRAVELCALLS.at(-1)), ["Main Park"], "asked about today's event location");
+    const note = async () => (await text(p.S(".leavenote")))[0] || "";
+    check((await note()).includes("Leave by 12:33") && (await note()).includes("Soccer game") && (await note()).includes("22 min drive"), `leave-by note: ${await note()}`);
+    await p.evaluate(() => { el._lastActivity = Date.now(); });
+    await wait(p, 34 * 60000);
+    await p.evaluate(() => { el.ui.alertPop = null; el.ui.saver = false; el.ui.tab = "home"; el.render(); });
+    check((await note()).includes("Leave now"), `leave-now: ${await note()}`);
+    eq(await p.S(".leavenote.go").count(), 1, "highlighted when it's time to go");
+    await p.evaluate(() => { el.ui.tab = "calendar"; el.ui.view = "agenda"; el.render(); });
+    check((await text(p.S(".srow .evleave")))[0]?.includes("Leave now"), "agenda row shows it too");
+    await p.evaluate(() => { el.settings.leave_by = false; el.ui.tab = "home"; el.render(); });
+    eq(await p.S(".leavenote").count(), 0, "can be turned off");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);

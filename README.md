@@ -150,6 +150,14 @@ Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice 
 - **Who to root for:** a team is "in the race" when it is ahead of yours, or no more than 5 games behind, in your division or in the wild-card race. In a game between a race team and anyone else, root against the race team. When two race teams play each other, root against the one closer to yours in the standings.
 - Data comes from MLB's free public stats feed (statsapi.mlb.com, no account or key). Standings are worked out from wins and losses, so tiebreakers aren't applied.
 
+## "Leave by" times (Waze)
+
+For today's events that have a location and start within 4 hours, the Today screen shows when to leave: "🚗 Leave by 3:25 PM · Soccer · 22 min drive". When it's time, it turns red and says **Leave now**. The agenda view shows the same on each event.
+
+- **Setup:** add Home Assistant's own **Waze Travel Time** integration once (Settings → Devices & services → Add integration → Waze Travel Time). Any destination will do; Lyding Strike asks it about each event's location, from your Home zone, with live traffic.
+- Setup → Birthdays & anniversaries: turn it on or off, choose how many minutes early to leave (default 5), and pick the Waze region.
+- Each place is checked at most every 10 minutes. Addresses Waze can't find simply don't get a time.
+
 ## Adults, kids and Household
 
 Every family member is an **Adult**, a **Kid** or **Household** (Setup → family member → *This person is*).
@@ -191,10 +199,11 @@ Lyding Strike keeps family data on your Home Assistant server. Some features ask
 | Google Places | Place search in the event editor (only with a Google key) | What you type, rounded home location |
 | Photon / OpenStreetMap (komoot) | Place search without a Google key; town names for uploaded photos | What you type and the rounded home location; for photos, the photo's GPS rounded to about 100 m |
 | Windy or RainViewer | Radar map on the Weather tab (loaded by the screen) | Rounded home location, plus whatever those sites log about visitors |
+| Waze (through Home Assistant's Waze Travel Time integration) | "Leave by" times | Your Home zone location and the locations of today's upcoming events |
 | MLB stats (statsapi.mlb.com) | Favorite team's games, scores and standings | Only the team and date asked for (no location) |
 | Your own Mealie and Immich servers | Recipes, meal plans, photos | Talks only to the addresses you entered |
 
-To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, set the favorite baseball team to Off, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
+To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, set the favorite baseball team to Off, turn off "Leave by" times, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
 
 Nothing is sent to the author of Lyding Strike, and there is no tracking or analytics.
 

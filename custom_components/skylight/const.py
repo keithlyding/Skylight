@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.46.0"
+VERSION = "1.47.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -87,6 +87,10 @@ DEFAULT_DATA = {
         "upcoming_days": 60,
         # Favorite MLB team (statsapi.mlb.com team id) for the game-day note and team page; None = off.
         "mlb_team": 109,
+        # "Leave by" times from Waze (needs the Waze Travel Time integration), and how early to leave.
+        "leave_by": True,
+        "leave_buffer": 5,
+        "waze_region": "us",
         # Look: theme preset, seasonal accents, dark mode and night dimming.
         "theme": "warm",            # warm | cool | slate | contrast
         "seasonal": False,
