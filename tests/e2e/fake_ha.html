@@ -45,7 +45,7 @@ window.hass = {
     case "skylight/note/delete": D.notes=(D.notes||[]).filter(n=>n.id!==msg.note_id); push(); return null;
     case "skylight/countdown/set": { D.countdowns||={}; delete D.countdowns[msg.key]; let key=null; if(msg.countdown){key=msg.countdown.uid||`${msg.countdown.summary}|${msg.countdown.start}`; D.countdowns[key]=msg.countdown;} push(); return {key}; }
     case "skylight/travel/times": (window.TRAVELCALLS||=[]).push(msg.places); return window.TRAVEL ? {available:true,minutes:Object.fromEntries(msg.places.map(x=>[x,window.TRAVEL[x]??null]))} : {available:false,minutes:{}};
-    case "skylight/mlb/today": window.MLBCALLS=(window.MLBCALLS||0)+1; return (window.MLB||{}).today||{team:109,game:null};
+    case "skylight/mlb/today": window.MLBCALLS=(window.MLBCALLS||0)+1; return (window.MLB||{}).today||{team:109,game:null,next:null};
     case "skylight/mlb/team": return (window.MLB||{}).team||{team:109,errors:{},schedule:[],division:{name:"NL West",rows:[]},wildcard:{name:"NL wild card",spots:3,rows:[]},rooting:[]};
     case "skylight/diag/report": window.DIAG=msg.text; return null;
     case "skylight/chores/view": return window.FAKE_CHORES.choreView(D, msg);

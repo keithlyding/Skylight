@@ -4,7 +4,7 @@
    score, then the final). Tapping it opens the team page: schedule, division, wild-card race and who
    to root for in today's other games. Home Assistant fetches and works everything out (mlb.py). */
 
-import { esc } from "./helpers.js?v=1.48.0";
+import { esc } from "./helpers.js?v=1.48.1";
 
 // id: [abbreviation, short name] (names only; the server has the rest)
 export const MLB_TEAMS = {
@@ -90,10 +90,18 @@ export class MlbView {
 
   renderMlbNote() {
     const team = this.mlbTeam, g = this.mlbToday?.team === team ? this.mlbToday.game : null;
-    if (!team || !g) return "";
+    if (!team || !this.mlbToday || this.mlbToday.team !== team) return "";
+    if (!g) return ""; // no game today: just the small ⚾ button in the toolbar (renderMlbButton)
     const l = this.mlbLine(g, team);
     return `<button class="mlbnote ${l.cls}" data-action="mlb-open"><span class="mlbball">⚾</span>
       <span class="mlbtxt"><small>${esc(mlbName(team))} ${l.head}</small><b>${l.main}</b></span><span class="mlbgo">›</span></button>`;
+  }
+
+  // Small ⚾ button by "+ Event" on days without a game, so the team page is always one tap away.
+  renderMlbButton() {
+    const team = this.mlbTeam;
+    if (!team || (this.mlbToday?.team === team && this.mlbToday.game)) return "";
+    return `<button class="mlbbtn" data-action="mlb-open" title="${esc(mlbName(team))}: standings & schedule" aria-label="${esc(mlbName(team))} standings and schedule">⚾</button>`;
   }
 
   renderTeam() {

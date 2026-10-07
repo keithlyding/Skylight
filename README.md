@@ -146,6 +146,7 @@ Setup → **Look & night mode**:
 Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice (Diamondbacks by default, or Off).
 
 - On game days the **Today** screen shows a ⚾ note with the opponent and first-pitch time. In the last hour it counts down by the minute ("First pitch in 42 min"). During the game it shows the live score and inning, and afterwards the final.
+- On other days there's just a small ⚾ button next to **+ Event** that opens the team page.
 - Tap the note for the team page. It shows who to root for in today's other games, the division standings, the league wild-card race with a line under the last spot, and the next three weeks of games.
 - **Who to root for:** a team is "in the race" when it is ahead of yours, or no more than 5 games behind, in your division or in the wild-card race. In a game between a race team and anyone else, root against the race team. When two race teams play each other, root against the one closer to yours in the standings.
 - Data comes from MLB's free public stats feed (statsapi.mlb.com, no account or key). Standings are worked out from wins and losses, so tiebreakers aren't applied.

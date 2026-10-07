@@ -943,8 +943,13 @@ const SCENARIOS = {
     await tick(61000);
     await p.S('[data-action="tab"][data-tab="home"]').first().click(); await wait(p, 300);
     check((await note()).includes("Final") && (await note()).includes("Win!"), `final: ${await note()}`);
-    await p.evaluate(() => { el.settings.mlb_team = 0; el.render(); });
-    eq(await p.S(".mlbnote").count(), 0, "off when no favorite team");
+    await p.evaluate(() => { window.MLB.today = { team: 109, game: null, next: { pk: 5, away: 109, home: 135, state: "Preview", start: "2026-09-22T01:40:00Z" } }; el._mlbAt = 0; el._loadMlb(); });
+    await wait(p, 500);
+    eq(await p.S(".mlbnote").count(), 0, "no game today: no note");
+    await p.S(".mlbbtn").click(); await wait(p, 300);
+    check((await text(p.S(".mlbpage")))[0]?.includes("NL West"), "the ⚾ button opens the team page");
+    await p.evaluate(() => { el.settings.mlb_team = 0; el.ui.tab = "home"; el.render(); });
+    eq(await p.S(".mlbnote, .mlbbtn").count(), 0, "off when no favorite team");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

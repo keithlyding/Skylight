@@ -29,6 +29,7 @@ CACHE_KEY = f"{DOMAIN}_mlb"
 DEFAULT_TEAM = 109  # Arizona Diamondbacks
 CLOSE_GAMES = 5.0  # a team this many games behind (or anywhere ahead) is "in the race"
 WILD_CARDS = 3  # wild-card spots per league
+NEXT_DAYS = 10  # how far ahead the Today note looks for the next game
 
 # id: (abbreviation, short name, full name, league id, division id)
 TEAMS: dict[int, tuple[str, str, str, int, int]] = {
@@ -202,7 +203,7 @@ async def _cached(hass: HomeAssistant, key: str, seconds: float, fetch):
 
 
 async def async_today(hass: HomeAssistant, team: int) -> dict:
-    """Our game today (if any). Cached 60 s while live or within the hour, else 10 min."""
+    """Our game today (if any) and the next one after today. Cached 60 s while live or within the hour, else 10 min."""
     today = dt_util.now().date()
     key = f"today-{team}-{today}"
     cache = hass.data.setdefault(CACHE_KEY, {})
@@ -213,9 +214,15 @@ async def async_today(hass: HomeAssistant, team: int) -> dict:
                                               and dt_util.parse_datetime(g["start"]) - dt_util.utcnow() < timedelta(hours=1))
         if time.monotonic() - hit[0] < (60 if soon else 600):
             return hit[1]
-    data = await _get(hass, "/schedule", {"sportId": 1, "teamId": team, "date": today.isoformat(), "hydrate": "linescore"})
+    data = await _get(hass, "/schedule", {"sportId": 1, "teamId": team, "startDate": today.isoformat(),
+                                          "endDate": (today + timedelta(days=NEXT_DAYS)).isoformat(), "hydrate": "linescore"})
     games = _games(data)
-    result = {"team": team, "date": today.isoformat(), "game": games[0] if games else None, "games": games}
+    todays = [g for g in games if g["start"] and dt_util.as_local(dt_util.parse_datetime(g["start"])).date() == today]
+    # Today's game: the one being played, else the next one today, else the last one (final).
+    game = next((g for g in todays if g["state"] == "Live"), None) or next((g for g in todays if g["state"] == "Preview"), None) \
+        or (todays[-1] if todays else None)
+    upcoming = next((g for g in games if g not in todays and g["state"] == "Preview"), None)
+    result = {"team": team, "date": today.isoformat(), "game": game, "games": todays, "next": upcoming}
     cache[key] = (time.monotonic(), result)
     return result
 

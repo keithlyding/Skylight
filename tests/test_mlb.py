@@ -1,10 +1,12 @@
 """Favorite baseball team: standings, wild-card race, who to root for, and the websocket commands."""
 
 import re
+from datetime import timedelta
 
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.skylight import mlb
@@ -90,10 +92,14 @@ async def _call(ws, msg, _id=[700]):
 
 
 async def test_ws_today_and_team(hass, ws, aioclient_mock):
-    aioclient_mock.get(SCHEDULE, json={"dates": [{"games": [_game(9, 119, 109, a=1, h=0, state="Live")]}]})
+    now = dt_util.utcnow().replace(microsecond=0)
+    aioclient_mock.get(SCHEDULE, json={"dates": [{"games": [
+        _game(9, 119, 109, a=1, h=0, state="Live", start=now.isoformat().replace("+00:00", "Z")),
+        _game(10, 109, 135, start=(now + timedelta(days=2)).isoformat().replace("+00:00", "Z"))]}]})
     aioclient_mock.get(STANDINGS, json={"records": _records()})
     today = await _call(ws, {"type": "skylight/mlb/today"})
     assert today["team"] == 109 and today["game"]["home"] == 109 and today["game"]["state"] == "Live"
+    assert today["next"]["pk"] == 10 and [g["pk"] for g in today["games"]] == [9]
 
     team = await _call(ws, {"type": "skylight/mlb/team"})
     assert team["errors"] == {}

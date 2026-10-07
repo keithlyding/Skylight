@@ -365,6 +365,7 @@ label.check input { width:22px; height:22px; }
 .mlbnote.soon b, .mlbnote.live b, .mlblive { color:#a71930; }
 .mlbnote.live small::after { content:" ●"; color:#e53935; }
 .mlbnote .mlbgo { font-size:1.6em; color:var(--muted); }
+.mlbbtn { font-size:20px; padding:6px 10px; line-height:1; }
 .mlbnote.big { cursor:default; margin-bottom:10px; }
 .mlbtitle { margin:0 auto; }
 .mlbpage { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; padding:4px 2px 16px; align-content:start; }

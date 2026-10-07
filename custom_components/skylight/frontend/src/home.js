@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.48.0";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.48.1";
 
 export class HomeView {
 
@@ -82,7 +82,7 @@ export class HomeView {
       </div>`;
     }).join("");
     if (this.settings.weather_hints !== false && this.settings.weather_entity) this._loadWeatherFull();
-    return `<div class="toolbar hometool">${picker}<button class="primary fab" data-action="new-event">+ Event</button></div>
+    return `<div class="toolbar hometool">${picker}${this.renderMlbButton()}<button class="primary fab" data-action="new-event">+ Event</button></div>
       <div class="home ${n >= 5 ? "wide" : ""}">
       <section class="hcal">${cal}</section>
       <aside class="hside">
