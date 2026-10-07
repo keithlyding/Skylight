@@ -141,6 +141,15 @@ Setup → **Look & night mode**:
 - The calendar shows them as all-day markers in every view, in the person's color (or the family color). Tapping one points you to Setup; they aren't calendar events and aren't written to any calendar.
 - Adding or changing them needs the setup PIN, like other setup.
 
+## Favorite baseball team
+
+Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice (Diamondbacks by default, or Off).
+
+- On game days the **Today** screen shows a ⚾ note with the opponent and first-pitch time. In the last hour it counts down by the minute ("First pitch in 42 min"). During the game it shows the live score and inning, and afterwards the final.
+- Tap the note for the team page. It shows who to root for in today's other games, the division standings, the league wild-card race with a line under the last spot, and the next three weeks of games.
+- **Who to root for:** a team is "in the race" when it is ahead of yours, or no more than 5 games behind, in your division or in the wild-card race. In a game between a race team and anyone else, root against the race team. When two race teams play each other, root against the one closer to yours in the standings.
+- Data comes from MLB's free public stats feed (statsapi.mlb.com, no account or key). Standings are worked out from wins and losses, so tiebreakers aren't applied.
+
 ## Adults, kids and Household
 
 Every family member is an **Adult**, a **Kid** or **Household** (Setup → family member → *This person is*).
@@ -182,9 +191,10 @@ Lyding Strike keeps family data on your Home Assistant server. Some features ask
 | Google Places | Place search in the event editor (only with a Google key) | What you type, rounded home location |
 | Photon / OpenStreetMap (komoot) | Place search without a Google key; town names for uploaded photos | What you type and the rounded home location; for photos, the photo's GPS rounded to about 100 m |
 | Windy or RainViewer | Radar map on the Weather tab (loaded by the screen) | Rounded home location, plus whatever those sites log about visitors |
+| MLB stats (statsapi.mlb.com) | Favorite team's games, scores and standings | Only the team and date asked for (no location) |
 | Your own Mealie and Immich servers | Recipes, meal plans, photos | Talks only to the addresses you entered |
 
-To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
+To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, set the favorite baseball team to Off, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
 
 Nothing is sent to the author of Lyding Strike, and there is no tracking or analytics.
 

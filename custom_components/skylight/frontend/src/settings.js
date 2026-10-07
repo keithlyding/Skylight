@@ -1,7 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.45.0";
-import { diagPrevious, diagText } from "./diag.js?v=1.45.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.46.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.46.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.46.0";
 
 export class SettingsView {
 
@@ -159,6 +160,10 @@ export class SettingsView {
         <span class="label" style="margin:0">Upcoming card on Today:</span>
         <label class="inline">show up to <input type="number" min="1" max="10" value="${Number(this.settings.upcoming_count ?? 3)}" data-change="setting" data-key="upcoming_count" data-num="1"> dates</label>
         <label class="inline">up to <input type="number" min="1" max="366" value="${Number(this.settings.upcoming_days ?? 60)}" data-change="setting" data-key="upcoming_days" data-num="1"> days ahead</label></div>
+      <div class="row">
+        <span class="label" style="margin:0">Favorite baseball team (game-day note on Today):</span>
+        <select data-change="setting" data-key="mlb_team" data-num="1"><option value="0" ${this.mlbTeam ? "" : "selected"}>Off</option>
+          ${Object.entries(MLB_TEAMS).sort((a, b) => a[1][1].localeCompare(b[1][1])).map(([id, [, n]]) => `<option value="${id}" ${this.mlbTeam === Number(id) ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>
     </section>`;
   }
   openOccasionDialog(o) {

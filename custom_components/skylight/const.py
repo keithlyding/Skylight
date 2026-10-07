@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.45.0"
+VERSION = "1.46.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -85,6 +85,8 @@ DEFAULT_DATA = {
         # Today screen "Upcoming" card: how many occasions, and how far ahead (days).
         "upcoming_count": 3,
         "upcoming_days": 60,
+        # Favorite MLB team (statsapi.mlb.com team id) for the game-day note and team page; None = off.
+        "mlb_team": 109,
         # Look: theme preset, seasonal accents, dark mode and night dimming.
         "theme": "warm",            # warm | cool | slate | contrast
         "seasonal": False,

@@ -53,7 +53,7 @@ const SCENARIOS = {
   async smoke(browser, base) {
     for (const [w, h] of [[1300, 912], [390, 760]]) {
       const p = await open(browser, base, { width: w, height: h, ctx: w < 600 ? { isMobile: true, hasTouch: true } : {} });
-      for (const t of ["home", "weather", "calendar", "chores", "meals", "lists", "settings"]) {
+      for (const t of ["home", "weather", "calendar", "chores", "meals", "lists", "settings", "team"]) {
         await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t);
         await p.waitForTimeout(250);
         const over = await p.evaluate(() => document.documentElement.scrollWidth);
@@ -905,6 +905,48 @@ const SCENARIOS = {
     eq(await p.evaluate(() => window.DOCK), 1, "not asked again when the sidebar is already hidden");
     eq(p.errors, [], "page errors");
     await context.close();
+  },
+  async baseball(browser, base) {
+    const at = "2026-09-19T16:00:00";
+    const start = new Date(new Date(at).getTime() + 61 * 60000).toISOString();
+    const g = { pk: 1, start, away: 119, home: 109, state: "Preview", detail: "Scheduled" };
+    const p = await open(browser, base, { at });
+    await p.evaluate(({ g, start }) => {
+      window.MLB = {
+        today: { team: 109, game: g },
+        team: { team: 109, errors: {}, schedule: [{ ...g }, { ...g, pk: 2, away: 109, home: 135, start: "2026-09-21T02:10:00Z" }],
+          division: { name: "NL West", rows: [{ id: 119, name: "Dodgers", w: 90, l: 60, gb: 0 }, { id: 109, name: "D-backs", w: 85, l: 65, gb: 5 }] },
+          wildcard: { name: "NL wild card", spots: 3, rows: [{ id: 112, name: "Cubs", w: 87, l: 63, gb: -2, in: true }, { id: 121, name: "Mets", w: 86, l: 64, gb: -1, in: true },
+            { id: 109, name: "D-backs", w: 85, l: 65, gb: 0, in: true }, { id: 135, name: "Padres", w: 84, l: 66, gb: 1, in: false }] },
+          rooting: [{ pk: 3, away: 112, home: 113, state: "Preview", start, root_for: 113, root_against: 112, reason: "Cubs are 2 games ahead of us in the NL wild-card race" }] },
+      };
+      el._mlbAt = 0; el._loadMlb();
+    }, { g, start });
+    await wait(p, 500);
+    const note = async () => (await text(p.S(".mlbnote")))[0] || "";
+    check((await note()).includes("D-backs vs Dodgers") && (await note()).includes("Today at"), `game-day note: ${await note()}`);
+    const tick = async (ms) => { await p.evaluate(() => { el._lastActivity = Date.now(); }); await wait(p, ms); };
+    await tick(60000); // inside the last hour: counts down by the minute
+    check((await note()).includes("First pitch in 60 min"), `countdown: ${await note()}`);
+    await tick(60000);
+    check((await note()).includes("First pitch in 59 min"), `countdown moves: ${await note()}`);
+    await p.evaluate(() => { Object.assign(window.MLB.today.game, { state: "Live", away_score: 2, home_score: 3, inning: "5th", half: "Top" }); });
+    await tick(61000);
+    check((await note()).includes("LAD 2 – ARI 3") && (await note()).includes("Top 5th"), `live score: ${await note()}`);
+    await p.evaluate(() => { el.ui.alertPop = null; el._alertTimer && clearInterval(el._alertTimer); el.render(); });
+    await p.S(".mlbnote").click(); await wait(p, 300);
+    const page = (await text(p.S(".mlbpage")))[0];
+    check(page.includes("Root for Reds") && page.includes("Cubs are 2 games ahead of us in the NL wild-card race"), `rooting: ${page}`);
+    check(page.includes("NL West") && page.includes("NL wild card") && page.includes("Coming up"), "tables shown");
+    eq(await p.S(".mlbtab tr.cut").count(), 1, "wild-card cutoff line");
+    await p.evaluate(() => { Object.assign(window.MLB.today.game, { state: "Final", detail: "Final", away_score: 2, home_score: 4 }); });
+    await tick(61000);
+    await p.S('[data-action="tab"][data-tab="home"]').first().click(); await wait(p, 300);
+    check((await note()).includes("Final") && (await note()).includes("Win!"), `final: ${await note()}`);
+    await p.evaluate(() => { el.settings.mlb_team = 0; el.render(); });
+    eq(await p.S(".mlbnote").count(), 0, "off when no favorite team");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
   },
 };
 

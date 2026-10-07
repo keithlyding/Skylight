@@ -340,6 +340,27 @@ label.check input { width:22px; height:22px; }
 .hside { display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
 .hcols { column-width:250px; column-gap:10px; }
+.mlbnote { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--card); border:0; border-left:6px solid #a71930; border-radius:var(--radius); padding:10px 12px; color:var(--text); font:inherit; cursor:pointer; }
+.mlbnote .mlbball { font-size:1.6em; }
+.mlbnote .mlbtxt { display:flex; flex-direction:column; flex:1; min-width:0; }
+.mlbnote small { color:var(--muted); }
+.mlbnote b { font-size:1.15em; }
+.mlbnote.soon b, .mlbnote.live b, .mlblive { color:#a71930; }
+.mlbnote.live small::after { content:" ●"; color:#e53935; }
+.mlbnote .mlbgo { font-size:1.6em; color:var(--muted); }
+.mlbnote.big { cursor:default; margin-bottom:10px; }
+.mlbtitle { margin:0 auto; }
+.mlbpage { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; padding:4px 2px 16px; align-content:start; }
+.mlbpage > .mlbnote, .mlbpage > p { grid-column:1 / -1; }
+.mlbcard { background:var(--card); border-radius:var(--radius); padding:10px 12px; }
+.mlbcard h3 { margin:0 0 8px; }
+.mlbtab { width:100%; border-collapse:collapse; }
+.mlbtab th, .mlbtab td { padding:5px 4px; text-align:left; border-bottom:1px solid var(--line, rgba(127,127,127,.2)); }
+.mlbtab th:not(:first-child), .mlbtab td:not(:first-child) { text-align:right; }
+.mlbtab tr.me td { font-weight:700; color:#a71930; }
+.mlbtab tr.cut td { border-bottom:3px dashed #a71930; }
+.mlbroot { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.mlbfor { font-weight:700; }
 .hchores { background:var(--card); border-radius:var(--radius); padding:10px 12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:5px;
   break-inside:avoid; margin-bottom:10px; }
 .hchores .chore .ctoggle { padding:6px 10px; font-size:15px; border-radius:12px; }
