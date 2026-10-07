@@ -1,19 +1,20 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.47.0";
-import { STYLES } from "./styles.js?v=1.47.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.47.0";
-import { CalendarView } from "./calendar.js?v=1.47.0";
-import { WeatherView } from "./weather.js?v=1.47.0";
-import { HomeView } from "./home.js?v=1.47.0";
-import { ChoresView } from "./chores.js?v=1.47.0";
-import { MealsView } from "./meals.js?v=1.47.0";
-import { ListsView } from "./lists.js?v=1.47.0";
-import { PhotosView } from "./photos.js?v=1.47.0";
-import { SettingsView } from "./settings.js?v=1.47.0";
-import { PickersView } from "./pickers.js?v=1.47.0";
-import { MlbView } from "./mlb.js?v=1.47.0";
-import { TravelView } from "./travel.js?v=1.47.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.48.0";
+import { STYLES } from "./styles.js?v=1.48.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.48.0";
+import { CalendarView } from "./calendar.js?v=1.48.0";
+import { WeatherView } from "./weather.js?v=1.48.0";
+import { HomeView } from "./home.js?v=1.48.0";
+import { ChoresView } from "./chores.js?v=1.48.0";
+import { MealsView } from "./meals.js?v=1.48.0";
+import { ListsView } from "./lists.js?v=1.48.0";
+import { PhotosView } from "./photos.js?v=1.48.0";
+import { SettingsView } from "./settings.js?v=1.48.0";
+import { PickersView } from "./pickers.js?v=1.48.0";
+import { MlbView } from "./mlb.js?v=1.48.0";
+import { TravelView } from "./travel.js?v=1.48.0";
+import { NotesView } from "./notes.js?v=1.48.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -471,6 +472,12 @@ export class SkylightPanel extends HTMLElement {
         if (input) { input.readOnly = false; input.focus(); input.select(); }
         break;
       }
+      case "note-new": this.openNoteDialog(); break;
+      case "note-by": this.ui.dialog.by = this.ui.dialog.by === d.id ? null : d.id; this.renderDialog(); break;
+      case "note-exp": this.ui.dialog.expires = d.v; this.renderDialog(); break;
+      case "note-color": this.ui.dialog.color = d.c; this.renderDialog(); break;
+      case "note-save": await this.saveNote(); break;
+      case "note-delete": if (confirm("Remove this note?")) await this._ws({ type: "skylight/note/delete", note_id: d.id }); break;
       case "mlb-open": this.ui.tab = "team"; this._resetScroll = true; this.render(); this._loadMlbTeam(); this._loadMlb(); break;
       case "mlb-refresh": this._loadMlbTeam(); this._loadMlb(); break;
       case "radar-show": this.ui.radarShown = true; this.render(); break;
@@ -1233,7 +1240,7 @@ export class SkylightPanel extends HTMLElement {
 }
 
 // Each view's methods become SkylightPanel methods (getters and setters included).
-for (const View of [CalendarView, WeatherView, HomeView, ChoresView, MealsView, ListsView, PhotosView, SettingsView, PickersView, MlbView, TravelView]) {
+for (const View of [CalendarView, WeatherView, HomeView, ChoresView, MealsView, ListsView, PhotosView, SettingsView, PickersView, MlbView, TravelView, NotesView]) {
   for (const key of Object.getOwnPropertyNames(View.prototype)) {
     if (key === "constructor") continue;
     if (Object.prototype.hasOwnProperty.call(SkylightPanel.prototype, key)) throw new Error(`Skylight: ${key} defined twice`);

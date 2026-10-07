@@ -41,6 +41,9 @@ window.hass = {
     case "skylight/pin/set": if (window.SEC.pin && msg.current!==window.SEC.pin) throw {code:"wrong_pin",message:"Wrong PIN"}; window.SEC.pin=msg.pin; window.SEC.unlocked=true; D.security={pin_set:true}; push(); return {seconds_left:300};
     case "skylight/pin/clear": if (msg.current!==window.SEC.pin) throw {code:"wrong_pin",message:"Wrong PIN"}; window.SEC.pin=""; D.security={pin_set:false}; push(); return null;
     case "skylight/reminder/set": {D.event_meta=D.event_meta||{}; delete D.event_meta[msg.key]; let key=null; if(msg.meta){key=msg.meta.uid||`${msg.meta.entity}|${msg.meta.summary}|${msg.meta.start}`; D.event_meta[key]=msg.meta;} push(); return {key};}
+    case "skylight/note/add": { if(!msg.text.trim()) throw {code:"empty",message:"Write something first"}; const n={id:"n"+Math.random().toString(36).slice(2,7),text:msg.text.trim(),created:new Date().toISOString(),expires:msg.expires==="never"?null:new Date(Date.now()+864e5).toISOString(),color:msg.color}; if(msg.by) n.by=msg.by; (D.notes||=[]).push(n); push(); return n; }
+    case "skylight/note/delete": D.notes=(D.notes||[]).filter(n=>n.id!==msg.note_id); push(); return null;
+    case "skylight/countdown/set": { D.countdowns||={}; delete D.countdowns[msg.key]; let key=null; if(msg.countdown){key=msg.countdown.uid||`${msg.countdown.summary}|${msg.countdown.start}`; D.countdowns[key]=msg.countdown;} push(); return {key}; }
     case "skylight/travel/times": (window.TRAVELCALLS||=[]).push(msg.places); return window.TRAVEL ? {available:true,minutes:Object.fromEntries(msg.places.map(x=>[x,window.TRAVEL[x]??null]))} : {available:false,minutes:{}};
     case "skylight/mlb/today": window.MLBCALLS=(window.MLBCALLS||0)+1; return (window.MLB||{}).today||{team:109,game:null};
     case "skylight/mlb/team": return (window.MLB||{}).team||{team:109,errors:{},schedule:[],division:{name:"NL West",rows:[]},wildcard:{name:"NL wild card",spots:3,rows:[]},rooting:[]};

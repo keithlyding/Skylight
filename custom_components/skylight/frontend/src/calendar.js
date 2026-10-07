@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.47.0";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.48.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -271,6 +271,7 @@ export class CalendarView {
           <div id="loc-sugg" class="sugg" hidden></div></label>
         <label>Notes<textarea id="ev-desc" rows="2">${esc(ev?.description)}</textarea></label>
         <label>Reminder<select id="ev-remind">${REMINDERS.map(([v, l]) => `<option value="${v}" ${v === (ev ? this._eventMeta(ev)?.remind || "" : this.settings.default_reminder || "") ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" id="ev-countdown" ${ev && this._countdownOf(ev) ? "checked" : ""}> ⏳ Show countdown on the Today screen</label>
         <div class="actions">
           ${ev ? `<button class="danger" data-action="delete-event">Delete</button>` : ""}
           <span class="spacer"></span>
@@ -479,6 +480,7 @@ export class CalendarView {
       for (const c of plan.remove) await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
     }
     await this._saveReminder(ev, form, plan);
+    await this._saveCountdown(ev, form, this._eventPayload(form));
     this.closeDialog(); this._eventsKey = ""; this._mealKey = ""; this._loadEvents();
   }
 
@@ -564,6 +566,8 @@ export class CalendarView {
     for (const c of copies) await this._deleteCopy(c, scope);
     const meta = this._eventMeta(ev);
     if (meta && scope !== "this") await this._ws({ type: "skylight/reminder/set", key: this._metaKey(meta), meta: null }).catch(() => {});
+    const cd = this._countdownOf(ev);
+    if (cd && scope !== "this") await this._ws({ type: "skylight/countdown/set", key: this._cdKey(cd), countdown: null }).catch(() => {});
     this.closeDialog(); this._eventsKey = ""; this._loadEvents();
   }
 

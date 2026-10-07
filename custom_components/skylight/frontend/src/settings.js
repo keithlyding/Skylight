@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.47.0";
-import { diagPrevious, diagText } from "./diag.js?v=1.47.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.47.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.48.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.48.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.48.0";
 
 export class SettingsView {
 
@@ -164,6 +164,8 @@ export class SettingsView {
         <span class="label" style="margin:0">Favorite baseball team (game-day note on Today):</span>
         <select data-change="setting" data-key="mlb_team" data-num="1"><option value="0" ${this.mlbTeam ? "" : "selected"}>Off</option>
           ${Object.entries(MLB_TEAMS).sort((a, b) => a[1][1].localeCompare(b[1][1])).map(([id, [, n]]) => `<option value="${id}" ${this.mlbTeam === Number(id) ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>
+      <div class="row">
+        <label class="inline"><input type="checkbox" data-change="setting" data-key="message_board" ${this.settings.message_board !== false ? "checked" : ""}> 📌 Message board on Today (anyone can post or remove notes)</label></div>
       <div class="row">
         <label class="inline"><input type="checkbox" data-change="setting" data-key="leave_by" ${this.settings.leave_by !== false ? "checked" : ""}> 🚗 "Leave by" times from Waze</label>
         <label class="inline">leave <input type="number" min="0" max="60" value="${Number(this.settings.leave_buffer ?? 5)}" data-change="setting" data-key="leave_buffer" data-num="1"> min early</label>

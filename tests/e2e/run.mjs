@@ -977,6 +977,39 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async board_and_countdowns(browser, base) {
+    const p = await open(browser, base);
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); el.render(); });
+    check((await text(p.S(".board")))[0]?.includes("No messages"), "empty board");
+    await p.S('[data-action="note-new"]').click(); await p.waitForTimeout(200);
+    await p.S("#note-text").fill("Soccer moved to 5:00!");
+    const who = await p.evaluate(() => el.members[0]?.name);
+    await p.S('[data-action="note-by"]').first().click();
+    await p.S('[data-action="note-exp"][data-v="tomorrow"]').click();
+    await p.S('[data-action="note-color"]').nth(2).click();
+    await p.S('[data-action="note-save"]').click(); await p.waitForTimeout(500);
+    const msg = await p.evaluate(() => calls.filter((c) => c.type === "skylight/note/add").at(-1));
+    eq([msg.text, msg.expires, msg.color, !!msg.by], ["Soccer moved to 5:00!", "tomorrow", "#c8f0d0", true], "note posted");
+    const note = (await text(p.S(".note")))[0];
+    check(note.includes("Soccer moved to 5:00!") && (!who || note.includes(who)), `note shown: ${note}`);
+    p.once("dialog", (d) => d.accept());
+    await p.S('[data-action="note-delete"]').click(); await p.waitForTimeout(500);
+    eq(await p.S(".note").count(), 0, "note removed");
+
+    // Countdown from the event editor, shown in the Upcoming card
+    const day = await p.evaluate(() => { const d = new Date(Date.now() + 23 * 864e5); return d.toISOString().slice(0, 10); });
+    await p.evaluate((day) => el.openEventDialog(null, day, 10), day); await p.waitForTimeout(300);
+    await p.S("#ev-title").fill("Disney trip");
+    await p.S("#ev-countdown").check();
+    await p.S('[data-action="save-event"]').click(); await p.waitForTimeout(800);
+    const cd = await p.evaluate(() => Object.values(D.countdowns || {})[0]);
+    check(cd && cd.summary === "Disney trip" && !cd.all_day, `countdown stored: ${JSON.stringify(cd)}`);
+    await p.evaluate(() => { el.ui.tab = "home"; el.render(); });
+    const up = (await text(p.S(".upcoming .urow.cd")))[0] || "";
+    check(up.includes("Disney trip") && /2[23] days/.test(up), `countdown row: ${up}`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);

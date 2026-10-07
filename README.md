@@ -150,6 +150,11 @@ Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice 
 - **Who to root for:** a team is "in the race" when it is ahead of yours, or no more than 5 games behind, in your division or in the wild-card race. In a game between a race team and anyone else, root against the race team. When two race teams play each other, root against the one closer to yours in the standings.
 - Data comes from MLB's free public stats feed (statsapi.mlb.com, no account or key). Standings are worked out from wins and losses, so tiebreakers aren't applied.
 
+## Message board and countdowns
+
+- **Message board:** the Today screen has a 📌 Messages card. Tap **＋ Note** to post a sticky note, optionally saying who it's from, in one of six colors. Each note can last until the end of today, tomorrow, a week, or until someone removes it. Anyone at the screen can post or remove notes; the setup PIN isn't needed. Turn the card off in Setup → Birthdays & anniversaries.
+- **Countdowns:** tick **⏳ Show countdown on the Today screen** in the event editor. The event then shows in the Upcoming card ("Disney trip · 23 days · Fri, Oct 30"), and on the day "Today! 🎉". It disappears after the event. If the event is moved in Google Calendar, the countdown keeps the old date until the event is opened and saved again here (calendars that can edit events in place are followed automatically).
+
 ## "Leave by" times (Waze)
 
 For today's events that have a location and start within 4 hours, the Today screen shows when to leave: "🚗 Leave by 3:25 PM · Soccer · 22 min drive". When it's time, it turns red and says **Leave now**. The agenda view shows the same on each event.

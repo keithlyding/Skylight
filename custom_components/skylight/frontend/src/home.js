@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.47.0";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.48.0";
 
 export class HomeView {
 
@@ -8,8 +8,9 @@ export class HomeView {
   renderUpcoming() {
     const list = upcomingOccasions(allOccasions(this.members, this.data.occasions, this.settings.family_color || "#ff9f43"),
       new Date(), Number(this.settings.upcoming_days ?? 60), Number(this.settings.upcoming_count ?? 3));
-    if (!list.length) return "";
-    return `<div class="upcoming"><div class="uhead">Upcoming</div>${list.map((u) => `
+    const cds = this.renderCountdownRows();
+    if (!list.length && !cds) return "";
+    return `<div class="upcoming"><div class="uhead">Upcoming</div>${cds}${list.map((u) => `
       <div class="urow ${u.days === 0 ? "today" : ""}" style="--c:${u.color}"><span class="uemoji">${u.emoji}</span>
         <span class="utext"><b>${esc(u.title)}</b><small>${esc(occasionText(u).split(" — ")[1] || "")}</small></span></div>`).join("")}</div>`;
   }
@@ -87,6 +88,7 @@ export class HomeView {
       <aside class="hside">
         ${this.settings.weather_hints !== false ? this.renderHints(4) : ""}
         ${this.renderLeaveNote()}
+        ${this.settings.message_board !== false ? this.renderBoard() : ""}
         ${this.renderMlbNote()}
         ${this.renderTonight()}
         ${this.renderUpcoming()}

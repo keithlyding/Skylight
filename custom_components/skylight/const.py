@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.47.0"
+VERSION = "1.48.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -52,6 +52,8 @@ DEFAULT_DATA = {
     "occasions": [],
     # Reminders set in the event editor (see reminders.py), keyed by event uid (or calendar|title|start).
     "event_meta": {},
+    "notes": [],  # message board (notes.py)
+    "countdowns": {},  # events shown with a countdown on Today
     # Reminders already sent ("key|start|when" -> time sent), kept a few days so none is sent twice.
     "reminders_sent": {},
     # api_key is never sent to the browser (see SkylightStore.public).
@@ -89,6 +91,7 @@ DEFAULT_DATA = {
         "mlb_team": 109,
         # "Leave by" times from Waze (needs the Waze Travel Time integration), and how early to leave.
         "leave_by": True,
+        "message_board": True,  # sticky notes on the Today screen
         "leave_buffer": 5,
         "waze_region": "us",
         # Look: theme preset, seasonal accents, dark mode and night dimming.
