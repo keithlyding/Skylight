@@ -528,7 +528,17 @@ const SCENARIOS = {
       el.ui.tab = "home"; el.render();
     });
     const text = (await p.S(".hints").textContent()).replace(/\s+/g, " ");
-    check(text.includes("Partly cloudy today, high 58° · low 41°"), `daily summary shown: ${text}`);
+    if (new Date().getHours() < 17) check(text.includes("Partly cloudy today, high 58° · low 41°"), `daily summary shown: ${text}`);
+    else check(text.includes("tonight, low 41°"), `evening summary shown: ${text}`);
+    // Evening: tonight's low and tomorrow
+    await p.evaluate(() => {
+      const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const eve = new Date(); eve.setHours(21, 28, 0, 0); const tm = new Date(eve); tm.setDate(tm.getDate() + 1);
+      el.forecast = { [ymd(eve)]: { datetime: eve.toISOString(), condition: "clear-night", temperature: 65, is_daytime: false },
+        [ymd(tm)]: { datetime: tm.toISOString(), condition: "sunny", temperature: 81, is_daytime: true } };
+      window.__eve = el._daySummary(eve).text;
+    });
+    eq(await p.evaluate(() => window.__eve), "Clear tonight, low 65° · Tomorrow ☀️ sunny, high 81°", "evening wording");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

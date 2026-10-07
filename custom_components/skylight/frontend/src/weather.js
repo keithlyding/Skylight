@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.44.2";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.44.3";
 
 export class WeatherView {
 
@@ -242,6 +242,16 @@ export class WeatherView {
     const low = f?.templow ?? (temps.length ? Math.min(...temps) : null);
     const cond = f?.condition || hours.find((h) => new Date(h.datetime).getHours() >= 12)?.condition || this._hass.states[this.settings.weather_entity]?.state;
     if (high === null && !cond) return null;
+    // Evening (from 5 PM, or when only the night period is left): tonight's low and tomorrow instead.
+    if (now.getHours() >= 17 || f?.is_daytime === false) {
+      const tm = this.forecast?.[ymd(addDays(now, 1))];
+      const lowTonight = f?.templow ?? (f?.is_daytime === false ? f?.temperature : null) ?? tm?.templow;
+      const night = { sunny: "clear-night", partlycloudy: "partlycloudy" }[cond] || cond;
+      const label = { "clear-night": "Clear", sunny: "Clear" }[night] || LABEL[night] || "Weather";
+      let text = `${label} tonight${lowTonight !== null && lowTonight !== undefined ? `, low ${Math.round(lowTonight)}°` : ""}`;
+      if (tm) text += ` · Tomorrow ${WEATHER_ICONS[tm.condition] || ""} ${(LABEL[tm.condition] || "").toLowerCase()}${tm.temperature !== undefined ? `, high ${Math.round(tm.temperature)}°` : ""}`;
+      return { icon: night === "clear-night" || night === "sunny" ? "🌙" : WEATHER_ICONS[night] || "🌙", text: text.replace(/\s+/g, " ").trim(), level: "h-day" };
+    }
     const parts = [`${LABEL[cond] || "Weather"} today`];
     if (high !== null && high !== undefined) parts.push(`high ${Math.round(high)}°${low !== null && low !== undefined && f?.templow !== undefined ? ` · low ${Math.round(low)}°` : ""}`);
     return { icon: WEATHER_ICONS[cond] || "🌤️", text: parts.join(", "), level: "h-day" };
