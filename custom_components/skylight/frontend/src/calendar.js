@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.44.4";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.45.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -598,11 +598,34 @@ export class CalendarView {
   }
 
   evIndex(ev) { return this.visibleEvents().indexOf(ev); }
+  // past / now / soon (later today) / null, for dimming finished events and showing countdowns.
+  _evWhen(ev, now = new Date()) {
+    if (ev.end <= now) return "past";
+    if (ev.allDay) return null;
+    if (ev.start <= now) return "now";
+    return sameDay(ev.start, now) ? "soon" : null;
+  }
+  _dur(ms) {
+    const m = Math.max(1, Math.round(ms / 60000));
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? `${h} h ${r} min` : `${h} hour${h > 1 ? "s" : ""}`;
+  }
+  // Agenda extras: "in 2 h 15 min" for later today; a progress bar and "40 min left" while it's on.
+  _evLive(ev, now = new Date()) {
+    const w = this._evWhen(ev, now);
+    if (w === "soon") return `<small class="evsoon">in ${this._dur(ev.start - now)}</small>`;
+    if (w === "now") {
+      const pct = Math.min(100, Math.max(0, ((now - ev.start) / (ev.end - ev.start)) * 100));
+      return `<small class="evnow"><span class="evprog"><i style="width:${pct.toFixed(1)}%"></i></span>${this._dur(ev.end - now)} left</small>`;
+    }
+    return "";
+  }
   evPill(ev, day, compact) {
     const time = ev.allDay ? "" : `<span class="t">${this.fmtTime(ev.start)}</span>`;
     const multi = ev.allDay && (ev.end - ev.start) > 86400000;
     const cont = day && ev.start < startOfDay(day);
-    return `<button class="ev ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""} ${ev.info ? "info" : ""}" style="--c:${ev.color};--on:${ev.on || "#fff"};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
+    return `<button class="ev ${this._evWhen(ev) === "past" ? "past" : ""} ${ev.allDay ? "allday" : ""} ${compact ? "compact" : ""} ${ev.stripes ? "multi" : ""} ${ev.info ? "info" : ""}" style="--c:${ev.color};--on:${ev.on || "#fff"};${ev.stripes}" data-action="open-event" data-idx="${this.evIndex(ev)}">
       ${compact && !ev.info ? "" : `<span class="av">${ev.avatar}</span>`}<span class="s">${cont ? "↳ " : ""}${esc(ev.summary)}</span>${multi || compact ? "" : time}${compact && !ev.allDay ? `<span class="t">${this.fmtTime(ev.start)}</span>` : ""}</button>`;
   }
   dayHead(d) {
@@ -707,7 +730,8 @@ export class CalendarView {
         const startH = (s - ds) / 3600000, dur = (en - s) / 3600000;
         const w = 100 / lanes;
         const short = dur < 0.8;
-        return `<button class="tg-ev ${short ? "short" : dur >= 1.5 ? "tall" : ""} ${e.stripes ? "multi" : ""} ${e.info ? "info" : ""}" style="--c:${e.color};${e.stripes}top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
+        const when = this._evWhen(e);
+        return `<button class="tg-ev ${when === "past" ? "past" : when === "now" ? "evon" : ""} ${short ? "short" : dur >= 1.5 ? "tall" : ""} ${e.stripes ? "multi" : ""} ${e.info ? "info" : ""}" style="--c:${e.color};${e.stripes}top:${at(startH)};height:max(20px, calc(var(--h) * ${dur.toFixed(3)} - 2px));left:calc(${lane * w}% + 2px);width:calc(${w * span}% - 4px)" data-action="open-event" data-idx="${this.evIndex(e)}">
           <b>${esc(e.summary)}</b><span>${e.avatar} ${this.fmtTime(e.start)}${short ? "" : ` – ${this.fmtTime(e.end)}`}</span>${dur >= 1.5 && e.location ? `<span>📍 ${esc(e.location)}</span>` : ""}</button>`;
       }).join("");
       const slots = [...Array(24)].map((_, hr) => `<div class="tg-slot" style="top:${at(hr)};height:var(--h)" data-action="new-event" data-date="${ymd(d)}" data-hour="${hr}"></div>`).join("");
@@ -785,10 +809,10 @@ export class CalendarView {
     return `<div class="schedule">${days.map((d) => `
       <div class="sday">${this.dayHead(d)}
         <div class="slist">${this.eventsOn(d).map((e) => `
-          <button class="srow ${e.stripes ? "multi" : ""}" style="--c:${e.color};${e.stripes}" data-action="open-event" data-idx="${this.evIndex(e)}">
+          <button class="srow ${this._evWhen(e) === "past" ? "past" : this._evWhen(e) === "now" ? "evon" : ""} ${e.stripes ? "multi" : ""}" style="--c:${e.color};${e.stripes}" data-action="open-event" data-idx="${this.evIndex(e)}">
             <span class="st">${e.allDay ? "All day" : `${this.fmtTime(e.start)}<br><small>${this.fmtTime(e.end)}</small>`}</span>
             <span class="bar"></span><span class="av">${e.avatar}</span>
-            <span class="sm"><b>${esc(e.summary)}</b>${e.location ? `<small>📍 ${esc(e.location)}</small>` : ""}</span>
+            <span class="sm"><b>${esc(e.summary)}</b>${e.location ? `<small>📍 ${esc(e.location)}</small>` : ""}${this._evLive(e)}</span>
           </button>`).join("")}</div></div>`).join("")}</div>`;
   }
 }

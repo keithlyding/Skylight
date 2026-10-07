@@ -200,7 +200,15 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .ev.multi .s, .tg-ev.multi b { text-shadow:0 0 3px var(--card), 0 0 6px var(--card); }
 .ev.multi.allday .s { text-shadow:0 1px 2px rgba(0,0,0,.6); }
 .srow.multi .bar { background:var(--bar); }
-.srow .sm { display:flex; flex-direction:column; }
+.srow .sm { display:flex; flex-direction:column; flex:1; min-width:0; }
+/* Finished events are dimmed in every view; the one happening now is outlined. */
+.ev.past, .tg-ev.past, .srow.past { opacity:.45; }
+.tg-ev.evon { outline:2px solid var(--c); outline-offset:-1px; box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent); z-index:2; }
+.srow.evon { background:color-mix(in srgb, var(--c) 10%, transparent); border-radius:12px; }
+.evsoon { color:var(--accent); font-weight:700; }
+.evnow { display:flex; align-items:center; gap:8px; font-weight:700; color:var(--ink); }
+.evprog { flex:0 1 160px; height:6px; border-radius:6px; background:color-mix(in srgb, var(--c) 20%, var(--line)); overflow:hidden; }
+.evprog i { display:block; height:100%; background:var(--c); border-radius:6px; }
 /* chores */
 .chores { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; align-items:start; }
 .ccol { background:var(--card); border-radius:var(--radius); padding:14px; border-top:6px solid var(--c); display:flex; flex-direction:column; gap:10px; }

@@ -1,17 +1,17 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.44.4";
-import { STYLES } from "./styles.js?v=1.44.4";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.44.4";
-import { CalendarView } from "./calendar.js?v=1.44.4";
-import { WeatherView } from "./weather.js?v=1.44.4";
-import { HomeView } from "./home.js?v=1.44.4";
-import { ChoresView } from "./chores.js?v=1.44.4";
-import { MealsView } from "./meals.js?v=1.44.4";
-import { ListsView } from "./lists.js?v=1.44.4";
-import { PhotosView } from "./photos.js?v=1.44.4";
-import { SettingsView } from "./settings.js?v=1.44.4";
-import { PickersView } from "./pickers.js?v=1.44.4";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.45.0";
+import { STYLES } from "./styles.js?v=1.45.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.45.0";
+import { CalendarView } from "./calendar.js?v=1.45.0";
+import { WeatherView } from "./weather.js?v=1.45.0";
+import { HomeView } from "./home.js?v=1.45.0";
+import { ChoresView } from "./chores.js?v=1.45.0";
+import { MealsView } from "./meals.js?v=1.45.0";
+import { ListsView } from "./lists.js?v=1.45.0";
+import { PhotosView } from "./photos.js?v=1.45.0";
+import { SettingsView } from "./settings.js?v=1.45.0";
+import { PickersView } from "./pickers.js?v=1.45.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1103,6 +1103,11 @@ export class SkylightPanel extends HTMLElement {
     for (const [id, v] of [["clock", t], ["date", dt], ["sv-time", t], ["sv-date", dt]]) {
       const el = this.shadowRoot.getElementById(id); if (el) el.textContent = v;
     }
+    // Countdowns, progress bars and dimming of finished events move on once a minute.
+    const minute = now.getHours() * 60 + now.getMinutes();
+    if (this._lastMinute !== undefined && minute !== this._lastMinute && !this.ui.dialog && !this.ui.saver
+        && (this.ui.tab === "home" || this.ui.tab === "calendar")) this.render();
+    this._lastMinute = minute;
     // roll over "today" at midnight
     if (this._lastDay && this._lastDay !== ymd(now)) { this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this.render(); this._loadEvents(); this._loadForecast(); }
     this._lastDay = ymd(now);

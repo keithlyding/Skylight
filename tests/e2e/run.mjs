@@ -561,6 +561,37 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async livetimes(browser, base) {
+    // Finished events are dimmed; the current one shows a progress bar and time left; later ones "in …".
+    const p = await open(browser, base, { at: "2026-10-07T12:00:00" });
+    await p.evaluate(() => {
+      const at = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+      window.EVS["calendar.family"].push(
+        { summary: "Done thing", start: { dateTime: at(8, 0) }, end: { dateTime: at(9, 0) }, uid: "p1" },
+        { summary: "Happening now", start: { dateTime: at(11, 30) }, end: { dateTime: at(12, 40) }, uid: "n1" },
+        { summary: "Later today", start: { dateTime: at(14, 15) }, end: { dateTime: at(15, 0) }, uid: "s1" });
+      el.ui.tab = "calendar"; el.ui.view = "agenda"; el.ui.anchor = new Date(); el._eventsKey = ""; el._loadEvents();
+    });
+    await wait(p, 1500);
+    const row = (t) => p.evaluate((t) => { const r = [...el.shadowRoot.querySelectorAll(".srow")].find((x) => x.textContent.includes(t)); return r ? [r.className.includes("past"), r.className.includes("evon"), r.textContent.replace(/\s+/g, " ").trim()] : null; }, t);
+    const [donePast] = await row("Done thing");
+    check(donePast, "finished event dimmed in the agenda");
+    const [, nowOn, nowText] = await row("Happening now");
+    const bars = await p.S(".srow.evon .evprog i").count();
+    check(nowOn && nowText.includes("40 min left") && bars >= 1, `current event: progress bar + time left (${nowOn} ${bars} ${nowText})`);
+    const [, , soonText] = await row("Later today");
+    check(soonText.includes("in 2 h 15 min"), `countdown (${soonText})`);
+    if (process.env.SHOT) await p.S(".schedule").screenshot({ path: process.env.SHOT });
+    await p.evaluate(() => { el.ui.view = "day"; el.render(); }); await wait(p, 300);
+    const grid = await p.evaluate(() => [...el.shadowRoot.querySelectorAll(".tg-ev")].filter((b) => /Done thing|Happening now/.test(b.textContent)).map((b) => [b.querySelector("b").textContent, b.className.includes("past"), b.className.includes("evon")]));
+    eq(grid.sort(), [["Done thing", true, false], ["Happening now", false, true]], "time grid: dimmed and highlighted");
+    await wait(p, 61000); // a minute later the countdown has moved on by itself
+    await p.evaluate(() => { el.ui.view = "agenda"; el.render(); }); await wait(p, 300);
+    check((await row("Later today"))[2].includes("in 2 h 14 min"), "updates every minute");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
