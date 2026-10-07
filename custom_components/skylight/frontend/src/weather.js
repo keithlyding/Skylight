@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.44.1";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.44.2";
 
 export class WeatherView {
 
@@ -161,8 +161,11 @@ export class WeatherView {
     const hours = (this.wx?.hourly || []).map((h) => ({ ...h, t: new Date(h.datetime) })).filter((h) => h.t > new Date(now - 3600000));
     const today = hours.filter((h) => h.t <= end);
     const n = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
-    const alerts = this.alerts?.alerts || [];
+    const alerts = (this.alerts?.alerts || []).filter((a) => this._alertShown(a));
     if (alerts.length) out.push({ icon: "⚠️", text: `${alerts[0].event} in effect`, level: "h-alert" });
+    // Always a short summary of the day, so the card never goes blank on an ordinary day.
+    const summary = this._daySummary(now);
+    if (summary) out.push(summary);
     const soon = this._rainSoon();
     if (soon?.text) out.push({ icon: "🌧️", text: soon.text, level: "h-now" });
     // Outdoor events today
@@ -226,6 +229,22 @@ export class WeatherView {
       if (ok) out.push({ icon: "🌿", text: "Nice day. Good for yard work or the park" });
     }
     return out;
+  }
+  // "⛅ Partly cloudy today, high 64° · low 41°" from the daily forecast (or the hourly one).
+  _daySummary(now) {
+    const LABEL = { "clear-night": "Clear", cloudy: "Cloudy", fog: "Foggy", hail: "Hail", lightning: "Thunderstorms", "lightning-rainy": "Storms",
+      partlycloudy: "Partly cloudy", pouring: "Heavy rain", rainy: "Rain", snowy: "Snow", "snowy-rainy": "Wintry mix", sunny: "Sunny", windy: "Windy",
+      "windy-variant": "Windy and cloudy", exceptional: "Unusual weather" };
+    const f = this.forecast?.[ymd(now)];
+    const hours = (this.wx?.hourly || []).filter((h) => sameDay(new Date(h.datetime), now));
+    const temps = hours.map((h) => Number(h.temperature)).filter((v) => !Number.isNaN(v));
+    const high = f?.temperature ?? (temps.length ? Math.max(...temps) : null);
+    const low = f?.templow ?? (temps.length ? Math.min(...temps) : null);
+    const cond = f?.condition || hours.find((h) => new Date(h.datetime).getHours() >= 12)?.condition || this._hass.states[this.settings.weather_entity]?.state;
+    if (high === null && !cond) return null;
+    const parts = [`${LABEL[cond] || "Weather"} today`];
+    if (high !== null && high !== undefined) parts.push(`high ${Math.round(high)}°${low !== null && low !== undefined && f?.templow !== undefined ? ` · low ${Math.round(low)}°` : ""}`);
+    return { icon: WEATHER_ICONS[cond] || "🌤️", text: parts.join(", "), level: "h-day" };
   }
   // Pollen for today as [{name, level, category}] on Google's 0-5 scale (0 none … 4 high, 5 very high),
   // from Google (US) or Open-Meteo (Europe).

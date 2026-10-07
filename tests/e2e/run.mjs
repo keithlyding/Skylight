@@ -515,6 +515,24 @@ const SCENARIOS = {
     await t.context().close();
   },
 
+  async daysummary(browser, base) {
+    // An ordinary day (no alerts, rain, heat, wind...) still shows a weather line on the Today screen.
+    const p = await open(browser, base);
+    await p.evaluate(() => {
+      const t = new Date(); t.setHours(8, 0, 0, 0);
+      el.alerts = { alerts: [], supported: true }; el.wxx = null;
+      el.wx = { ...(el.wx || {}), hourly: [...Array(16)].map((_, i) => ({ datetime: new Date(+t + i * 3.6e6).toISOString(), temperature: 50 + i, apparent_temperature: 50 + i, precipitation_probability: 0, wind_speed: 3, condition: "partlycloudy" })) };
+      const d = new Date(); const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      el.forecast = { ...el.forecast, [k]: { datetime: d.toISOString(), condition: "partlycloudy", temperature: 58, templow: 41 } };
+      el._loadWeatherFull = () => {}; el._loadWxExtra = () => {};
+      el.ui.tab = "home"; el.render();
+    });
+    const text = (await p.S(".hints").textContent()).replace(/\s+/g, " ");
+    check(text.includes("Partly cloudy today, high 58° · low 41°"), `daily summary shown: ${text}`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async steady(browser, base) {
     // Regression (v1.33.2): the page must not keep resizing/scrolling itself when HA's panel
     // container has no fixed height.
