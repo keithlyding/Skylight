@@ -846,12 +846,20 @@ const SCENARIOS = {
 
   async cook(browser, base) {
     const p = await open(browser, base);
+    await p.evaluate(() => {
+      window.WAKE = [];
+      Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request: async (t) => { window.WAKE.push(t);
+        return { released: false, addEventListener() {}, release: async () => { window.WAKE.push("released"); } }; } } });
+    });
     await p.evaluate(() => el.openCook("r1")); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => window.WAKE), ["screen"], "cook mode keeps the screen on");
     for (let i = 0; i < 4; i++) await p.S('[data-action="cook-serv"][data-d="1"]').click();
     const ing = await text(p.S(".ckii"));
     check(ing[0].startsWith("3 pounds") && ing[2].startsWith("2 onions"), `scaled ingredients: ${ing}`);
     await p.S('[data-action="cook-qr"]').first().click(); await p.waitForTimeout(800);
     eq(await p.S(".qrbox svg").count(), 1, "QR code");
+    await p.evaluate(() => el.closeCook());
+    eq(await p.evaluate(() => [window.WAKE.at(-1), !!document.querySelector("video")]), ["released", false], "screen may sleep again after cook mode");
     eq(p.errors, [], "page errors");
     await p.context().close();
     // Next on a long recipe glides down; it must never jump back to the top first.

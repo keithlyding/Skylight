@@ -225,6 +225,8 @@ Each screen keeps a small flight recorder on the device: what the app did (start
 
 ## Known limitations
 
+- **Cook mode keeps the screen on** using the browser's screen wake lock, or a tiny silent video where that isn't available (older iPhones and some app web views). If a phone still dims, its own Auto-Lock setting may win; set it longer while cooking.
+
 - **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the setup PIN. With no PIN set, anyone using Lyding Strike can do it.
 - **One PIN for the whole family.** There are no per-person accounts or permissions inside Lyding Strike; the PIN separates "can change the setup" from "everyday use".
 - **Photo links expire after 24 hours** (uploaded and Immich photos both need a Home Assistant login or a signed link). A screen left open for days gets fresh links automatically.

@@ -1,6 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.48.1";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.48.2";
+import { keepAwake } from "./wake.js?v=1.48.2";
 
 export class MealsView {
   async _loadMealie() {
@@ -170,6 +171,7 @@ export class MealsView {
 
   // ---------- Mealie: cook mode ----------
   async openCook(key) {
+    keepAwake(true); // from the tap that opened it (iPhone needs that)
     this.cook = { loading: true, key };
     this.renderCook();
     try {
@@ -182,7 +184,7 @@ export class MealsView {
     }
     this.renderCook();
   }
-  closeCook() { this.cook = null; this.$cook.innerHTML = ""; this._lastActivity = Date.now(); }
+  closeCook() { keepAwake(false); this.cook = null; this.$cook.innerHTML = ""; this._lastActivity = Date.now(); }
   _cookFactor() {
     const c = this.cook;
     return c.r.servings && c.servings ? c.servings / c.r.servings : c.mult;
