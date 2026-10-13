@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.49.2";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.49.3";
 
 export class WeatherView {
 
@@ -129,21 +129,50 @@ export class WeatherView {
     if (!force && this.wxHereErr && Date.now() - (this._hereErrAt || 0) < 5 * 60000) return this.wxHere || null;
     if (this._hereLoading) return this._hereLoading;
     this._hereLoading = (async () => {
+      // 1) The browser's own location. 2) If that's refused or unavailable (the Home Assistant iPhone
+      // app doesn't pass it on to pages, and plain http never gets it): where the Home Assistant app
+      // last reported this person's phone to be (their person entity).
+      let coords = null, why = null;
+      try { coords = { ...(await this._browserLocation()), source: "browser" }; }
+      catch (e) { why = e; }
       try {
-        if (!navigator.geolocation) throw new Error("This screen can't share its location.");
-        if (window.isSecureContext === false) throw new Error("Location needs a secure (https) connection to Home Assistant, like the Home Assistant app or Nabu Casa.");
-        const pos = await new Promise((ok, fail) => navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 20000, maximumAge: 10 * 60000 }));
-        const r = await this._hass.callWS({ type: "skylight/weather/here", lat: pos.coords.latitude, lon: pos.coords.longitude });
+        if (!coords) coords = this._personLocation();
+        if (!coords) {
+          throw new Error(why?.code === 1
+            ? "This browser or app won't share its location, and Home Assistant doesn't know where your phone is. Turn on location for the Home Assistant app (Settings → Privacy & Security → Location Services → Home Assistant → Always or While Using), and make sure your phone is linked to you under Settings → People in Home Assistant."
+            : `${why?.message || "Couldn't find this screen's location."} Home Assistant doesn't know where your phone is either (Settings → People: link your phone to you).`);
+        }
+        const r = await this._hass.callWS({ type: "skylight/weather/here", lat: coords.lat, lon: coords.lon });
         if (r.error) throw new Error(r.error);
-        this.wxHere = { ...r, at: Date.now() }; this.wxHereErr = null;
+        this.wxHere = { ...r, source: coords.source, at: Date.now() }; this.wxHereErr = null;
       } catch (e) {
         this._hereErrAt = Date.now();
-        this.wxHereErr = e?.code === 1 ? "Location permission was denied. Allow location for the Home Assistant app (or this browser) to use 📍 Here."
-          : e?.message || "Couldn't find this screen's location.";
+        this.wxHereErr = e?.message || "Couldn't find this screen's location.";
       } finally { this._hereLoading = null; }
       return this.wxHere;
     })();
     return this._hereLoading;
+  }
+  _browserLocation() {
+    return new Promise((ok, fail) => {
+      if (!navigator.geolocation) { fail(new Error("This screen can't share its location.")); return; }
+      if (window.isSecureContext === false) { fail(new Error("Location needs a secure (https) connection to Home Assistant.")); return; }
+      // Some app web views never answer at all: give up after 8 s and use the phone's reported location.
+      const t = setTimeout(() => fail({ code: 3, message: "Location took too long." }), 9000);
+      navigator.geolocation.getCurrentPosition(
+        (p) => { clearTimeout(t); ok({ lat: p.coords.latitude, lon: p.coords.longitude }); },
+        (e) => { clearTimeout(t); fail(e); },
+        { timeout: 8000, maximumAge: 10 * 60000 });
+    });
+  }
+  // The signed-in person's last location reported by the Home Assistant app (person entity), if any.
+  _personLocation() {
+    const uid = this._hass.user?.id;
+    if (!uid) return null;
+    const hit = Object.entries(this._hass.states || {}).find(([id, st]) => id.startsWith("person.") && st?.attributes?.user_id === uid);
+    const a = hit?.[1]?.attributes;
+    if (!a || typeof a.latitude !== "number" || typeof a.longitude !== "number") return null;
+    return { lat: a.latitude, lon: a.longitude, source: "person", name: a.friendly_name || hit[0] };
   }
   _setWxWhere(where) {
     try { if (where === "here") localStorage.setItem("skylight.weatherWhere", "here"); else localStorage.removeItem("skylight.weatherWhere"); } catch (e) { /* private mode */ }
@@ -536,7 +565,7 @@ export class WeatherView {
       return stat(esc(st.attributes.friendly_name || e), `${esc(st.state)}${st.attributes.unit_of_measurement ? ` ${esc(st.attributes.unit_of_measurement)}` : ""}`);
     }).join("")}</div></section>` : "";
     return `<div class="wxtab">${this.renderWhereToggle()}${this.wxWhere === "here" ? "" : this.renderAlertCards()}${this._wxHintsCard()}${this._rainSoonCard()}${current}${hourly}${radar}${this._airCard()}${extras}${daily}${this._compareCard(tu, pu)}${this._moonCard()}
-      <p class="hint center">Source: ${this.wxWhere === "here" ? `Open-Meteo · 📍 ${esc(this.wxHere?.place || "this screen's location")}` : esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
+      <p class="hint center">Source: ${this.wxWhere === "here" ? `Open-Meteo · 📍 ${esc(this.wxHere?.place || "this screen's location")}${this.wxHere?.source === "person" ? " (your phone's location in Home Assistant)" : ""}` : esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
   }
 
   _wxHintsCard() {

@@ -1107,11 +1107,23 @@ const SCENARIOS = {
     await p.S('[data-action="wx-where"][data-where="here"]').click(); await p.waitForTimeout(3000);
     const [geo, renders] = await p.evaluate(() => [window.GEO, window.RENDERS]);
     check(geo <= 2 && renders < 20, `asked for location ${geo} times and redrew ${renders} times in 3 s`);
-    check((await text(p.S(".empty")))[0]?.includes("permission"), "explains the problem");
+    const msg = (await text(p.S(".empty")))[0] || "";
+    check(msg.includes("won't share its location"), `explains the problem: ${msg}`);
     await p.tab("home"); await p.waitForTimeout(1500);
     eq(await p.evaluate(() => window.GEO), geo, "other screens don't keep asking either");
     await p.tab("weather"); await p.S('[data-action="wx-here-retry"]').click(); await p.waitForTimeout(500);
     eq(await p.evaluate(() => window.GEO), geo + 1, "Try again asks once more");
+    // The Home Assistant iPhone app doesn't pass location to pages: use where the app reported the phone.
+    await p.evaluate(() => {
+      window.hass.user = { ...(window.hass.user || {}), id: "u-alex", is_admin: true };
+      window.hass.states["person.alex"] = { entity_id: "person.alex", state: "not_home",
+        attributes: { friendly_name: "Alex", user_id: "u-alex", latitude: 35.1983, longitude: -111.6513 } };
+      el.hass = window.hass;
+    });
+    await p.S('[data-action="wx-here-retry"]').click(); await p.waitForTimeout(800);
+    const page = (await text(p.S(".wxtab")))[0] || "";
+    check(page.includes("Flagstaff") && page.includes("your phone's location in Home Assistant"), `falls back to the phone's location: ${page.slice(-200)}`);
+    eq(await p.evaluate(() => window.HERECALLS.at(-1).map((v) => Math.round(v))), [35, -112], "used the person's location");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

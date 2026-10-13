@@ -154,7 +154,7 @@ Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice 
 
 ## Weather for where you are
 
-On the Weather tab, **🏠 Home | 📍 Here** chooses, for that screen only, between Home Assistant's home weather and the weather where the device is. "Here" asks the device for its location (allow it when asked), rounds it to about 1 km, and Home Assistant gets the forecast from Open-Meteo and the town name from OpenStreetMap. The header, calendar day icons, Today hints, rain-soon and air quality then follow that screen. Weather alerts stay for home. Location needs a secure (https) connection, such as the Home Assistant app or Nabu Casa.
+On the Weather tab, **🏠 Home | 📍 Here** chooses, for that screen only, between Home Assistant's home weather and the weather where the device is. "Here" asks the device for its location (allow it when asked), rounds it to about 1 km, and Home Assistant gets the forecast from Open-Meteo and the town name from OpenStreetMap. The header, calendar day icons, Today hints, rain-soon and air quality then follow that screen. Weather alerts stay for home. If the browser won't share its location (the Home Assistant iPhone app doesn't pass it to pages, and plain http never gets it), "Here" uses where the Home Assistant app last reported your phone: the location of the person linked to the signed-in user (Settings → People). The Weather tab says when it's using that.
 
 ## Lists order
 
