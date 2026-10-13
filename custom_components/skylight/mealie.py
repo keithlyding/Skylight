@@ -9,6 +9,7 @@ removing a meal-plan entry, and fetching recipe images for the tablet.
 from __future__ import annotations
 
 import re
+import time
 from datetime import date, timedelta
 from typing import Any
 
@@ -146,24 +147,102 @@ async def ws_week(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     connection.send_result(msg["id"], meals)
 
 
+def parse_query(query: str) -> tuple[list[str], list[str]]:
+    """("exact phrases", words) from a search box, lowercased. Text in "quotes" is one phrase."""
+    q = query.replace("\u201c", '"').replace("\u201d", '"').lower()
+    phrases = [p.strip() for p in re.findall(r'"([^"]+)"', q) if p.strip()]
+    rest = re.sub(r'"[^"]*"?', " ", q)
+    return phrases, [w for w in re.findall(r"[\w'&-]+", rest) if w]
+
+
+def _hits(text: str, terms: list[str]) -> int:
+    """How many terms appear in text, each starting at a word (so "pie" finds "Pie" and "pies", not "recipe")."""
+    return sum(1 for t in terms if re.search(r"(?<!\w)" + re.escape(t), text))
+
+
+def rank_recipes(query: str, recipes: list[dict], content_ids: list[str], limit: int = 40) -> list[dict]:
+    """Recipes whose title has the search words come first (all words before some, then a title that
+    starts with them), then ones found in the description, then Mealie's own ingredient/instruction
+    matches. Quoted phrases must match exactly wherever they're checked."""
+    phrases, words = parse_query(query)
+    terms = phrases + words
+    if not terms:
+        return recipes[:limit]
+    by_id = {r.get("id"): r for r in recipes}
+    scored = []
+    for i, r in enumerate(recipes):
+        name = str(r.get("name") or "").lower()
+        n = _hits(name, terms)
+        if n and _hits(name, phrases) == len(phrases):
+            whole = n == len(terms)
+            starts = name.startswith(terms[0])
+            scored.append(((0 if whole else 1), -n, 0 if starts else 1, name, r))
+    scored.sort(key=lambda x: x[:4])
+    out = [x[4] for x in scored]
+    seen = {r.get("id") for r in out}
+    for r in recipes:  # description (summaries include it)
+        desc = str(r.get("description") or "").lower()
+        if r.get("id") not in seen and _hits(desc, terms) == len(terms):
+            out.append(r); seen.add(r.get("id"))
+    for rid in content_ids:  # Mealie's full-text matches (ingredients, instructions)
+        if rid not in seen and rid in by_id:
+            out.append(by_id[rid]); seen.add(rid)
+    return out[:limit]
+
+
+def _summary_as_service(r: dict[str, Any]) -> dict[str, Any]:
+    """A recipe from Mealie's own API in the shape the meal-plan service uses."""
+    return {"recipe_id": r.get("id"), "name": r.get("name"), "slug": r.get("slug"),
+            "description": r.get("description"), "total_time": r.get("totalTime") or r.get("total_time")}
+
+
+ALL_RECIPES_CACHE = f"{DOMAIN}_mealie_all"
+
+
+async def _all_recipes(hass: HomeAssistant) -> list[dict]:
+    hit = hass.data.get(ALL_RECIPES_CACHE)
+    if hit and time.monotonic() - hit[0] < 300:
+        return hit[1]
+    data = await _mealie_json(hass, "api/recipes", {"perPage": -1, "orderBy": "name", "orderDirection": "asc"})
+    items = data.get("items", []) if isinstance(data, dict) else []
+    hass.data[ALL_RECIPES_CACHE] = (time.monotonic(), items)
+    return items
+
+
 @websocket_api.websocket_command(
     {vol.Required("type"): "skylight/mealie/recipes", vol.Optional("query", default=""): str}
 )
 @websocket_api.async_response
 @_wrap
 async def ws_recipes(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    data: dict[str, Any] = {"result_limit": 24}
-    if msg["query"].strip():
-        data["search_terms"] = msg["query"].strip()
+    query = msg["query"].strip()
     try:
-        res = await _service(hass, "get_recipes", data)
-    except MealieError as err:
-        if "no recipes" in str(err).lower():
-            connection.send_result(msg["id"], [])
-            return
-        raise
-    items = res.get("recipes", {}).get("items", [])
-    connection.send_result(msg["id"], [_recipe(hass, r, connection.refresh_token_id) for r in items])
+        recipes = await _all_recipes(hass)
+    except MealieError:
+        recipes = None
+    if recipes is None:  # Mealie's API not reachable directly: fall back to the integration's search
+        data: dict[str, Any] = {"result_limit": 24}
+        if query:
+            data["search_terms"] = query
+        try:
+            res = await _service(hass, "get_recipes", data)
+        except MealieError as err:
+            if "no recipes" in str(err).lower():
+                connection.send_result(msg["id"], [])
+                return
+            raise
+        items = res.get("recipes", {}).get("items", [])
+        connection.send_result(msg["id"], [_recipe(hass, r, connection.refresh_token_id) for r in items])
+        return
+    content: list[str] = []
+    if query:
+        try:
+            found = await _mealie_json(hass, "api/recipes", {"search": query, "perPage": 40, "page": 1})
+            content = [r.get("id") for r in found.get("items", [])]
+        except MealieError:
+            pass
+    ranked = rank_recipes(query, recipes, content) if query else recipes[:24]
+    connection.send_result(msg["id"], [_recipe(hass, _summary_as_service(r), connection.refresh_token_id) for r in ranked])
 
 
 @websocket_api.websocket_command(

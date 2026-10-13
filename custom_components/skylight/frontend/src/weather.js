@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.48.2";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.49.0";
 
 export class WeatherView {
 
@@ -110,19 +110,59 @@ export class WeatherView {
       </div></div>`;
   }
 
+  // ----- where this screen's weather is for: home (Home Assistant's weather entity) or "📍 Here" -----
+  get wxWhere() {
+    try { return localStorage.getItem("skylight.weatherWhere") === "here" ? "here" : "home"; } catch (e) { return "home"; }
+  }
+  // Current conditions, shaped like a Home Assistant weather entity ({state, attributes}), or null.
+  wxState() {
+    if (this.wxWhere === "here") return this.wxHere?.state ? { state: this.wxHere.state, attributes: this.wxHere.attributes } : null;
+    return (this.settings.weather_entity && this._hass.states[this.settings.weather_entity]) || null;
+  }
+  _wxSourceOk() { return this.wxWhere === "here" || !!(this.settings.weather_entity && this._hass.states[this.settings.weather_entity]); }
+
+  // Ask the device where it is (rounded to ~1 km on the server), then get the weather there.
+  async _loadHere(force = false) {
+    if (!force && this.wxHere && Date.now() - this.wxHere.at < 10 * 60000) return this.wxHere;
+    if (this._hereLoading) return this._hereLoading;
+    this._hereLoading = (async () => {
+      try {
+        if (!navigator.geolocation) throw new Error("This screen can't share its location.");
+        if (window.isSecureContext === false) throw new Error("Location needs a secure (https) connection to Home Assistant, like the Home Assistant app or Nabu Casa.");
+        const pos = await new Promise((ok, fail) => navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 20000, maximumAge: 10 * 60000 }));
+        const r = await this._hass.callWS({ type: "skylight/weather/here", lat: pos.coords.latitude, lon: pos.coords.longitude });
+        if (r.error) throw new Error(r.error);
+        this.wxHere = { ...r, at: Date.now() }; this.wxHereErr = null;
+      } catch (e) {
+        this.wxHereErr = e?.code === 1 ? "Location permission was denied. Allow location for the Home Assistant app (or this browser) to use 📍 Here."
+          : e?.message || "Couldn't find this screen's location.";
+      } finally { this._hereLoading = null; }
+      return this.wxHere;
+    })();
+    return this._hereLoading;
+  }
+  _setWxWhere(where) {
+    try { if (where === "here") localStorage.setItem("skylight.weatherWhere", "here"); else localStorage.removeItem("skylight.weatherWhere"); } catch (e) { /* private mode */ }
+    this.wx = null; this.wxx = null; this.forecast = {};
+    this.render();
+    this._loadWeatherFull(true); this._loadForecast(); this._loadWxExtra(true);
+  }
+
   // ----- extra weather data (Open-Meteo rain-by-15-min, comparisons, air quality, pollen) -----
   async _loadWxExtra(force = false) {
     if (this.settings.weather_extra === false) { this.wxx = null; return; }
     if (!force && this.wxx && Date.now() - this.wxx.at < 10 * 60000) return;
     if (this._wxxLoading) return;
     this._wxxLoading = true;
-    try { this.wxx = { at: Date.now(), ...(await this._hass.callWS({ type: "skylight/weather/extra", force })) }; }
+    const here = this.wxWhere === "here" ? await this._loadHere() : null;
+    if (this.wxWhere === "here" && !here) { this._wxxLoading = false; return; }
+    try { this.wxx = { at: Date.now(), ...(await this._hass.callWS({ type: "skylight/weather/extra", force, ...(here ? { lat: here.lat, lon: here.lon } : {}) })) }; }
     catch (e) { this.wxx = null; } // e.g. server not restarted after an update
     finally { this._wxxLoading = false; }
     if (this.ui.tab === "weather" || this.ui.tab === "home") this.render();
   }
   _isMetric() {
-    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
+    const w = this.wxState();
     return !((w?.attributes?.temperature_unit || this._hass.config?.unit_system?.temperature || "°F").includes("F"));
   }
   // Rain in the next 2 hours from 15-minute data. Returns {text, bars} or null.
@@ -207,7 +247,7 @@ export class WeatherView {
     if (maxGust !== null && maxGust >= mph(30)) out.push({ icon: "💨", text: `Gusty, up to ${Math.round(maxGust)} ${metric ? "km/h" : "mph"}. Secure trash cans and patio items` });
     // UV
     const uvs = today.map((h) => n(h.uv_index)).filter((v) => v !== null);
-    const uv = uvs.length ? Math.max(...uvs) : n(this._hass.states[this.settings.weather_entity]?.attributes?.uv_index);
+    const uv = uvs.length ? Math.max(...uvs) : n(this.wxState()?.attributes?.uv_index);
     if (uv !== null && uv >= 7) out.push({ icon: "🧴", text: `High UV (${Math.round(uv)}) midday. Wear sunscreen` });
     // Air quality and pollen
     const aqi = n(this.wxx?.air?.aqi);
@@ -240,7 +280,7 @@ export class WeatherView {
     const temps = hours.map((h) => Number(h.temperature)).filter((v) => !Number.isNaN(v));
     const high = f?.temperature ?? (temps.length ? Math.max(...temps) : null);
     const low = f?.templow ?? (temps.length ? Math.min(...temps) : null);
-    const cond = f?.condition || hours.find((h) => new Date(h.datetime).getHours() >= 12)?.condition || this._hass.states[this.settings.weather_entity]?.state;
+    const cond = f?.condition || hours.find((h) => new Date(h.datetime).getHours() >= 12)?.condition || this.wxState()?.state;
     if (high === null && !cond) return null;
     // Evening (from 5 PM, or when only the night period is left): tonight's low and tomorrow instead.
     if (now.getHours() >= 17 || f?.is_daytime === false) {
@@ -275,6 +315,17 @@ export class WeatherView {
 
   // Daily + hourly forecasts for the Weather tab (refreshed every 15 minutes while viewed).
   async _loadWeatherFull(force = false) {
+    if (this.wxWhere === "here") {
+      if (!force && this.wx && Date.now() - this.wx.at < 10 * 60000) return;
+      if (this._wxLoading) return;
+      this._wxLoading = true;
+      const h = await this._loadHere(force);
+      this._wxLoading = false;
+      this.wx = h ? { at: h.at, daily: h.daily, hourly: h.hourly, hourlyMissing: false, periods: {} } : null;
+      if (h) this._fillForecast(h.daily);
+      if (this.ui.tab === "weather" || this.ui.tab === "home" || this.ui.tab === "calendar") this.render();
+      return;
+    }
     const w = this.settings.weather_entity;
     if (!w || !this._hass.states[w]) return;
     if (!force && this.wx && Date.now() - this.wx.at < 15 * 60000) return;
@@ -311,7 +362,18 @@ export class WeatherView {
     if (this.ui.tab === "weather" || this.ui.tab === "home") this.render();
   }
 
+  _fillForecast(daily) {
+    const forecast = {};
+    for (const f of daily || []) forecast[ymd(new Date(f.datetime))] = f;
+    this.forecast = forecast;
+  }
+
   async _loadForecast() {
+    if (this.wxWhere === "here") {
+      const h = await this._loadHere();
+      if (h) { this._fillForecast(h.daily); if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render(); }
+      return;
+    }
     const w = this.settings.weather_entity;
     if (!w || !this._hass.states[w]) return;
     const get = async (type) => {
@@ -340,9 +402,20 @@ export class WeatherView {
     if (this.ui.tab === "calendar" || this.ui.tab === "home") this.render();
   }
 
+  renderWhereToggle() {
+    const here = this.wxWhere === "here";
+    return `<div class="seg wwhere"><button class="${here ? "" : "on"}" data-action="wx-where" data-where="home">🏠 Home</button><button class="${here ? "on" : ""}" data-action="wx-where" data-where="here">📍 Here</button></div>`;
+  }
+
   renderWeather() {
-    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
-    if (!w) return `<div class="empty"><h2>No weather source</h2><p>Choose one in Setup → Display → Weather.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
+    const w = this.wxState();
+    if (!w) {
+      this._loadWeatherFull();
+      if (this.wxWhere === "here") return `${this.renderWhereToggle()}<div class="empty">${this.wxHereErr
+        ? `<h2>Can't show the weather here</h2><p>${esc(this.wxHereErr)}</p><button class="primary" data-action="wx-here-retry">Try again</button>`
+        : `<h2>Finding where you are…</h2><p class="hint">Allow location if your phone asks.</p>`}</div>`;
+      return `${this.renderWhereToggle()}<div class="empty"><h2>No weather source</h2><p>Choose one in Setup → Display → Weather, or tap 📍 Here.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
+    }
     this._loadWeatherFull();
     const a = w.attributes, tu = a.temperature_unit || "°", wu = a.wind_speed_unit || "", pu = a.precipitation_unit || "";
     const round = (v) => (v === undefined || v === null ? null : Math.round(Number(v)));
@@ -440,7 +513,8 @@ export class WeatherView {
     }
     // Rounded to ~1 km: the radar map is loaded from Windy/RainViewer and doesn't need more.
     const r2 = (v) => (v === undefined || v === null ? undefined : Math.round(v * 100) / 100);
-    const lat = r2(this._hass.config?.latitude), lon = r2(this._hass.config?.longitude);
+    const at = this.wxWhere === "here" && this.wxHere ? { latitude: this.wxHere.lat, longitude: this.wxHere.lon } : this._hass.config;
+    const lat = r2(at?.latitude), lon = r2(at?.longitude);
     const radarSrc = this.settings.weather_radar === "off" || lat === undefined ? null
       : this.settings.weather_radar === "rainviewer"
         ? `https://www.rainviewer.com/map.html?loc=${lat},${lon},7&oFa=0&oC=1&oU=0&oCS=1&oF=0&oAP=1&c=3&o=83&lm=1&layer=radar&sm=1&sn=1`
@@ -455,8 +529,8 @@ export class WeatherView {
       const st = this._hass.states[e];
       return stat(esc(st.attributes.friendly_name || e), `${esc(st.state)}${st.attributes.unit_of_measurement ? ` ${esc(st.attributes.unit_of_measurement)}` : ""}`);
     }).join("")}</div></section>` : "";
-    return `<div class="wxtab">${this.renderAlertCards()}${this._wxHintsCard()}${this._rainSoonCard()}${current}${hourly}${radar}${this._airCard()}${extras}${daily}${this._compareCard(tu, pu)}${this._moonCard()}
-      <p class="hint center">Source: ${esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
+    return `<div class="wxtab">${this.renderWhereToggle()}${this.wxWhere === "here" ? "" : this.renderAlertCards()}${this._wxHintsCard()}${this._rainSoonCard()}${current}${hourly}${radar}${this._airCard()}${extras}${daily}${this._compareCard(tu, pu)}${this._moonCard()}
+      <p class="hint center">Source: ${this.wxWhere === "here" ? `Open-Meteo · 📍 ${esc(this.wxHere?.place || "this screen's location")}` : esc(this.entityName(this.settings.weather_entity))} · updated ${this.fmtTime(new Date(this.wx.at))}</p></div>`;
   }
 
   _wxHintsCard() {

@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.48.2";
-import { diagPrevious, diagText } from "./diag.js?v=1.48.2";
-import { MLB_TEAMS } from "./mlb.js?v=1.48.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.49.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.49.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.49.0";
 
 export class SettingsView {
 
@@ -114,6 +114,7 @@ export class SettingsView {
       <label class="inline">Seasonal accents ${s.seasonal ? seasonFor(new Date()).emoji : ""} <input type="checkbox" ${s.seasonal ? "checked" : ""} data-change="setting" data-key="seasonal"></label>
       <p class="hint">Changes the accent color and adds a small emoji by the clock for spring, summer, July 4th, fall, Halloween, Thanksgiving week, Christmas and winter.</p>
       <label class="inline">This screen <select data-change="screen-scheme">${[["follow", "Follow this device's light/dark"], ["light", "Always light"], ["dark", "Always dark"], ["night", "Dark at night"]].map(([v, l]) => `<option value="${v}" ${mine === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label class="inline">Keep this screen on <select data-change="screen-awake"><option value="" ${this.screenAwake ? "" : "selected"}>No (the device's own sleep setting)</option><option value="1" ${this.screenAwake ? "selected" : ""}>Yes, while ${esc(this.appName)} is open</option></select></label>
       <p class="hint">Light or dark is chosen on each screen and saved on that device, so every phone and the wall display can differ. "Follow this device" uses the phone's or tablet's own Dark Mode.</p>
       <label class="inline">Night is <select data-change="setting" data-key="night_by">${[["schedule", "Between set times"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${(s.night_by || "schedule") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <p class="hint">For everyone: screens set to "Dark at night" and night dimming use this.</p>

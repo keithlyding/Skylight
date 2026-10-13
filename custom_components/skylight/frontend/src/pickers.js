@@ -1,6 +1,6 @@
 /* Skylight panel: location lookup, time picker and emoji/icon pickers (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.48.2";
+import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.49.0";
 
 export class PickersView {
 
@@ -15,11 +15,12 @@ export class PickersView {
       try { res = await this._hass.callWS({ type: "skylight/places/search", query: q }); }
       catch (e) {
         const msg = /unknown command/i.test(e.message || "")
-          ? "Address lookup needs a Home Assistant restart after updating ${this.appName}."
+          ? `Address lookup needs a Home Assistant restart after updating ${this.appName}.`
           : e.message;
-        this._showSugg([], msg); return;
+        if (seq === this._locSeq) this._showSugg([], msg);
+        return;
       }
-      if (seq !== this._locSeq) return; // a newer search is running
+      if (seq !== this._locSeq) return; // a newer search is running, or the list was closed
       this._showSugg(res.results, null, res.provider);
     }, 450);
   }
@@ -27,14 +28,19 @@ export class PickersView {
     const box = this.shadowRoot.getElementById("loc-sugg");
     if (!box) return;
     const label = (r) => (r.address && !r.address.startsWith(r.name) ? `${r.name}, ${r.address}` : r.address || r.name);
-    box.innerHTML = error ? `<div class="hint">⚠️ ${esc(error)}</div>`
+    const typed = this.shadowRoot.getElementById("ev-loc")?.value.trim() || "";
+    // Always offer to keep exactly what was typed (and close the list), so a place the lookup
+    // doesn't know never forces picking something else.
+    const keep = typed ? `<button type="button" class="keep" data-action="pick-place" data-value="${esc(typed)}"><b>✓ Use “${esc(typed)}”</b><small>Keep what you typed</small></button>` : "";
+    box.innerHTML = keep + (error ? `<div class="hint">⚠️ ${esc(error)}</div>`
       : results.length ? results.map((r) => `<button type="button" data-action="pick-place" data-value="${esc(label(r))}">
           <b>${esc(r.name)}</b><small>${esc(r.address)}</small></button>`).join("") + `<div class="attrib">${provider === "google" ? "Results from Google" : "Results © OpenStreetMap contributors"}</div>`
-      : `<div class="hint">No matches. You can still type the address yourself.</div>`;
+      : `<div class="hint">No matches. Tap “Use” above, or anywhere else, to keep what you typed.</div>`);
     box.hidden = false;
     box.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
   _clearSugg() {
+    clearTimeout(this._locTimer); this._locSeq = (this._locSeq || 0) + 1; // a search still running won't reopen it
     const box = this.shadowRoot.getElementById("loc-sugg");
     if (box) { box.hidden = true; box.innerHTML = ""; }
   }

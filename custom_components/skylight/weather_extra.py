@@ -123,11 +123,15 @@ async def _google_pollen(hass: HomeAssistant, key: str, lat: float, lon: float) 
     return days
 
 
-async def async_get_extra(hass: HomeAssistant, force: bool = False) -> dict[str, Any]:
-    cache = hass.data.get(CACHE_KEY)
+async def async_get_extra(hass: HomeAssistant, force: bool = False, where: tuple[float, float] | None = None) -> dict[str, Any]:
+    """Extras for home, or for `where` (a screen set to "Here"; rounded to about 1 km)."""
+    if where is not None:
+        where = (round(where[0], 2), round(where[1], 2))
+    caches = hass.data.setdefault(CACHE_KEY, {})
+    cache = caches.get(where)
     if cache and not force and time.monotonic() - cache["at"] < CACHE_SECONDS:
         return cache["result"]
-    home = coarse_location(hass)
+    home = where or coarse_location(hass)
     if home is None:
         return {"errors": {"location": "Home location isn't set in Home Assistant"}, "pollen_source": None,
                 "forecast": None, "last_year": None, "air": None}
@@ -144,7 +148,9 @@ async def async_get_extra(hass: HomeAssistant, force: bool = False) -> dict[str,
             out["errors"][name] = str(res)
         else:
             out[name] = res
-    hass.data[CACHE_KEY] = {"at": time.monotonic(), "result": out}
+    caches[where] = {"at": time.monotonic(), "result": out}
+    if len(caches) > 20:
+        caches.pop(next(k for k in caches if k is not None), None)
     return out
 
 
@@ -154,8 +160,11 @@ def async_register(hass: HomeAssistant) -> None:
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "skylight/weather/extra", vol.Optional("force", default=False): bool}
+    {vol.Required("type"): "skylight/weather/extra", vol.Optional("force", default=False): bool,
+     vol.Optional("lat"): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
+     vol.Optional("lon"): vol.All(vol.Coerce(float), vol.Range(min=-180, max=180))}
 )
 @websocket_api.async_response
 async def ws_extra(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    connection.send_result(msg["id"], await async_get_extra(hass, msg["force"]))
+    where = (msg["lat"], msg["lon"]) if "lat" in msg and "lon" in msg else None
+    connection.send_result(msg["id"], await async_get_extra(hass, msg["force"], where))

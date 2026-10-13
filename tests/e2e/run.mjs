@@ -860,6 +860,11 @@ const SCENARIOS = {
     eq(await p.S(".qrbox svg").count(), 1, "QR code");
     await p.evaluate(() => el.closeCook());
     eq(await p.evaluate(() => [window.WAKE.at(-1), !!document.querySelector("video")]), ["released", false], "screen may sleep again after cook mode");
+    await p.tab("settings");
+    await p.S('select[data-change="screen-awake"]').selectOption("1"); await p.waitForTimeout(200);
+    eq([await p.evaluate(() => window.WAKE.at(-1)), await p.evaluate(() => localStorage.getItem("skylight.awake"))], ["screen", "1"], "keep this screen on");
+    await p.S('select[data-change="screen-awake"]').selectOption(""); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => [window.WAKE.at(-1), localStorage.getItem("skylight.awake")]), ["released", null], "and off again");
     eq(p.errors, [], "page errors");
     await p.context().close();
     // Next on a long recipe glides down; it must never jump back to the top first.
@@ -1020,6 +1025,71 @@ const SCENARIOS = {
     await p.evaluate(() => { el.ui.tab = "home"; el.render(); });
     const up = (await text(p.S(".upcoming .urow.cd")))[0] || "";
     check(up.includes("Disney trip") && /2[23] days/.test(up), `countdown row: ${up}`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+  async address_list(browser, base) {
+    // The address suggestions never trap you: tap elsewhere, Enter, or "Use …" keeps what you typed.
+    const p = await open(browser, base, { width: 390, height: 760, ctx: { isMobile: true, hasTouch: true } });
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
+    const box = p.S("#loc-sugg");
+    await p.S("#ev-loc").fill("Grandma's farm"); await p.waitForTimeout(700);
+    check(await box.isVisible(), "suggestions open");
+    eq((await text(p.S("#loc-sugg .keep")))[0], "✓ Use “Grandma's farm”Keep what you typed", "offers the typed text");
+    await p.S("#ev-title").tap(); await p.waitForTimeout(200);
+    check(!(await box.isVisible()), "tapping elsewhere closes the list");
+    eq(await p.S("#ev-loc").inputValue(), "Grandma's farm", "typed address kept");
+    await p.S("#ev-loc").fill("Grandma's farm road"); await p.waitForTimeout(100);
+    await p.S("#ev-title").tap(); await p.waitForTimeout(800);
+    check(!(await box.isVisible()), "a search still running doesn't reopen it");
+    await p.S("#ev-loc").fill("Chick"); await p.waitForTimeout(700);
+    await p.S("#loc-sugg .keep").tap(); await p.waitForTimeout(200);
+    check(!(await box.isVisible()) && (await p.S("#ev-loc").inputValue()) === "Chick", "Use keeps it and closes");
+    await p.S("#ev-loc").fill("Chick-fil"); await p.waitForTimeout(700);
+    await p.S('#loc-sugg [data-action="pick-place"]:not(.keep)').first().tap(); await p.waitForTimeout(200);
+    eq(await p.S("#ev-loc").inputValue(), "Chick-fil-A, 123 Main St, Springfield, Missouri, 65806", "picking a suggestion still works");
+    await p.S("#ev-loc").fill("Somewhere new"); await p.waitForTimeout(700);
+    await p.S("#ev-loc").press("Enter"); await p.waitForTimeout(100);
+    check(!(await box.isVisible()), "Enter closes it");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+  async list_order(browser, base) {
+    const p = await open(browser, base);
+    await p.tab("lists");
+    const names = async () => (await text(p.S(".lists aside .lname"))).map((t) => t.replace(/(\d+|▲▼)$/, "").trim());
+    const first = (await names())[0];
+    eq(await p.evaluate(() => el.orderedLists()[0].id === el.ui.list), true, "opens on the top list by default");
+    await p.S('[data-action="list-arrange"]').click(); await p.waitForTimeout(200);
+    await p.S('[data-action="list-move"][data-dir="1"]').first().click(); await p.waitForTimeout(300);
+    const after = await names();
+    eq(after[1], first, "moved down one");
+    eq(await p.evaluate(() => D.settings.list_order.length > 1), true, "order saved for the family");
+    await p.S('select[data-key="list_default"]').selectOption("none"); await p.waitForTimeout(300);
+    await p.S('[data-action="list-arrange"]').click(); await p.waitForTimeout(200);
+    await p.tab("home"); await p.tab("lists");
+    eq(await p.S(".lists section h2").textContent(), "Pick a list", "no list opens when set to None");
+    const id = await p.evaluate(() => el.orderedLists()[1].id);
+    await p.evaluate((id) => { el.settings.list_default = id; }, id);
+    await p.tab("home"); await p.tab("lists");
+    eq(await p.evaluate(() => el.ui.list), id, "opens the chosen list");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+  async weather_here(browser, base) {
+    const p = await open(browser, base, { ctx: { geolocation: { latitude: 35.1983, longitude: -111.6513 }, permissions: ["geolocation"] } });
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); });
+    await p.tab("weather");
+    await p.S('[data-action="wx-where"][data-where="here"]').click(); await p.waitForTimeout(800);
+    const page = (await text(p.S(".wxtab")))[0] || "";
+    check(page.includes("Open-Meteo · 📍 Flagstaff, Arizona") && page.includes("28°"), `weather for here: ${page.slice(0, 300)}`);
+    eq(await p.evaluate(() => window.HERECALLS.at(-1).map((v) => Math.round(v))), [35, -112], "sent the screen's location");
+    check((await p.S("header .weather").textContent()).includes("28°"), "header shows the weather here");
+    const extra = await p.evaluate(() => calls.filter((c) => c.type === "skylight/weather/extra").at(-1));
+    check(extra && Math.round(extra.lat) === 35, `extras follow the screen: ${JSON.stringify(extra)}`);
+    eq(await p.evaluate(() => localStorage.getItem("skylight.weatherWhere")), "here", "remembered on this screen only");
+    await p.S('[data-action="wx-where"][data-where="home"]').click(); await p.waitForTimeout(500);
+    check(!(await text(p.S(".wxtab")))[0].includes("Flagstaff"), "back to home weather");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

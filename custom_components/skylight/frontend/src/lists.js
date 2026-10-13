@@ -1,6 +1,6 @@
 /* Skylight panel: lists and linked HA to-do lists (methods mixed into SkylightPanel). */
 
-import { PALETTE, adultsOf, orderItems, groupLists, uid, esc } from "./helpers.js?v=1.48.2";
+import { PALETTE, adultsOf, orderItems, groupLists, uid, esc } from "./helpers.js?v=1.49.0";
 
 export class ListsView {
 
@@ -189,16 +189,47 @@ export class ListsView {
     this.ui.list = saved.id; this.closeDialog(); this.render();
   }
 
-  renderLists() {
+  // Lists in the family's chosen order (Arrange); new ones go at the end.
+  orderedLists() {
     const lists = [...(this.data.lists || []), ...this.linkedLists()];
-    if (!this.ui.list || !lists.find((l) => l.id === this.ui.list)) this.ui.list = lists[0]?.id || null;
+    const order = this.settings.list_order || [];
+    const pos = (l) => { const i = order.indexOf(l.id); return i < 0 ? order.length + lists.indexOf(l) : i; };
+    return lists.sort((a, b) => pos(a) - pos(b));
+  }
+  // Which list the Lists tab opens on: the chosen one, none ("pick a list"), or the first.
+  _defaultList(lists) {
+    const def = this.settings.list_default;
+    if (def === "none") return null;
+    return lists.find((l) => l.id === def)?.id || lists[0]?.id || null;
+  }
+  async _moveList(id, dir) {
+    const ids = this.orderedLists().map((l) => l.id);
+    const i = ids.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    this.settings.list_order = ids; this.render(); // show it right away
+    await this._set("settings", { list_order: ids });
+  }
+
+  renderLists() {
+    const lists = this.orderedLists();
+    if (this.ui.list === undefined) this.ui.list = this._defaultList(lists); // just opened the tab
+    if (this.ui.list && !lists.find((l) => l.id === this.ui.list)) this.ui.list = this._defaultList(lists);
     const cur = lists.find((l) => l.id === this.ui.list);
+    const arrange = !!this.ui.listArrange;
+    const def = this.settings.list_default || "";
     return `<div class="lists">
       <aside>${groupLists(lists, this.members).map((g) => `
         <div class="lgroup" ${g.owner ? `style="--oc:${g.owner.color}"` : ""}>${g.owner ? `<span class="av sm" style="background:${g.owner.color}">${g.owner.avatar}</span>${esc(g.owner.name)}` : "👪 Shared"}</div>
-        ${g.lists.map((l) => `<button class="lname ${l.id === this.ui.list ? "on" : ""}" style="--c:${l.color}" data-action="pick-list" data-list="${l.id}">
+        ${g.lists.map((l, k) => arrange ? `<div class="lname arr" style="--c:${l.color}"><span class="dot"></span>${l.linked ? "🔗 " : ""}${esc(l.name)}
+          <span class="lmove"><button data-action="list-move" data-list="${esc(l.id)}" data-dir="-1" ${k ? "" : "disabled"} aria-label="Move up">▲</button><button data-action="list-move" data-list="${esc(l.id)}" data-dir="1" ${k < g.lists.length - 1 ? "" : "disabled"} aria-label="Move down">▼</button></span></div>`
+          : `<button class="lname ${l.id === this.ui.list ? "on" : ""}" style="--c:${l.color}" data-action="pick-list" data-list="${l.id}">
         <span class="dot"></span>${l.linked ? "🔗 " : ""}${esc(l.name)}<span class="count">${l.items.filter((i) => !i.done).length}</span></button>`).join("")}`).join("")}
-        <button class="add wide" data-action="new-list">+ New list</button></aside>
+        ${arrange ? `<label class="lopen">Open first<select data-change="setting" data-key="list_default">
+            <option value="" ${!def ? "selected" : ""}>The top list</option><option value="none" ${def === "none" ? "selected" : ""}>None (pick each time)</option>
+            ${lists.map((l) => `<option value="${esc(l.id)}" ${def === l.id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></label>
+          <button class="primary wide" data-action="list-arrange">Done</button>`
+        : `<button class="add wide" data-action="new-list">+ New list</button><button class="wide subtle" data-action="list-arrange">↕ Arrange lists</button>`}</aside>
       <section>${cur ? `
         <div class="toolbar"><div class="nav"><h1 style="color:${cur.color}">${esc(cur.name)}</h1></div>
           <div><button data-action="clear-done">Clear completed</button> ${cur.linked
@@ -215,6 +246,6 @@ export class ListsView {
             <span data-action="toggle-item" data-item="${esc(i.id)}">${esc(i.text)}</span>
             <button class="x" data-action="delete-item" data-item="${esc(i.id)}">✕</button></div>`).join("") || `<p class="hint">Empty list</p>`;
         })()}
-        </div>` : `<div class="empty"><h2>No lists</h2></div>`}</section></div>`;
+        </div>` : lists.length ? `<div class="empty"><h2>Pick a list</h2><p class="hint">Choose one on the left.</p></div>` : `<div class="empty"><h2>No lists</h2></div>`}</section></div>`;
   }
 }

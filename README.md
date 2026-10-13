@@ -151,6 +151,14 @@ Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice 
 - **Who to root for:** a team is "in the race" when it is ahead of yours, or no more than 5 games behind, in your division or in the wild-card race. In a game between a race team and anyone else, root against the race team. When two race teams play each other, root against the one closer to yours in the standings.
 - Data comes from MLB's free public stats feed (statsapi.mlb.com, no account or key). Standings are worked out from wins and losses, so tiebreakers aren't applied.
 
+## Weather for where you are
+
+On the Weather tab, **🏠 Home | 📍 Here** chooses, for that screen only, between Home Assistant's home weather and the weather where the device is. "Here" asks the device for its location (allow it when asked), rounds it to about 1 km, and Home Assistant gets the forecast from Open-Meteo and the town name from OpenStreetMap. The header, calendar day icons, Today hints, rain-soon and air quality then follow that screen. Weather alerts stay for home. Location needs a secure (https) connection, such as the Home Assistant app or Nabu Casa.
+
+## Lists order
+
+On the Lists tab, **↕ Arrange lists** moves lists up and down (within each person's group) and sets which list opens first: the top one, a chosen one, or none (pick each time). This is family-wide, so it may ask for the setup PIN.
+
 ## Message board and countdowns
 
 - **Message board:** the Today screen has a 📌 Messages card. Tap **＋ Note** to post a sticky note, optionally saying who it's from, in one of six colors. Each note can last until the end of today, tomorrow, a week, or until someone removes it. Anyone at the screen can post or remove notes; the setup PIN isn't needed. Turn the card off in Setup → Birthdays & anniversaries.
@@ -206,6 +214,7 @@ Lyding Strike keeps family data on your Home Assistant server. Some features ask
 | Photon / OpenStreetMap (komoot) | Place search without a Google key; town names for uploaded photos | What you type and the rounded home location; for photos, the photo's GPS rounded to about 100 m |
 | Windy or RainViewer | Radar map on the Weather tab (loaded by the screen) | Rounded home location, plus whatever those sites log about visitors |
 | Waze (through Home Assistant's Waze Travel Time integration) | "Leave by" times | Your Home zone location and the locations of today's upcoming events |
+| Open-Meteo and Photon (OpenStreetMap) | 📍 Here weather, only on screens set to it | That screen's location rounded to about 1 km |
 | MLB stats (statsapi.mlb.com) | Favorite team's games, scores and standings | Only the team and date asked for (no location) |
 | Your own Mealie and Immich servers | Recipes, meal plans, photos | Talks only to the addresses you entered |
 
@@ -225,7 +234,7 @@ Each screen keeps a small flight recorder on the device: what the app did (start
 
 ## Known limitations
 
-- **Cook mode keeps the screen on** using the browser's screen wake lock, or a tiny silent video where that isn't available (older iPhones and some app web views). If a phone still dims, its own Auto-Lock setting may win; set it longer while cooking.
+- **Keeping the screen on:** cook mode always asks to keep the screen on, and Setup → Look → **Keep this screen on** does it whenever Lyding Strike is open on that device. It uses the browser's screen wake lock plus a tiny silent video (which iPhones and iPads respect inside apps). It only works while the app is open and in front; the device's own settings still win when it's closed, in Low Power Mode, or locked by hand. For a wall tablet, a kiosk browser (Fully Kiosk on Android) or the device's own setting (iPad: Auto-Lock → Never, or Guided Access) is more reliable.
 
 - **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the setup PIN. With no PIN set, anyone using Lyding Strike can do it.
 - **One PIN for the whole family.** There are no per-person accounts or permissions inside Lyding Strike; the PIN separates "can change the setup" from "everyday use".

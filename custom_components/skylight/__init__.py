@@ -10,7 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 
-from . import mealie, mlb, nightmode, notes, places, reminders, security, travel, weather_alerts, weather_extra, websocket_api
+from . import mealie, mlb, nightmode, notes, places, reminders, security, travel, weather_alerts, weather_extra, weather_here, websocket_api
 from .const import (
     DOMAIN,
     EVENT_UPDATED,
@@ -62,6 +62,7 @@ async def _async_register_once(hass: HomeAssistant) -> None:
     places.async_register(hass)
     weather_alerts.async_register(hass)
     weather_extra.async_register(hass)
+    weather_here.async_register(hass)
     reminders.async_register(hass)
     mlb.async_register(hass)
     travel.async_register(hass)

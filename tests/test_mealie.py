@@ -102,7 +102,8 @@ async def test_info_and_week(hass, setup, hass_ws_client, hass_client, aioclient
     assert (await http.get("/api/skylight/mealie/image/not_a_valid_id!")).status in (400, 401, 404)
 
 
-async def test_search_recipe_and_set(hass, setup, hass_ws_client):
+async def test_search_recipe_and_set(hass, setup, hass_ws_client, aioclient_mock):
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes", status=500)  # direct API unusable: falls back to the integration's search
     ws = await hass_ws_client(hass)
     res = await _cmd(ws, {"type": "skylight/mealie/recipes", "query": "taco"})
     assert [r["name"] for r in res["result"]] == ["Chicken Tacos", "Pancakes"]
@@ -206,3 +207,29 @@ async def test_delete_recipe(hass, setup, hass_ws_client, aioclient_mock):
     assert not res["success"] and "locked" in res["error"]["message"]
     res = await _cmd(ws, {"type": "skylight/mealie/delete_recipe", "recipe": "../users/self"})
     assert not res["success"]
+
+
+def test_rank_recipes():
+    from custom_components.skylight.mealie import parse_query, rank_recipes
+    assert parse_query('chicken "pot pie" Easy') == (["pot pie"], ["chicken", "easy"])
+    rs = [{"id": str(i), "name": n, "description": d} for i, n, d in [
+        (1, "Apple Pie", ""), (2, "Chicken Pot Pie", ""), (3, "Pot Roast", "a pie-like dish"),
+        (4, "Chicken Soup", ""), (5, "Grilled Chicken", "great with pot pie crust"), (6, "Shepherd's Pie", "")]]
+    names = lambda q, content=(): [r["name"] for r in rank_recipes(q, rs, list(content))]
+    assert names("chicken pie")[:2] == ["Chicken Pot Pie", "Chicken Soup"]  # both words in the title first
+    assert set(names("chicken pie")[2:]) == {"Grilled Chicken", "Apple Pie", "Shepherd's Pie"}  # one word in the title
+    assert names('"pot pie"') == ["Chicken Pot Pie", "Grilled Chicken"]  # exact phrase: title, then description
+    assert names("roast", content=["4"]) == ["Pot Roast", "Chicken Soup"]  # then Mealie's ingredient matches
+    assert names("ipe") == []  # words match at word starts only (no "recipe" inside other words)
+
+
+async def test_search_ranks_titles_first(hass, setup, hass_ws_client, aioclient_mock):
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes", params={"search": "taco", "perPage": 40, "page": 1}, json={"items": [{"id": "a"}]})
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes", json={"items": [
+        {"id": "a", "name": "Beef Stew", "slug": "beef-stew"},
+        {"id": "b", "name": "Taco Soup", "slug": "taco-soup"},
+        {"id": "c", "name": "Chicken Tacos", "slug": "chicken-tacos", "totalTime": "30 min"}]})
+    ws = await hass_ws_client(hass)
+    res = (await _cmd(ws, {"type": "skylight/mealie/recipes", "query": "taco"}))["result"]
+    assert [r["name"] for r in res] == ["Taco Soup", "Chicken Tacos", "Beef Stew"]  # stew: Mealie found "taco" inside it
+    assert res[1]["total_time"] == "30 min" and res[1]["id"] == "c"

@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.48.2";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.49.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -267,8 +267,8 @@ export class CalendarView {
         </div>
         ${ev ? "" : this.renderRepeatBuilder(dlg)}
         ${this._isRecurring(ev) ? `<p class="hint">🔁 Repeating event (${esc(this._rruleText(ev.rrule))}). When you save or delete, you'll choose which events to change.</p>` : ""}
-        <label class="locfield">Location<input id="ev-loc" value="${esc(ev?.location)}" autocomplete="off" placeholder="Type a place or business name">
-          <div id="loc-sugg" class="sugg" hidden></div></label>
+        <div class="locfield"><label>Location<input id="ev-loc" value="${esc(ev?.location)}" autocomplete="off" placeholder="Type a place or business name"></label>
+          <div id="loc-sugg" class="sugg" hidden></div></div>
         <label>Notes<textarea id="ev-desc" rows="2">${esc(ev?.description)}</textarea></label>
         <label>Reminder<select id="ev-remind">${REMINDERS.map(([v, l]) => `<option value="${v}" ${v === (ev ? this._eventMeta(ev)?.remind || "" : this.settings.default_reminder || "") ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" id="ev-countdown" ${ev && this._countdownOf(ev) ? "checked" : ""}> ⏳ Show countdown on the Today screen</label>

@@ -182,6 +182,7 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .sugg button { display:flex; flex-direction:column; align-items:flex-start; width:100%; text-align:left; border-radius:0; box-shadow:none; background:none; padding:9px 12px; border-bottom:1px solid var(--line); }
 .sugg button:hover, .sugg button:active { background:var(--bg); }
 .sugg small { color:var(--muted); font-size:12px; }
+.sugg button.keep { background:var(--bg); }
 .sugg .hint { padding:8px 12px; }
 .sugg .attrib { font-size:10px; color:var(--muted); padding:4px 12px; text-align:right; }
 .emojisearch { margin:0 0 8px; }
@@ -269,6 +270,9 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .lname.on { outline:3px solid var(--c); }
 .lname .dot { width:14px; height:14px; border-radius:50%; background:var(--c); }
 .lname .count { margin-left:auto; color:var(--muted); }
+.lname.arr { background:var(--card); border-radius:var(--radius); }
+.lmove { margin-left:auto; display:flex; gap:4px; } .lmove button { padding:6px 10px; min-height:0; }
+.lopen { margin-top:10px; } .subtle { background:none; box-shadow:none; color:var(--muted); }
 .lists section { flex:1; background:var(--card); border-radius:var(--radius); padding:14px 18px; }
 .additem { display:flex; gap:8px; margin-bottom:12px; }
 .additem button { white-space:nowrap; }
@@ -352,6 +356,7 @@ label.check input { width:22px; height:22px; }
 .seg.wrap { flex-wrap:wrap; }
 .swatches { display:flex; gap:8px; } .swatch { width:34px; height:34px; border-radius:50%; border:2px solid transparent; padding:0; min-height:0; }
 .swatch.on { border-color:var(--ink, #222); }
+.wwhere { width:fit-content; margin:0 auto 10px; }
 .leavenote { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--card); border:0; border-left:6px solid #2e7dd7; border-radius:var(--radius); padding:10px 12px; color:var(--text); font:inherit; cursor:pointer; }
 .leavenote .lvicon { font-size:1.6em; } .leavenote .lvtxt { display:flex; flex-direction:column; min-width:0; }
 .leavenote small { color:var(--muted); } .leavenote b { font-size:1.15em; }

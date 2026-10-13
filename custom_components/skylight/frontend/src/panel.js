@@ -1,20 +1,21 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.48.2";
-import { STYLES } from "./styles.js?v=1.48.2";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.48.2";
-import { CalendarView } from "./calendar.js?v=1.48.2";
-import { WeatherView } from "./weather.js?v=1.48.2";
-import { HomeView } from "./home.js?v=1.48.2";
-import { ChoresView } from "./chores.js?v=1.48.2";
-import { MealsView } from "./meals.js?v=1.48.2";
-import { ListsView } from "./lists.js?v=1.48.2";
-import { PhotosView } from "./photos.js?v=1.48.2";
-import { SettingsView } from "./settings.js?v=1.48.2";
-import { PickersView } from "./pickers.js?v=1.48.2";
-import { MlbView } from "./mlb.js?v=1.48.2";
-import { TravelView } from "./travel.js?v=1.48.2";
-import { NotesView } from "./notes.js?v=1.48.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.49.0";
+import { STYLES } from "./styles.js?v=1.49.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.49.0";
+import { CalendarView } from "./calendar.js?v=1.49.0";
+import { WeatherView } from "./weather.js?v=1.49.0";
+import { HomeView } from "./home.js?v=1.49.0";
+import { ChoresView } from "./chores.js?v=1.49.0";
+import { MealsView } from "./meals.js?v=1.49.0";
+import { ListsView } from "./lists.js?v=1.49.0";
+import { PhotosView } from "./photos.js?v=1.49.0";
+import { SettingsView } from "./settings.js?v=1.49.0";
+import { PickersView } from "./pickers.js?v=1.49.0";
+import { keepAwake } from "./wake.js?v=1.49.0";
+import { MlbView } from "./mlb.js?v=1.49.0";
+import { TravelView } from "./travel.js?v=1.49.0";
+import { NotesView } from "./notes.js?v=1.49.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -30,7 +31,7 @@ export class SkylightPanel extends HTMLElement {
     this.forecast = {};
     this.ui = {
       tab: "home", view: null, anchor: startOfDay(new Date()), filter: null,
-      list: null, dialog: null, saver: false, choreDay: startOfDay(new Date()),
+      list: undefined, dialog: null, saver: false, choreDay: startOfDay(new Date()),
     };
     this._eventsKey = "";
     this._shadowBuilt = false;
@@ -156,6 +157,7 @@ export class SkylightPanel extends HTMLElement {
     window.addEventListener("error", this._onAppError);
     window.addEventListener("unhandledrejection", this._onAppError);
     this._clockTimer = setInterval(() => this._tickClock(), 10000);
+    if (this.screenAwake) keepAwake(true, "screen"); // (the silent-video part starts at the first tap)
     this._refreshTimer = setInterval(() => { this._eventsKey = ""; this._loadEvents(); this._loadForecast(); if (this.ui.tab === "weather" || this.ui.tab === "home") this._loadWeatherFull(); this._loadWxExtra(); }, 5 * 60000);
     this._alertTimer = setInterval(() => this._loadAlerts(), 2 * 60000);
     this._lastActivity = Date.now();
@@ -265,7 +267,10 @@ export class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("focusout", () => this._settlePage()); // keyboard closing
     window.visualViewport?.addEventListener("resize", () => this._settlePage());
     this.shadowRoot.addEventListener("focusin", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); e.target.select(); } });
-    this.shadowRoot.addEventListener("pointerdown", (e) => { if (!e.target.closest?.(".tpick")) this._closeTimeLists(); }, true);
+    this.shadowRoot.addEventListener("pointerdown", (e) => {
+      if (!e.target.closest?.(".tpick")) this._closeTimeLists();
+      if (!e.target.closest?.(".locfield")) this._clearSugg(); // tapping elsewhere keeps the typed address
+    }, true);
     // Every tap on a time box opens its list (focus alone missed taps on a box that was already selected).
     this.shadowRoot.addEventListener("click", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); } });
     // After typing a time on a touch screen, go back to "tap for the list, no keyboard".
@@ -325,6 +330,7 @@ export class SkylightPanel extends HTMLElement {
       }
       if (e.key === "Enter" && e.target.dataset.enter) { e.preventDefault(); this._action(e.target.dataset.enter, e.target); }
       if ((e.key === "Enter" || e.key === "Escape" || e.key === "Tab") && e.target.classList?.contains("tinput")) this._closeTimeLists();
+      if ((e.key === "Escape" || e.key === "Tab" || e.key === "Enter") && e.target.id === "ev-loc") { if (e.key !== "Tab") e.preventDefault(); this._clearSugg(); }
     });
     for (const ev of ["pointerdown", "keydown", "touchstart"]) {
       this.shadowRoot.addEventListener(ev, () => { this._lastActivity = Date.now(); }, { passive: true });
@@ -480,6 +486,8 @@ export class SkylightPanel extends HTMLElement {
       case "note-delete": if (confirm("Remove this note?")) await this._ws({ type: "skylight/note/delete", note_id: d.id }); break;
       case "mlb-open": this.ui.tab = "team"; this._resetScroll = true; this.render(); this._loadMlbTeam(); this._loadMlb(); break;
       case "mlb-refresh": this._loadMlbTeam(); this._loadMlb(); break;
+      case "wx-where": this._setWxWhere(d.where); break;
+      case "wx-here-retry": this.wxHereErr = null; this.wxHere = null; this.render(); this._loadWeatherFull(true); break;
       case "radar-show": this.ui.radarShown = true; this.render(); break;
       case "diag-send": {
         const text = diagText(diagPrevious()) + "\n\n--- this session so far ---\n" + diagText(diagCurrent());
@@ -490,7 +498,7 @@ export class SkylightPanel extends HTMLElement {
       case "chores-mode": this.ui.choresMode = d.mode; this._resetScroll = true; this.render(); break;
       case "tab": if (d.tab === "progress") { d.tab = "chores"; this.ui.choresMode = "progress"; } else if (d.tab === "chores") this.ui.choresMode = "day";
         if (d.tab === "photos") d.tab = "settings";
-        if (d.tab === "settings") this._loadCalInfo(); if (this.ui.tab === "settings" && d.tab !== "settings") this.relock(); this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
+        if (d.tab === "settings") this._loadCalInfo(); if (this.ui.tab === "settings" && d.tab !== "settings") this.relock(); if (d.tab === "lists" && this.ui.tab !== "lists") { this.ui.list = undefined; this.ui.listArrange = false; } this.ui.tab = d.tab; this._resetScroll = true; this.render(); if (d.tab === "calendar" || d.tab === "home") this._loadEvents(); break;
       case "view": this.ui.view = d.view; this.render(); this._loadEvents(); break;
       case "filter": this.ui.filter = this.ui.filter === d.member ? null : d.member || null; this.render(); break;
       case "today": this.ui.anchor = startOfDay(new Date()); this.render(); this._loadEvents(); break;
@@ -590,6 +598,9 @@ export class SkylightPanel extends HTMLElement {
         this.ui.dialog = null; this.ui.alertPop = null; this.ui.reminderPop = null; this.$dialog.innerHTML = "";
         this.render(); break;
       case "reload-page": location.reload(); break;
+      case "screen-awake":
+        try { if (el.value) localStorage.setItem("skylight.awake", "1"); else localStorage.removeItem("skylight.awake"); } catch (e) { /* private mode */ }
+        keepAwake(!!el.value, "screen"); break;
       case "screen-scheme":
         try { if (el.value) localStorage.setItem("skylight.screenScheme", el.value); else localStorage.removeItem("skylight.screenScheme"); } catch (e) { /* private mode */ }
         this._applyLook(); this.render(); break;
@@ -826,6 +837,8 @@ export class SkylightPanel extends HTMLElement {
 
       // lists
       case "pick-list": this.ui.list = d.list; this.render(); break;
+      case "list-arrange": this.ui.listArrange = !this.ui.listArrange; this.render(); break;
+      case "list-move": await this._moveList(d.list, Number(d.dir)); break;
       case "add-item": if (this._isTodo()) { await this._todoAction("add"); break; } {
         const input = this.shadowRoot.getElementById("newitem");
         const text = input.value.trim(); if (!text) return;
@@ -848,7 +861,7 @@ export class SkylightPanel extends HTMLElement {
       case "delete-list": {
         const l = this.ui.dialog.list;
         if (!confirm(`Delete the list "${l.name}"?`)) return;
-        await this._ws({ type: "skylight/list/delete", list_id: l.id }); this.ui.list = null; this.closeDialog(); break;
+        await this._ws({ type: "skylight/list/delete", list_id: l.id }); this.ui.list = undefined; this.closeDialog(); break;
       }
 
       // photos
@@ -1079,6 +1092,7 @@ export class SkylightPanel extends HTMLElement {
   }
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
+  get screenAwake() { try { return localStorage.getItem("skylight.awake") === "1"; } catch (e) { return false; } }
   _screenScheme() {
     try { return localStorage.getItem("skylight.screenScheme") || ""; } catch (e) { return ""; }
   }
@@ -1224,7 +1238,7 @@ export class SkylightPanel extends HTMLElement {
   }
 
   renderHeader() {
-    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
+    const w = this.wxState();
     const weather = w ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(Number(w.attributes.temperature))}°</b></div>` : "";
     const showChips = ["calendar", "home"].includes(this.ui.tab);
     return `<header>
