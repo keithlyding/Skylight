@@ -167,9 +167,9 @@ export class WeatherView {
   }
   // The signed-in person's last location reported by the Home Assistant app (person entity), if any.
   _personLocation() {
-    const uid = this._hass.user?.id;
-    if (!uid) return null;
-    const hit = Object.entries(this._hass.states || {}).find(([id, st]) => id.startsWith("person.") && st?.attributes?.user_id === uid);
+    const userId = this._hass.user?.id;
+    if (!userId) return null;
+    const hit = Object.entries(this._hass.states || {}).find(([id, st]) => id.startsWith("person.") && st?.attributes?.user_id === userId);
     const a = hit?.[1]?.attributes;
     if (!a || typeof a.latitude !== "number" || typeof a.longitude !== "number") return null;
     return { lat: a.latitude, lon: a.longitude, source: "person", name: a.friendly_name || hit[0] };
