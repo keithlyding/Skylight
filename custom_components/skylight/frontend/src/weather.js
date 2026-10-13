@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.49.0";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.49.1";
 
 export class WeatherView {
 
@@ -122,8 +122,11 @@ export class WeatherView {
   _wxSourceOk() { return this.wxWhere === "here" || !!(this.settings.weather_entity && this._hass.states[this.settings.weather_entity]); }
 
   // Ask the device where it is (rounded to ~1 km on the server), then get the weather there.
+  // A failure is not retried on its own for 5 minutes (only by "Try again"): otherwise drawing the
+  // screen would ask again, fail again and redraw, forever (a browser that refuses location fails instantly).
   async _loadHere(force = false) {
     if (!force && this.wxHere && Date.now() - this.wxHere.at < 10 * 60000) return this.wxHere;
+    if (!force && this.wxHereErr && Date.now() - (this._hereErrAt || 0) < 5 * 60000) return this.wxHere || null;
     if (this._hereLoading) return this._hereLoading;
     this._hereLoading = (async () => {
       try {
@@ -134,6 +137,7 @@ export class WeatherView {
         if (r.error) throw new Error(r.error);
         this.wxHere = { ...r, at: Date.now() }; this.wxHereErr = null;
       } catch (e) {
+        this._hereErrAt = Date.now();
         this.wxHereErr = e?.code === 1 ? "Location permission was denied. Allow location for the Home Assistant app (or this browser) to use 📍 Here."
           : e?.message || "Couldn't find this screen's location.";
       } finally { this._hereLoading = null; }
@@ -319,11 +323,13 @@ export class WeatherView {
       if (!force && this.wx && Date.now() - this.wx.at < 10 * 60000) return;
       if (this._wxLoading) return;
       this._wxLoading = true;
+      const errBefore = this.wxHereErr;
       const h = await this._loadHere(force);
       this._wxLoading = false;
-      this.wx = h ? { at: h.at, daily: h.daily, hourly: h.hourly, hourlyMissing: false, periods: {} } : null;
-      if (h) this._fillForecast(h.daily);
-      if (this.ui.tab === "weather" || this.ui.tab === "home" || this.ui.tab === "calendar") this.render();
+      const fresh = h && (!this.wx || this.wx.at !== h.at);
+      if (h) { this.wx = { at: h.at, daily: h.daily, hourly: h.hourly, hourlyMissing: false, periods: {} }; this._fillForecast(h.daily); }
+      // Redraw only when something new arrived (new weather, or a new error to show).
+      if ((fresh || this.wxHereErr !== errBefore) && ["weather", "home", "calendar"].includes(this.ui.tab)) setTimeout(() => this.render(), 0);
       return;
     }
     const w = this.settings.weather_entity;

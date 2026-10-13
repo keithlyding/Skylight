@@ -1093,6 +1093,25 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async weather_here_denied(browser, base) {
+    // Browser refuses location (no permission, or plain http): must show a message, not loop.
+    const p = await open(browser, base);
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); window.GEO = 0;
+      const g = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+      navigator.geolocation.getCurrentPosition = (ok, fail, o) => { window.GEO++; fail({ code: 1, message: "denied" }); };
+      window.RENDERS = 0; const r = el.render.bind(el); el.render = () => { window.RENDERS++; r(); }; });
+    await p.tab("weather");
+    await p.S('[data-action="wx-where"][data-where="here"]').click(); await p.waitForTimeout(3000);
+    const [geo, renders] = await p.evaluate(() => [window.GEO, window.RENDERS]);
+    check(geo <= 2 && renders < 20, `asked for location ${geo} times and redrew ${renders} times in 3 s`);
+    check((await text(p.S(".empty")))[0]?.includes("permission"), "explains the problem");
+    await p.tab("home"); await p.waitForTimeout(1500);
+    eq(await p.evaluate(() => window.GEO), geo, "other screens don't keep asking either");
+    await p.tab("weather"); await p.S('[data-action="wx-here-retry"]').click(); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => window.GEO), geo + 1, "Try again asks once more");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);
