@@ -952,6 +952,9 @@ const SCENARIOS = {
     check(page.includes("Root for Reds") && page.includes("Cubs are 2 games ahead of us in the NL wild-card race"), `rooting: ${page}`);
     check(page.includes("NL West") && page.includes("NL wild card") && page.includes("Coming up"), "tables shown");
     eq(await p.S(".mlbtab tr.cut").count(), 1, "wild-card cutoff line");
+    await p.evaluate(() => { Object.assign(window.MLB.team, { phase: "postseason", rooting_note: "The D-backs are out of the postseason, so root for NL West teams." }); el._loadMlbTeam(); });
+    await wait(p, 300);
+    check((await text(p.S(".mlbpage")))[0].includes("so root for NL West teams"), "postseason note shown");
     await p.evaluate(() => { Object.assign(window.MLB.today.game, { state: "Final", detail: "Final", away_score: 2, home_score: 4 }); });
     await tick(61000);
     await p.S('[data-action="tab"][data-tab="home"]').first().click(); await wait(p, 300);

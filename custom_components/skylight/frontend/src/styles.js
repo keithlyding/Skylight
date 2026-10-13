@@ -384,6 +384,7 @@ label.check input { width:22px; height:22px; }
 .mlbtab tr.cut td { border-bottom:3px dashed #a71930; }
 .mlbroot { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
 .mlbfor { font-weight:700; }
+.mlbnote2 { margin:0 0 8px; font-weight:600; }
 .hchores { background:var(--card); border-radius:var(--radius); padding:10px 12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:5px;
   break-inside:avoid; margin-bottom:10px; }
 .hchores .chore .ctoggle { padding:6px 10px; font-size:15px; border-radius:12px; }

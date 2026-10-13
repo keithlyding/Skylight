@@ -149,6 +149,7 @@ Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice 
 - On other days there's just a small ⚾ button next to **+ Event** that opens the team page.
 - Tap the note for the team page. It shows who to root for in today's other games, the division standings, the league wild-card race with a line under the last spot, and the next three weeks of games.
 - **Who to root for:** a team is "in the race" when it is ahead of yours, or no more than 5 games behind, in your division or in the wild-card race. In a game between a race team and anyone else, root against the race team. When two race teams play each other, root against the one closer to yours in the standings.
+- **After the regular season:** if your team missed the postseason or has been knocked out, the advice switches to rooting for teams from your division (a tough division makes your team look better). While your team is still in it, it just says to root for them. In the offseason there's no advice.
 - Data comes from MLB's free public stats feed (statsapi.mlb.com, no account or key). Standings are worked out from wins and losses, so tiebreakers aren't applied.
 
 ## Weather for where you are

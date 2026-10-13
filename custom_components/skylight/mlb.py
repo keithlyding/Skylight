@@ -172,7 +172,54 @@ def game_info(g: dict) -> dict:
         "detail": st.get("detailedState"),
         "inning": ls.get("currentInningOrdinal"), "half": ls.get("inningState"),
         "venue": (g.get("venue") or {}).get("name"),
+        "type": g.get("gameType"),  # R regular season; F wild card, D division series, L LCS, W World Series
+        "series_games": g.get("gamesInSeries"),
     }
+
+
+POSTSEASON = ("F", "D", "L", "W")
+SERIES_LENGTH = {"F": 3, "D": 5, "L": 7, "W": 7}
+
+
+def postseason_status(games: list[dict], team: int) -> str:
+    """Our postseason so far: "missed" (no postseason games), "out" (lost our latest series),
+    "champions", or "alive". From our postseason games (game_info), any order."""
+    ours = [g for g in games if g.get("type") in POSTSEASON and team in (g["away"], g["home"])]
+    if not ours:
+        return "missed"
+    last = max(ours, key=lambda g: g.get("start") or "")
+    opp = last["away"] if last["home"] == team else last["home"]
+    series = [g for g in ours if g.get("type") == last.get("type") and opp in (g["away"], g["home"])]
+    length = int(last.get("series_games") or SERIES_LENGTH.get(last.get("type"), 7))
+    need = length // 2 + 1
+    won = lost = 0
+    for g in series:
+        if g.get("state") != "Final" or g.get("away_score") is None or g.get("home_score") is None:
+            continue
+        mine, theirs = (g["home_score"], g["away_score"]) if g["home"] == team else (g["away_score"], g["home_score"])
+        won += mine > theirs
+        lost += mine < theirs
+    if lost >= need:
+        return "out"
+    if won >= need and last.get("type") == "W":
+        return "champions"
+    return "alive"
+
+
+def division_rooting(games: list[dict], team: int) -> list[dict]:
+    """Once we're out of it: root for teams from our division (a tough division makes us look better).
+    Our division against itself: no pick."""
+    division = TEAMS[team][4]
+    mates = {t for t, info in TEAMS.items() if info[4] == division and t != team}
+    out = []
+    for g in games:
+        a, h = g["away"], g["home"]
+        if team in (a, h) or (a in mates) == (h in mates):  # our own game, or no pick to make
+            continue
+        mate = a if a in mates else h
+        out.append({**g, "root_for": mate, "root_against": h if mate == a else a,
+                    "reason": f"{short(mate)} are in our division ({DIVISIONS[division]}): a tough {DIVISIONS[division]} makes us look better"})
+    return out
 
 
 # ---------- fetching ----------
@@ -242,10 +289,20 @@ async def async_team(hass: HomeAssistant, team: int) -> dict:
     async def league_today():
         return _games(await _get(hass, "/schedule", {"sportId": 1, "date": today.isoformat(), "hydrate": "linescore"}))
 
+    async def season():
+        data = await _get(hass, f"/seasons/{today.year}", {"sportId": 1})
+        return (data.get("seasons") or [{}])[0]
+
+    async def our_postseason():
+        return _games(await _get(hass, "/schedule", {"sportId": 1, "teamId": team, "season": today.year,
+                                                     "gameType": ",".join(POSTSEASON)}))
+
     out: dict[str, Any] = {"team": team, "errors": {}}
     jobs = {"standings": _cached(hass, f"standings-{today.year}", 900, standings),
             "schedule": _cached(hass, f"sched-{team}-{today}", 1800, schedule),
-            "league_today": _cached(hass, f"league-{today}", 300, league_today)}
+            "league_today": _cached(hass, f"league-{today}", 300, league_today),
+            "season": _cached(hass, f"season-{today.year}", 6 * 3600, season),
+            "postseason": _cached(hass, f"post-{team}-{today.year}", 300, our_postseason)}
     results = await asyncio.gather(*jobs.values(), return_exceptions=True)
     got = {}
     for name, res in zip(jobs, results):
@@ -260,8 +317,46 @@ async def async_team(hass: HomeAssistant, team: int) -> dict:
     out["division"] = {"name": DIVISIONS[division], "rows": division_table(table, division)}
     out["wildcard"] = {"name": f"{LEAGUES[league]} wild card", "spots": WILD_CARDS, "rows": wildcard_table(table, league)}
     out["rivals"] = rivals(table, team)
-    out["rooting"] = rooting(got["league_today"], table, team)
+    phase = season_phase(got["season"] or {}, today, got["league_today"])
+    out["phase"] = phase
+    if phase == "regular":
+        out["rooting"] = rooting([g for g in got["league_today"] if g.get("type") in (None, "R")], table, team)
+        out["rooting_note"] = None
+        return out
+    if "postseason" in out["errors"]:  # can't tell whether we're still in it: no advice rather than wrong advice
+        out["rooting"], out["rooting_note"] = [], None
+        return out
+    status = postseason_status(got["postseason"], team)
+    out["postseason"] = status
+    games = [g for g in got["league_today"] if g.get("type") in POSTSEASON]
+    if status in ("missed", "out"):
+        out["rooting"] = division_rooting(games, team)
+        why = "didn't make the postseason" if status == "missed" else "are out of the postseason"
+        out["rooting_note"] = f"The {short(team)} {why}, so root for {DIVISIONS[TEAMS[team][4]]} teams."
+    else:
+        out["rooting"] = []
+        out["rooting_note"] = ("World Series champions! 🏆" if status == "champions"
+                               else f"The {short(team)} are still in the postseason: root for the {short(team)}!")
+    if phase == "offseason":
+        out["rooting_note"] = "The season's over. See you in spring training! ⚾" if status != "champions" else out["rooting_note"]
     return out
+
+
+def season_phase(season: dict, today: date, league_today: list[dict]) -> str:
+    """"regular", "postseason" or "offseason", from MLB's season dates (or today's game types)."""
+    def day(key):
+        try:
+            return date.fromisoformat(str(season.get(key))[:10])
+        except ValueError:
+            return None
+    reg_end, post_end = day("regularSeasonEndDate"), day("postSeasonEndDate")
+    if reg_end is None:  # no season dates: go by today's games
+        return "postseason" if any(g.get("type") in POSTSEASON for g in league_today) else "regular"
+    if today <= reg_end:
+        return "regular"
+    if post_end is None or today <= post_end:
+        return "postseason"
+    return "offseason"
 
 
 # ---------- websocket ----------

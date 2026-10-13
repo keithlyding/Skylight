@@ -4,7 +4,7 @@
    score, then the final). Tapping it opens the team page: schedule, division, wild-card race and who
    to root for in today's other games. Home Assistant fetches and works everything out (mlb.py). */
 
-import { esc } from "./helpers.js?v=1.49.1";
+import { esc } from "./helpers.js?v=1.49.2";
 
 // id: [abbreviation, short name] (names only; the server has the rest)
 export const MLB_TEAMS = {
@@ -131,7 +131,8 @@ export class MlbView {
     return `${back}<div class="mlbpage">
       ${today}
       ${errs.length ? `<p class="hint">Some info couldn't be loaded (${esc(errs.join(", "))}); showing what we have.</p>` : ""}
-      <div class="mlbcard"><h3>Who to root for today</h3>${root ? `<ul class="mlbroot">${root}</ul>` : `<p class="hint">No games today involving teams in the race with the ${esc(mlbName(team))}.</p>`}</div>
+      <div class="mlbcard"><h3>Who to root for today</h3>${d.rooting_note ? `<p class="mlbnote2">${esc(d.rooting_note)}</p>` : ""}${root ? `<ul class="mlbroot">${root}</ul>`
+        : `<p class="hint">${d.phase && d.phase !== "regular" ? "No games today that matter for us." : `No games today involving teams in the race with the ${esc(mlbName(team))}.`}</p>`}</div>
       ${table(d.division?.name || "Division", d.division?.rows || [])}
       ${table(d.wildcard?.name || "Wild card", d.wildcard?.rows || [], d.wildcard?.spots || 3)}
       <div class="mlbcard"><h3>Coming up</h3>${sched ? `<table class="mlbtab">${sched}</table>` : `<p class="hint">No games in the next 3 weeks.</p>`}</div>

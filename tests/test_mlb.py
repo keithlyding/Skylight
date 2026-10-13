@@ -13,6 +13,7 @@ from custom_components.skylight import mlb
 
 SCHEDULE = re.compile(r"^https://statsapi\.mlb\.com/api/v1/schedule")
 STANDINGS = re.compile(r"^https://statsapi\.mlb\.com/api/v1/standings")
+SEASONS = re.compile(r"^https://statsapi\.mlb\.com/api/v1/seasons/")
 
 # (team id, wins, losses): a late-season National League
 NL = [
@@ -26,8 +27,9 @@ def _records(teams=NL):
     return [{"teamRecords": [{"team": {"id": t}, "wins": w, "losses": l} for t, w, l in teams]}]
 
 
-def _game(pk, away, home, state="Preview", start="2026-09-20T01:40:00Z", a=None, h=None, **ls):
-    return {"gamePk": pk, "gameDate": start, "status": {"abstractGameState": state, "detailedState": state},
+def _game(pk, away, home, state="Preview", start="2026-09-20T01:40:00Z", a=None, h=None, gtype="R", n=None, **ls):
+    return {"gamePk": pk, "gameDate": start, "status": {"abstractGameState": state, "detailedState": state}, "gameType": gtype,
+            **({"gamesInSeries": n} if n else {}),
             "teams": {"away": {"team": {"id": away}, "score": a}, "home": {"team": {"id": home}, "score": h}},
             "linescore": ls, "venue": {"name": "Chase Field"}}
 
@@ -97,6 +99,7 @@ async def test_ws_today_and_team(hass, ws, aioclient_mock):
         _game(9, 119, 109, a=1, h=0, state="Live", start=now.isoformat().replace("+00:00", "Z")),
         _game(10, 109, 135, start=(now + timedelta(days=2)).isoformat().replace("+00:00", "Z"))]}]})
     aioclient_mock.get(STANDINGS, json={"records": _records()})
+    aioclient_mock.get(SEASONS, json={"seasons": [{"regularSeasonEndDate": "2099-09-27", "postSeasonEndDate": "2099-11-01"}]})
     today = await _call(ws, {"type": "skylight/mlb/today"})
     assert today["team"] == 109 and today["game"]["home"] == 109 and today["game"]["state"] == "Live"
     assert today["next"]["pk"] == 10 and [g["pk"] for g in today["games"]] == [9]
@@ -117,4 +120,57 @@ async def test_ws_feed_down(hass, ws, aioclient_mock):
     today = await _call(ws, {"type": "skylight/mlb/today"})
     assert today["game"] is None and "503" in today["error"]
     team = await _call(ws, {"type": "skylight/mlb/team"})
-    assert set(team["errors"]) == {"standings", "schedule", "league_today"} and team["division"]["rows"] == []
+    assert set(team["errors"]) == {"standings", "schedule", "league_today", "season", "postseason"} and team["division"]["rows"] == []
+    assert team["rooting"] == [] and team["rooting_note"] is None  # unsure whether we're still in it: no advice
+
+
+def test_season_phase():
+    from datetime import date
+    season = {"regularSeasonEndDate": "2026-09-27", "postSeasonEndDate": "2026-11-01"}
+    assert mlb.season_phase(season, date(2026, 9, 27), []) == "regular"
+    assert mlb.season_phase(season, date(2026, 10, 14), []) == "postseason"
+    assert mlb.season_phase(season, date(2026, 11, 20), []) == "offseason"
+    assert mlb.season_phase({}, date(2026, 10, 14), [{"type": "L"}]) == "postseason"  # no dates: today's games
+
+
+def _post(pk, away, home, a, h, gtype="D", n=5, start="2026-10-0"):
+    return mlb.game_info(_game(pk, away, home, "Final", start=f"{start}{pk}T00:00:00Z", a=a, h=h, gtype=gtype, n=n))
+
+
+def test_postseason_status():
+    assert mlb.postseason_status([], 109) == "missed"
+    wc = [_post(1, 109, 121, 3, 1, "F", 3), _post(2, 109, 121, 4, 2, "F", 3)]  # won the wild-card series 2-0
+    assert mlb.postseason_status(wc, 109) == "alive"
+    ds = wc + [_post(3, 119, 109, 5, 1), _post(4, 119, 109, 2, 6), _post(5, 109, 119, 1, 3), _post(6, 109, 119, 0, 4)]
+    assert mlb.postseason_status(ds, 109) == "out"  # lost the division series 1-3
+    assert mlb.postseason_status(ds[:5], 109) == "alive"  # 1-2, still going
+
+
+def test_division_rooting_when_out():
+    games = [mlb.game_info(g) for g in (
+        _game(1, 119, 143, gtype="L"),  # Dodgers (our division) vs Phillies: root for the Dodgers
+        _game(2, 158, 135, gtype="L"),  # Brewers at Padres: root for the Padres
+        _game(3, 147, 117, gtype="L"),  # no NL West team
+        _game(4, 109, 119, gtype="L"),  # our own game: never root for the other side
+    )]
+    r = {x["pk"]: x for x in mlb.division_rooting(games, 109)}
+    assert set(r) == {1, 2} and r[1]["root_for"] == 119 and r[2]["root_for"] == 135
+    assert "NL West" in r[1]["reason"] and "look better" in r[1]["reason"]
+
+
+async def test_team_page_after_we_are_out(hass, ws, aioclient_mock):
+    from homeassistant.util import dt as dt_util
+    today = dt_util.now().date()
+    # One mock for every schedule call: our lost series, plus today's LCS game Dodgers vs Phillies.
+    done = [_game(1, 109, 119, "Final", a=1, h=5, gtype="D", n=5, start=f"{today - timedelta(days=9)}T00:00:00Z"),
+            _game(2, 109, 119, "Final", a=0, h=3, gtype="D", n=5, start=f"{today - timedelta(days=8)}T00:00:00Z"),
+            _game(3, 119, 109, "Final", a=4, h=2, gtype="D", n=5, start=f"{today - timedelta(days=6)}T00:00:00Z"),
+            _game(4, 119, 143, gtype="L", start=f"{today}T23:00:00Z")]
+    aioclient_mock.get(SCHEDULE, json={"dates": [{"games": done}]})
+    aioclient_mock.get(STANDINGS, json={"records": _records()})
+    aioclient_mock.get(SEASONS, json={"seasons": [{"regularSeasonEndDate": str(today - timedelta(days=15)),
+                                                   "postSeasonEndDate": str(today + timedelta(days=20))}]})
+    team = await _call(ws, {"type": "skylight/mlb/team"})
+    assert team["phase"] == "postseason" and team["postseason"] == "out"
+    assert "root for NL West teams" in team["rooting_note"]
+    assert [(r["pk"], r["root_for"]) for r in team["rooting"]] == [(4, 119)]
