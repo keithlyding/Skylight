@@ -99,6 +99,17 @@ The API key stays on your HA server and is never sent to the tablet. Immich imag
 
 Lyding Strike's own photo screensaver runs inside the page, so Fully's screensaver is not needed.
 
+## Raspberry Pi + touch monitor (TouchKio)
+
+For a Pi 5 driving an HDMI touch monitor, [TouchKio](https://github.com/leukipp/touchkio) is a good kiosk: it runs the page full screen and, through MQTT, gives Home Assistant control of the display's power, brightness and an on-screen keyboard.
+
+1. Install TouchKio (its `install.sh`) and run `touchkio --setup`.
+2. `--web-url http://<your-ha-address>:8123/skylight` and log in as a dedicated non-admin HA user with *Keep me logged in*.
+3. `--web-zoom` sets the size of everything (TouchKio's default is 1.25). For a 22" 1080p screen seen from across a kitchen, try 1.25 to 1.5 and judge from where you normally stand.
+4. Try `--web-widget false` and `--web-pager false` if TouchKio's own side controls get in the way of the full-width layout.
+5. With MQTT set up, TouchKio's *display power* switch appears in Home Assistant: automate it (motion sensor, schedule) instead of using the in-page screensaver, or use both. Pick its brightness entity in Setup → Look & night mode to dim at night.
+6. The in-page **Keep this screen on** setting isn't needed on the Pi: TouchKio keeps the display on.
+
 You can also place Lyding Strike on any dashboard as a card (`type: custom:skylight-panel`). It is designed to fill the screen, so the sidebar panel works best.
 
 ## Setup PIN (keeps kids out of the setup)
