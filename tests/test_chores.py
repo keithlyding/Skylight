@@ -4,7 +4,6 @@ import importlib.util
 import pathlib
 from datetime import date
 
-from panel_js import ALL, HELPERS
 
 _spec = importlib.util.spec_from_file_location(
     "chores", pathlib.Path(__file__).parents[1] / "custom_components/skylight/chores.py"

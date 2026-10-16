@@ -243,3 +243,16 @@ async def test_backup_export_and_import(hass, entry, hass_ws_client, hass_client
     assert before["data"]["members"] == []
 
     assert (await _cmd(ws, {"type": "skylight/backup/import", "backup": {"hello": 1}}))["error"]["code"] == "invalid"
+
+
+def test_display_tokens_are_kept_plain():
+    """Avatars, icons, emoji and colors go straight into the page, so they can never be markup."""
+    from custom_components.skylight.store import clean_chores, clean_members, clean_occasions, safe_color, safe_token
+    bad = '<img src=x onerror="x()">'
+    assert safe_token(bad) == "img src=" and safe_token("🧑‍🚀") == "🧑‍🚀" and safe_token(None) == ""
+    assert safe_color("#A1b2C3", "#000") == "#A1b2C3" and safe_color("red; background:url(x)", "#000") == "#000"
+    m = clean_members([{"id": "a", "name": "A", "avatar": bad, "color": "javascript:alert(1)"}])[0]
+    assert "<" not in m["avatar"] and m["color"] == "#4a7dff"
+    assert clean_chores([{"id": "c", "icon": bad}])[0]["icon"] == safe_token(bad)
+    o = clean_occasions([{"id": "o", "title": "T", "month": 5, "day": 1, "emoji": bad}], set())[0]
+    assert "<" not in o["emoji"]

@@ -109,6 +109,17 @@ async def test_photo_upload_and_delete(hass: HomeAssistant, setup, hass_client, 
     bad = aiohttp.FormData()
     bad.add_field("file", b"x", filename="evil.exe")
     assert (await http.post("/api/skylight/photo", data=bad)).status == 400
+    # Too big: refused before it is stored (the limit is lowered for the test)
+    from custom_components.skylight import photos as photos_mod
+    monkey = photos_mod.MAX_UPLOAD
+    photos_mod.MAX_UPLOAD = 100
+    try:
+        big = aiohttp.FormData()
+        big.add_field("file", b"x" * 500, filename="big.jpg", content_type="image/jpeg")
+        assert (await http.post("/api/skylight/photo", data=big)).status == 413
+    finally:
+        photos_mod.MAX_UPLOAD = monkey
+    assert hass.data["skylight"]["store"].data["photos"] == [name]  # only the first upload was kept
 
     ws = await hass_ws_client(hass)
     await ws.send_json({"id": 1, "type": "skylight/photo/delete", "name": name})

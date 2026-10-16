@@ -1,7 +1,6 @@
 """Phase 5: birthdays, anniversaries and other yearly dates."""
 
 import json
-import pathlib
 import subprocess
 
 import pytest

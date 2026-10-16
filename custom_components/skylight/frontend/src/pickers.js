@@ -1,6 +1,6 @@
 /* Skylight panel: location lookup, time picker and emoji/icon pickers (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.49.4";
+import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.50.0";
 
 export class PickersView {
 
@@ -192,7 +192,7 @@ export class PickersView {
   // Big icon button + expandable grid of choices (used by chores).
   iconPicker(dlg, icons) {
     return `<div class="iconpick">
-      <button type="button" class="iconbtn" data-action="icon-open" title="Choose an icon">${dlg.icon}<small>▾</small></button>
+      <button type="button" class="iconbtn" data-action="icon-open" title="Choose an icon">${esc(dlg.icon)}<small>▾</small></button>
       ${dlg.iconOpen ? `<div class="icongrid">
         <input class="emojisearch" id="icon-q" data-fresh="1" autocomplete="off" placeholder="🔍 Search (mow, trash, dishes…)" data-emoji-search="icon">
         <div class="iconitems" id="icon-grid">${this._emojiButtons(icons, "icon")}</div></div>` : ""}

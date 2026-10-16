@@ -1,7 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.49.4";
-import { keepAwake } from "./wake.js?v=1.49.4";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.50.0";
+import { keepAwake } from "./wake.js?v=1.50.0";
 
 export class MealsView {
   async _loadMealie() {
@@ -67,26 +67,6 @@ export class MealsView {
     this.closeDialog();
   }
 
-  async openRecipe(id) {
-    let r;
-    try { r = await this._ws({ type: "skylight/mealie/recipe", recipe_id: id }); } catch (e) { return; }
-    const lists = [...(this.data.linked_todos || [])].filter((e) => this._hass.states[e]);
-    this._openDialog({
-      type: "recipe",
-      html: () => `
-        ${r.image ? `<img class="hero" src="${r.image}" alt="" onerror="this.remove()">` : ""}
-        <h2>${esc(r.name)}</h2>
-        ${r.total_time ? `<p class="hint">⏱ ${esc(r.total_time)}</p>` : ""}
-        ${r.description ? `<p>${esc(r.description)}</p>` : ""}
-        <h3>Ingredients</h3>
-        <div class="checklist ings">${r.ingredients.map((i) => `<label class="check"><input type="checkbox" class="ing-check" value="${esc(i)}"> ${esc(i)}</label>`).join("") || `<p class="hint">None listed</p>`}</div>
-        ${lists.length ? `<div class="additem"><select id="recipe-list">${lists.map((e) => `<option value="${e}">${esc(this.entityName(e))}</option>`).join("")}</select><button data-action="recipe-to-list">Add checked to list</button></div>`
-          : `<p class="hint">Link a shopping list in Setup to send ingredients to it.</p>`}
-        <h3>Steps</h3>
-        <ol class="steps">${r.instructions.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
-        <div class="actions"><span class="spacer"></span><button class="primary" data-action="close">Close</button></div>`,
-    });
-  }
 
   // ---------- Mealie: recipe browser ----------
   async _loadOrganizers() {

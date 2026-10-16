@@ -1,7 +1,6 @@
 """Phase 6: night hours (scheduled and sunset-to-sunrise), brightness, theme presets."""
 
 import json
-import pathlib
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone

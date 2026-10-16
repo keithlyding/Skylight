@@ -1,11 +1,9 @@
 """Phase 3: adults and kids (role migration, chore picker filter, list owners)."""
 
 import json
-import pathlib
 import subprocess
 
 import pytest
-from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 

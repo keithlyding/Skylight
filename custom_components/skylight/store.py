@@ -6,6 +6,7 @@ import asyncio
 import copy
 import json
 import logging
+import re
 import secrets
 from datetime import datetime, timezone
 from datetime import date
@@ -84,11 +85,27 @@ def clean_date(value: Any) -> dict[str, int] | None:
     return {"month": month, "day": day, **({"year": year} if year is not None else {})}
 
 
+_COLOR = re.compile(r"^#[0-9a-fA-F]{3,8}$")
+
+
+def safe_token(value: Any, limit: int = 8) -> str:
+    """A short display token (emoji avatar, chore icon): never HTML, never long. These are put straight
+    into the page, unlike titles, so anything that could be markup is dropped here."""
+    return re.sub(r"[<>&\"'`\\]", "", str(value or ""))[:limit]
+
+
+def safe_color(value: Any, default: str) -> str:
+    v = str(value or "").strip()
+    return v if _COLOR.match(v) else default
+
+
 def clean_members(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Every member gets a valid role (new members default to adult) and a valid or no birthday."""
+    """Every member gets a valid role (new members default to adult), a valid or no birthday, and a
+    plain avatar and color."""
     out = []
     for m in members:
-        m = {**m, "role": m.get("role") if m.get("role") in ROLES else "adult"}
+        m = {**m, "role": m.get("role") if m.get("role") in ROLES else "adult",
+             "avatar": safe_token(m.get("avatar")) or "🙂", "color": safe_color(m.get("color"), "#4a7dff")}
         bday = clean_date(m.get("birthday"))
         if bday:
             m["birthday"] = bday
@@ -111,9 +128,22 @@ def clean_occasions(occasions: list[Any], member_ids: set[str]) -> list[dict[str
         members = [m for m in o.get("members") or [] if m in member_ids]
         if members:
             rec["members"] = members
-        if o.get("emoji"):
-            rec["emoji"] = str(o["emoji"])[:8]
+        if safe_token(o.get("emoji")):
+            rec["emoji"] = safe_token(o["emoji"])
         out.append(rec)
+    return out
+
+
+def clean_chores(chores: list[Any]) -> list[dict[str, Any]]:
+    """Chore icons are shown as-is, so keep them plain."""
+    out = []
+    for c in chores:
+        if not isinstance(c, dict):
+            continue
+        c = dict(c)
+        if "icon" in c:
+            c["icon"] = safe_token(c["icon"])
+        out.append(c)
     return out
 
 
@@ -220,6 +250,7 @@ class SkylightStore:
                     new[key] = data[key]
             new["settings"] = {**DEFAULT_DATA["settings"], **(data.get("settings") or {})}
             new["members"] = clean_members(new["members"])
+            new["chores"] = clean_chores(new["chores"])
             new["lists"] = clean_list_owners(new["lists"], adult_ids(new))
             new["occasions"] = clean_occasions(new["occasions"], {m["id"] for m in new["members"]})
             new["photos"] = [p for p in new["photos"] if p in keep_photos]  # only files that are really here
@@ -255,8 +286,16 @@ class SkylightStore:
                 value = {**self.data["settings"], **value}
                 if "app_name" in value:
                     value["app_name"] = app_name({"settings": value})
+                if "family_color" in value:
+                    value["family_color"] = safe_color(value["family_color"], "#ff9f43")
+            elif key == "info_calendars":
+                value = [{**c, **({"color": safe_color(c.get("color"), "#8e9aaf")} if "color" in c else {}),
+                          **({"icon": safe_token(c.get("icon")) or "📌"} if "icon" in c else {})}
+                         for c in value if isinstance(c, dict)]
             elif key == "members":
                 value = clean_members(value)
+            elif key == "chores":
+                value = clean_chores(value)
             elif key == "lists":
                 value = clean_list_owners(value, adult_ids(self.data))
             elif key == "occasions":

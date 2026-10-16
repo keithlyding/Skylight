@@ -137,9 +137,6 @@ async def async_assets(hass: HomeAssistant, cfg: dict[str, Any]) -> list[dict[st
     return assets
 
 
-async def async_asset_ids(hass: HomeAssistant, cfg: dict[str, Any]) -> list[str]:
-    return [a["id"] for a in await async_assets(hass, cfg)]
-
 
 def invalidate(hass: HomeAssistant) -> None:
     hass.data.pop(CACHE_KEY, None)
@@ -158,9 +155,6 @@ async def async_signed_items(hass: HomeAssistant, store, refresh_token_id: str |
         for a in await async_assets(hass, cfg)
     ]
 
-
-async def async_signed_urls(hass: HomeAssistant, store, refresh_token_id: str | None) -> list[str]:
-    return [i["url"] for i in await async_signed_items(hass, store, refresh_token_id)]
 
 
 class SkylightImmichView(HomeAssistantView):

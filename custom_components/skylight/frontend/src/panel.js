@@ -1,21 +1,21 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.49.4";
-import { STYLES } from "./styles.js?v=1.49.4";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.49.4";
-import { CalendarView } from "./calendar.js?v=1.49.4";
-import { WeatherView } from "./weather.js?v=1.49.4";
-import { HomeView } from "./home.js?v=1.49.4";
-import { ChoresView } from "./chores.js?v=1.49.4";
-import { MealsView } from "./meals.js?v=1.49.4";
-import { ListsView } from "./lists.js?v=1.49.4";
-import { PhotosView } from "./photos.js?v=1.49.4";
-import { SettingsView } from "./settings.js?v=1.49.4";
-import { PickersView } from "./pickers.js?v=1.49.4";
-import { keepAwake } from "./wake.js?v=1.49.4";
-import { MlbView } from "./mlb.js?v=1.49.4";
-import { TravelView } from "./travel.js?v=1.49.4";
-import { NotesView } from "./notes.js?v=1.49.4";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.50.0";
+import { STYLES } from "./styles.js?v=1.50.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.50.0";
+import { CalendarView } from "./calendar.js?v=1.50.0";
+import { WeatherView } from "./weather.js?v=1.50.0";
+import { HomeView } from "./home.js?v=1.50.0";
+import { ChoresView } from "./chores.js?v=1.50.0";
+import { MealsView } from "./meals.js?v=1.50.0";
+import { ListsView } from "./lists.js?v=1.50.0";
+import { PhotosView } from "./photos.js?v=1.50.0";
+import { SettingsView } from "./settings.js?v=1.50.0";
+import { PickersView } from "./pickers.js?v=1.50.0";
+import { keepAwake } from "./wake.js?v=1.50.0";
+import { MlbView } from "./mlb.js?v=1.50.0";
+import { TravelView } from "./travel.js?v=1.50.0";
+import { NotesView } from "./notes.js?v=1.50.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -223,6 +223,17 @@ export class SkylightPanel extends HTMLElement {
 
   _onData(data) {
     const firstLoad = !this.data;
+    // Avatars, icons and colors go straight into the page (not through esc), so keep them plain.
+    const token = (v, d = "") => String(v ?? "").replace(/[<>&"'`\\]/g, "").slice(0, 8) || d;
+    const color = (v, d) => (/^#[0-9a-f]{3,8}$/i.test(String(v || "").trim()) ? String(v).trim() : d);
+    for (const m of data.members || []) { m.avatar = token(m.avatar, "🙂"); m.color = color(m.color, "#4a7dff"); }
+    for (const c of data.chores || []) if (c.icon !== undefined) c.icon = token(c.icon);
+    for (const o of data.occasions || []) if (o.emoji !== undefined) o.emoji = token(o.emoji);
+    for (const l of data.lists || []) l.color = color(l.color, "#4a7dff");
+    for (const c of Object.values(data.countdowns || {})) if (c.emoji !== undefined) c.emoji = token(c.emoji);
+    for (const n of data.notes || []) n.color = color(n.color, "#fff3a8");
+    if (data.settings) data.settings.family_color = color(data.settings.family_color, "#ff9f43");
+    for (const c of data.settings?.info_calendars || data.info_calendars || []) { if (c && typeof c === "object") { if (c.color !== undefined) c.color = color(c.color, "#8e9aaf"); if (c.icon !== undefined) c.icon = token(c.icon, "📌"); } }
     this.data = data;
     this._dataRev = (this._dataRev || 0) + 1; // chores may have changed: ask Home Assistant again
     diag("data");

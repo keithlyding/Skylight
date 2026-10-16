@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from panel_js import ALL, HELPERS
+from panel_js import HELPERS
 
 DOMAIN = "skylight"
 
@@ -69,7 +69,6 @@ async def test_move_up_down_and_bounds(hass, entry, hass_ws_client, hass_storage
 
 def test_done_items_in_completion_order():
     import json
-    import pathlib
     import subprocess
     helpers = HELPERS
     items = [{"id": "x", "done": True, "done_at": "2026-09-29T10:00:00Z"}, {"id": "a"},
@@ -132,7 +131,7 @@ async def test_list_save_and_delete_keep_items(hass, entry, hass_ws_client):
     assert new["name"] == "Honey-do" and new["owner"] == "dad" and "items" not in new
     await _cmd(ws, {"type": "skylight/list/item/add", "list_id": new["id"], "text": "Fix fence"})
     # renaming (from a screen that never saw the new item) keeps the items; a kid can't own it
-    r = await _cmd(ws, {"type": "skylight/list/save", "list_id": new["id"], "name": "Chores for Dad", "owner": "kid"})
+    await _cmd(ws, {"type": "skylight/list/save", "list_id": new["id"], "name": "Chores for Dad", "owner": "kid"})
     lst = next(l for l in store.data["lists"] if l["id"] == new["id"])
     assert lst["name"] == "Chores for Dad" and "owner" not in lst and [i["text"] for i in lst["items"]] == ["Fix fence"]
     assert (await _cmd(ws, {"type": "skylight/list/delete", "list_id": new["id"]}))["success"]

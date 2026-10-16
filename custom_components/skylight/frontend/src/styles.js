@@ -78,8 +78,6 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .center { text-align:center; }
 /* week */
 .week { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:10px; min-height:calc(100vh - 190px); }
-.col { background:var(--card); border-radius:var(--radius); padding:10px 8px; display:flex; flex-direction:column; gap:6px; box-shadow:0 2px 10px rgba(60,50,30,.06); }
-.col.today { outline:3px solid var(--accent); }
 .dh { display:flex; align-items:baseline; gap:6px; padding:0 4px 6px; border-bottom:1px solid var(--line); cursor:pointer; flex-wrap:wrap; }
 .dh .dn { color:var(--muted); font-weight:700; text-transform:uppercase; font-size:13px; }
 .dh .dd { font-size:26px; font-weight:800; }
@@ -122,7 +120,6 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .tg-adbg { border-left:1px solid var(--line); margin:-4px 0; }
 .tg-adbar { min-width:0; padding:0 4px; z-index:1; display:flex; }
 .tg-adbar .ev { flex:1; min-width:0; }
-.tg-adcell { display:flex; flex-direction:column; gap:3px; padding:4px; border-left:1px solid var(--line); min-width:0; max-height:96px; overflow-y:auto; }
 .tg-scroll { overflow-y:auto; flex:1; min-height:0; }
 .tg-body { position:relative; display:grid; grid-template-columns:56px 1fr; }
 .tg-hours { position:relative; }
@@ -150,9 +147,6 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .hometool { margin-top:0; }
 .home.wide { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
 /* day (legacy) */
-.alldays { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-.alldays .ev { width:auto; }
-.timeline { position:relative; background:var(--card); border-radius:var(--radius); margin-left:0; }
 .hr { position:absolute; left:0; right:0; height:64px; border-top:1px solid var(--line); cursor:pointer; }
 .hr span { position:absolute; left:10px; top:4px; font-size:12px; color:var(--muted); }
 .block { position:absolute; left:90px; right:14px; display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; background:color-mix(in srgb, var(--c) 22%, var(--card)); border-left:6px solid var(--c); border-radius:12px; overflow:hidden; font-size:14px; }
@@ -339,8 +333,6 @@ label.check input { width:22px; height:22px; }
 .swatches:has(.emoji) { max-height:190px; overflow-y:auto; }
 .home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
 
-.three { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; height:100%; }
-.three .dn { font-size:15px; }
 .hside { display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
 .hcols { column-width:250px; column-gap:10px; }
@@ -396,7 +388,6 @@ label.check input { width:22px; height:22px; }
 .hagenda .schedule { gap:10px; }
 /* weather tab */
 .wxtab { display:flex; flex-direction:column; gap:14px; max-width:1200px; margin:0 auto; width:100%; }
-.wxgrid { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap:14px; }
 .wnow { display:flex; align-items:center; gap:22px; background:var(--card); border-radius:var(--radius); padding:18px 22px; flex-wrap:wrap; }
 .wbig { font-size:84px; line-height:1; }
 .wtemp { font-size:64px; font-weight:800; line-height:1; }
@@ -620,7 +611,6 @@ header, .rail { touch-action:pan-x; overscroll-behavior:contain; }
 .hhead { display:flex; align-items:center; gap:8px; }
 .hhead .hint { margin-left:auto; font-weight:700; }
 
-.hmeals { background:var(--card); border-radius:var(--radius); padding:12px 14px; }
 @media (max-width: 900px) { .home, .home.wide, .three { grid-template-columns:1fr; } .tg-dh .wx { display:none; } }
 .emoji.sel { outline:3px solid var(--accent); }
 .avatar-preview { width:80px; height:80px; border-radius:50%; display:grid; place-items:center; font-size:44px; margin:4px auto 0; }

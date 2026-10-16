@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.49.4";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.50.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -91,7 +91,7 @@ export class CalendarView {
     const results = await Promise.all(cals.map(async (entity) => {
       try {
         const evs = await this._hass.callApi("GET", `calendars/${entity}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
-        return evs.map((ev) => this._normalizeEvent(ev, entity));
+        return evs.map((ev) => this._normalizeEvent(ev, entity)).filter(Boolean);
       } catch (e) { console.warn("Skylight: failed to load", entity, e); return []; }
     }));
     if (key !== this._eventsKey) return; // a newer request superseded this one
@@ -127,9 +127,13 @@ export class CalendarView {
   }
 
   _normalizeEvent(ev, entity) {
+    // One odd event (no end, no start, unreadable dates) must not hide the whole calendar.
+    if (!ev || !ev.start || (!ev.start.date && !ev.start.dateTime)) return null;
     const allDay = !!ev.start.date;
     const start = allDay ? parseYmd(ev.start.date) : new Date(ev.start.dateTime);
-    const end = allDay ? parseYmd(ev.end.date) : new Date(ev.end.dateTime);
+    if (Number.isNaN(+start)) return null;
+    let end = allDay ? (ev.end?.date ? parseYmd(ev.end.date) : addDays(start, 1)) : new Date(ev.end?.dateTime || NaN);
+    if (Number.isNaN(+end) || end < start) end = allDay ? addDays(start, 1) : new Date(start.getTime() + 3600000);
     const raw = ev.summary || "(No title)";
     const info = this.infoCal(entity);
     if (info) {
@@ -647,11 +651,6 @@ export class CalendarView {
     return d.toLocaleDateString([], { weekday: n >= 5 ? "short" : "long" });
   }
 
-  renderWeek() {
-    const [st] = this._range();
-    return this.renderTimeGrid([...Array(7)].map((_, i) => addDays(st, i)));
-  }
-
   renderMonth() {
     const [s] = this._range();
     const month = this.ui.anchor.getMonth();
@@ -668,8 +667,6 @@ export class CalendarView {
     }).join("");
     return `<div class="month"><div class="mh">${heads.map((h) => `<div>${h}</div>`).join("")}</div><div class="mg">${cells}</div></div>`;
   }
-
-  renderDay() { return this.renderTimeGrid([this.ui.anchor]); }
 
   // All-day row: an event that covers several days on screen is one bar across them (like Google Calendar),
   // not a copy in each day. Bars are stacked in rows so overlapping ones don't collide.
@@ -731,7 +728,10 @@ export class CalendarView {
       }
       flush();
       const blocks = timed.map(({ e, s, en, lane, lanes, span }) => {
-        const startH = (s - ds) / 3600000, dur = (en - s) / 3600000;
+        // Clock hours, not elapsed hours: on the day clocks change, 7:00 is still drawn at 7.
+        const clockH = (t) => { const x = new Date(t); return x.getHours() + x.getMinutes() / 60 + x.getSeconds() / 3600; };
+        const startH = s > ds ? clockH(s) : 0, endH = en < de ? clockH(en) : 24;
+        const dur = Math.max(endH - startH, 0);
         const w = 100 / lanes;
         const short = dur < 0.8;
         const when = this._evWhen(e);
@@ -776,7 +776,7 @@ export class CalendarView {
     const lists = await Promise.all(this.shownCalendars().map(async (entity) => {
       try {
         const evs = await this._hass.callApi("GET", `calendars/${entity}?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
-        return evs.map((ev) => this._normalizeEvent(ev, entity));
+        return evs.map((ev) => this._normalizeEvent(ev, entity)).filter(Boolean);
       } catch (e) { return []; }
     }));
     const events = this._mergeShared(lists.flat()).sort((a, b) => a.start - b.start);

@@ -23,6 +23,9 @@ ALLOWED = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic"}
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]+\.[a-z]+$")
 
 
+MAX_UPLOAD = 25 * 1024 * 1024  # a phone photo is 2-8 MB; this keeps one upload from filling memory or disk
+
+
 def photo_dir(hass: HomeAssistant) -> pathlib.Path:
     return pathlib.Path(hass.config.path(PHOTO_DIR))
 
@@ -45,9 +48,13 @@ class SkylightPhotoUploadView(HomeAssistantView):
         ext = pathlib.Path(field.filename or "").suffix.lower()
         if ext not in ALLOWED:
             return self.json_message(f"Unsupported file type {ext}", 400)
+        if (request.content_length or 0) > MAX_UPLOAD:
+            return self.json_message(f"Photo is too big (over {MAX_UPLOAD // 1048576} MB)", 413)
         content = bytearray()
         while chunk := await field.read_chunk():
             content.extend(chunk)
+            if len(content) > MAX_UPLOAD:
+                return self.json_message(f"Photo is too big (over {MAX_UPLOAD // 1048576} MB)", 413)
         name = secrets.token_hex(12) + ext
         target = photo_dir(hass) / name
         await hass.async_add_executor_job(_write, target, bytes(content))

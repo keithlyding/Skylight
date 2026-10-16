@@ -1127,6 +1127,34 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async hardening(browser, base) {
+    // Odd calendar data and hostile text must never hide a calendar or run as HTML.
+    const p = await open(browser, base, { at: "2026-10-31T20:00:00", ctx: { timezoneId: "America/Denver" } });
+    const BAD = `<img src=x onerror="window.XSS=1">`;
+    await p.evaluate((BAD) => {
+      window.EVS["calendar.family"].push(
+        { summary: "No end", start: { dateTime: "2026-10-31T21:00:00-06:00" }, uid: "ne" },
+        { summary: "No start", end: { dateTime: "2026-10-31T22:00:00-06:00" }, uid: "ns" },
+        { summary: "Garbage", start: { dateTime: "garbage" }, end: { dateTime: "garbage" }, uid: "gb" },
+        { summary: "Early run", start: { dateTime: "2026-11-01T07:00:00-07:00" }, end: { dateTime: "2026-11-01T08:00:00-07:00" }, uid: "er" });
+      D.members[0].avatar = BAD; D.members[0].color = "red\"onclick=\"window.XSS=1";
+      D.chores[0].icon = BAD; D.settings.family_color = BAD;
+      push(); el._eventsKey = ""; el._loadEvents();
+    }, BAD);
+    await wait(p, 1500);
+    const vis = await p.evaluate(() => el.visibleEvents().map((e) => e.summary));
+    check(vis.includes("Vacation") && vis.includes("No end") && !vis.includes("No start") && !vis.includes("Garbage"), `odd events handled, calendar still shown: ${JSON.stringify(vis.filter((s) => /Vacation|No |Garbage/.test(s)))}`);
+    check(await p.evaluate(() => el.visibleEvents().find((e) => e.uid === "ne").end - el.visibleEvents().find((e) => e.uid === "ne").start === 3600000), "an event with no end lasts an hour");
+    // The morning after clocks go back, 7:00 is drawn at 7, not 8.
+    await p.evaluate(() => { el.ui.tab = "calendar"; el.ui.view = "day"; el.ui.anchor = new Date(2026, 10, 1); el.render(); });
+    const top = await p.evaluate(() => [...el.shadowRoot.querySelectorAll(".tg-ev")].find((x) => x.textContent.includes("Early run"))?.style.top);
+    eq(top, "calc(var(--h) * 7.000)", "event position on the day clocks change");
+    for (const t of ["home", "chores", "settings"]) { await p.evaluate((t) => { el.ui.tab = t; el.render(); }, t); await wait(p, 100); }
+    eq(await p.evaluate(() => window.XSS), undefined, "avatar/icon/color text never runs");
+    eq(await p.evaluate(() => [el.members[0].avatar, el.members[0].color, el.settings.family_color]), ["img src=", "#4a7dff", "#ff9f43"], "display tokens cleaned on arrival");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);
