@@ -338,13 +338,13 @@ label.check input { width:22px; height:22px; }
 .hcols { column-width:250px; column-gap:10px; }
 .board { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
 .board .uhead { display:flex; align-items:center; justify-content:space-between; }
-.boardadd { padding:4px 10px; }
+.boardadd { padding:6px 14px; min-height:40px; }
 .notes { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; margin-top:6px; }
-.note { position:relative; background:var(--nc); color:#2b2b2b; border-radius:6px; padding:10px 26px 8px 10px; box-shadow:0 2px 5px rgba(0,0,0,.15); transform:rotate(-.6deg); }
+.note { position:relative; background:var(--nc); color:#2b2b2b; border-radius:6px; padding:10px 36px 8px 10px; box-shadow:0 2px 5px rgba(0,0,0,.15); transform:rotate(-.6deg); }
 .note:nth-child(even) { transform:rotate(.7deg); }
 .note p { margin:0 0 6px; white-space:pre-wrap; overflow-wrap:anywhere; font-weight:600; }
 .note small { color:#555; display:flex; align-items:center; gap:4px; }
-.notex { position:absolute; top:2px; right:2px; background:none; box-shadow:none; border:0; color:#666; padding:4px 6px; min-height:0; }
+.notex { position:absolute; top:0; right:0; background:none; box-shadow:none; border:0; color:#666; padding:8px 10px; min-height:40px; min-width:40px; }
 .seg.wrap { flex-wrap:wrap; }
 .swatches { display:flex; gap:8px; } .swatch { width:34px; height:34px; border-radius:50%; border:2px solid transparent; padding:0; min-height:0; }
 .swatch.on { border-color:var(--ink, #222); }

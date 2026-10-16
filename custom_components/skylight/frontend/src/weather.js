@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.50.0";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.50.1";
 
 export class WeatherView {
 
@@ -235,7 +235,7 @@ export class WeatherView {
     const today = hours.filter((h) => h.t <= end);
     const n = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
     const alerts = (this.alerts?.alerts || []).filter((a) => this._alertShown(a));
-    if (alerts.length) out.push({ icon: "⚠️", text: `${alerts[0].event} in effect`, level: "h-alert" });
+    if (alerts.length) out.push({ icon: "⚠️", text: `${esc(alerts[0].event)} in effect`, level: "h-alert" });
     // Always a short summary of the day, so the card never goes blank on an ordinary day.
     const summary = this._daySummary(now);
     if (summary) out.push(summary);
@@ -287,7 +287,7 @@ export class WeatherView {
     if (aqi !== null && aqi > 150) out.push({ icon: "😷", text: `Unhealthy air (AQI ${aqi}). Keep outdoor play short` });
     else if (aqi !== null && aqi > 100) out.push({ icon: "😷", text: `Air quality is poor for sensitive groups (AQI ${aqi})` });
     const high = this._pollenToday().filter((p) => p.level >= 4);
-    if (high.length) out.push({ icon: "🤧", text: `${high.map((p) => p.name).join(" & ")} pollen ${high.some((p) => p.level >= 5) ? "very high" : "high"} today` });
+    if (high.length) out.push({ icon: "🤧", text: `${esc(high.map((p) => p.name).join(" & "))} pollen ${high.some((p) => p.level >= 5) ? "very high" : "high"} today` });
     // Big change from yesterday
     const days = this.wxx?.forecast?.days || [];
     const yi = days.findIndex((d) => d.date === ymd(now)) - 1;
