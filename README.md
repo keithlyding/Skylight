@@ -110,6 +110,20 @@ For a Pi 5 driving an HDMI touch monitor, [TouchKio](https://github.com/leukipp/
 5. With MQTT set up, TouchKio's *display power* switch appears in Home Assistant: automate it (motion sensor, schedule) instead of using the in-page screensaver, or use both. Pick its brightness entity in Setup → Look & night mode to dim at night.
 6. The in-page **Keep this screen on** setting isn't needed on the Pi: TouchKio keeps the display on.
 
+### Monitor brightness from Home Assistant (DDC/CI)
+
+HDMI monitors don't expose a backlight to the OS, but most accept brightness commands over DDC/CI. Check from the Pi: `sudo apt install -y ddcutil && sudo ddcutil detect && sudo ddcutil getvcp 10`. If that prints a current value, `tools/pi/ddc_brightness.py` turns it into a Home Assistant brightness slider over MQTT (the same Mosquitto broker TouchKio uses):
+
+```
+sudo apt install -y ddcutil python3-paho-mqtt
+sudo cp ddc_brightness.py /usr/local/bin/ && sudo chmod +x /usr/local/bin/ddc_brightness.py
+sudo cp ddc-brightness.service /etc/systemd/system/
+sudo systemctl edit ddc-brightness      # add Environment=MQTT_HOST=…, MQTT_USER=…, MQTT_PASSWORD=…
+sudo systemctl enable --now ddc-brightness
+```
+
+A `number.<hostname>_brightness` entity appears under Settings → Devices & services → MQTT. Pick it in Lyding Strike → Setup → Look & night mode as the screen brightness entity, and the display dims at night and brightens in the morning. Changes made with the monitor's own buttons show up within a minute.
+
 You can also place Lyding Strike on any dashboard as a card (`type: custom:skylight-panel`). It is designed to fill the screen, so the sidebar panel works best.
 
 ## Setup PIN (keeps kids out of the setup)

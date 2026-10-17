@@ -1,0 +1,20 @@
+[Unit]
+Description=Monitor brightness over DDC/CI for Home Assistant (MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Set the broker details with: sudo systemctl edit ddc-brightness
+#   [Service]
+#   Environment=MQTT_HOST=192.168.1.50
+#   Environment=MQTT_USER=mqtt
+#   Environment=MQTT_PASSWORD=secret
+#   Environment=DEVICE_NAME=Kitchen screen
+Environment=MQTT_PORT=1883
+ExecStart=/usr/bin/python3 /usr/local/bin/ddc_brightness.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
