@@ -1158,6 +1158,29 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async forecast_once(browser, base) {
+    // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
+    const p = await open(browser, base);
+    await p.evaluate(() => {
+      window.ASKED = []; const orig = window.hass.callWS;
+      window.hass.callWS = async (m) => {
+        if (m.type === "call_service" && m.domain === "weather") {
+          window.ASKED.push(m.service_data.type);
+          if (m.service_data.type === "twice_daily") throw new Error("Weather entity 'weather.home' does not support 'twice_daily' forecast");
+          const d = new Date(); d.setHours(12, 0, 0, 0);
+          return { response: { [m.target.entity_id]: { forecast: [{ datetime: d.toISOString(), condition: "sunny", temperature: 70, templow: 50 }] } } };
+        }
+        return orig(m);
+      };
+      el.wx = null; el._noForecast = null;
+    });
+    for (let i = 0; i < 3; i++) { await p.evaluate(() => { el._loadWeatherFull(true); el._loadForecast(); }); await p.waitForTimeout(300); }
+    const asked = await p.evaluate(() => window.ASKED.filter((t) => t === "twice_daily").length);
+    eq(asked, 1, "twice_daily asked once");
+    check((await p.evaluate(() => window.ASKED.filter((t) => t === "daily").length)) >= 3, "daily still refreshed");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);

@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.50.2";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.50.3";
 
 export class WeatherView {
 
@@ -366,13 +366,7 @@ export class WeatherView {
     if (!force && this.wx && Date.now() - this.wx.at < 15 * 60000) return;
     if (this._wxLoading) return;
     this._wxLoading = true;
-    const get = async (type) => {
-      try {
-        const res = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts",
-          service_data: { type }, target: { entity_id: w }, return_response: true });
-        return res?.response?.[w]?.forecast || [];
-      } catch (e) { return null; } // provider doesn't offer this forecast type
-    };
+    const get = (type) => this._forecastType(w, type);
     const [daily0, hourly, twice] = await Promise.all([get("daily"), get("hourly"), get("twice_daily")]);
     // Some providers (e.g. US NWS) only offer day/night periods: build days from them.
     let daily = daily0 && daily0.length ? daily0 : null;
@@ -403,6 +397,22 @@ export class WeatherView {
     this.forecast = forecast;
   }
 
+  // One forecast type (daily / hourly / twice_daily) from a weather entity, or null if it doesn't offer
+  // it. A "doesn't support" answer is remembered, so the Home Assistant log isn't told again every refresh.
+  async _forecastType(entity, type) {
+    const key = `${entity}|${type}`;
+    this._noForecast = this._noForecast || new Set();
+    if (this._noForecast.has(key)) return null;
+    try {
+      const res = await this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts",
+        service_data: { type }, target: { entity_id: entity }, return_response: true });
+      return res?.response?.[entity]?.forecast || [];
+    } catch (e) {
+      if (/does not support/i.test(e?.message || "")) this._noForecast.add(key);
+      return null;
+    }
+  }
+
   async _loadForecast() {
     if (this.wxWhere === "here") {
       const h = await this._loadHere();
@@ -411,15 +421,7 @@ export class WeatherView {
     }
     const w = this.settings.weather_entity;
     if (!w || !this._hass.states[w]) return;
-    const get = async (type) => {
-      try {
-        const res = await this._hass.callWS({
-          type: "call_service", domain: "weather", service: "get_forecasts",
-          service_data: { type }, target: { entity_id: w }, return_response: true,
-        });
-        return res?.response?.[w]?.forecast || [];
-      } catch (e) { return null; } // this weather source doesn't offer that forecast type
-    };
+    const get = (type) => this._forecastType(w, type);
     // Day headers show each day's condition and high. Sources like the US NWS have no daily
     // forecast, only day/night periods: use the daytime period (or the night one if that's all).
     let list = await get("daily");
