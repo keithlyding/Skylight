@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.50.3";
-import { diagPrevious, diagText } from "./diag.js?v=1.50.3";
-import { MLB_TEAMS } from "./mlb.js?v=1.50.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.51.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.51.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.51.0";
 
 export class SettingsView {
 
@@ -125,6 +125,8 @@ export class SettingsView {
         <label class="inline">Screen brightness entity <select data-change="setting" data-key="brightness_entity"><option value="">None (dim with an overlay)</option>${bright.map((e) => `<option value="${e}" ${e === s.brightness_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
         <div class="row"><label class="inline">Day brightness % <input type="number" min="1" max="100" value="${Number(s.day_brightness ?? 80)}" data-change="setting" data-key="day_brightness" data-num="1"></label>
           <label class="inline">Night brightness % <input type="number" min="1" max="100" value="${Number(s.night_brightness ?? 20)}" data-change="setting" data-key="night_brightness" data-num="1"></label></div>
+        ${s.brightness_entity ? `<label class="inline">Also darken the picture at night by <span><input type="number" min="0" max="85" value="${Number(s.night_overlay ?? 0)}" data-change="setting" data-key="night_overlay" data-num="1"> %</span></label>
+        <p class="hint">Most monitors still glow at their lowest backlight setting; darkening the picture on top gets the screen properly dim. 0 = off.</p>` : ""}
         <p class="hint">${s.brightness_entity
           ? "Home Assistant sets this entity to the day or night level when night starts and ends (a manual change stays until the next switch). With Fully Kiosk Browser, use its integration's “Screen brightness” entity."
           : "No brightness entity: ${this.appName} darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}

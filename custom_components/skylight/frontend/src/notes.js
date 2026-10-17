@@ -4,7 +4,7 @@
    disappear after today, tomorrow or a week, or stay. Countdowns: "Show countdown" in the event
    editor adds the event to the Upcoming card ("⏳ Disney trip · 23 days"). Stored by notes.py. */
 
-import { startOfDay, pad, uid, esc } from "./helpers.js?v=1.50.3";
+import { startOfDay, pad, uid, esc } from "./helpers.js?v=1.51.0";
 
 export const NOTE_COLORS = ["#fff3a8", "#ffd1dc", "#c8f0d0", "#cfe3ff", "#ffe0b8", "#e6d6ff"];
 const EXPIRY = [["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "A week"], ["never", "Until removed"]];

@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.50.3"
+VERSION = "1.51.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -106,6 +106,7 @@ DEFAULT_DATA = {
         "brightness_entity": None,  # e.g. number.<tablet>_screen_brightness (Fully Kiosk)
         "day_brightness": 80,
         "night_brightness": 20,
+        "night_overlay": 0,  # with a brightness entity: also darken the picture this much (%) at night
         # Hide Home Assistant's own sidebar/header for non-admin users (e.g. the kitchen tablet).
         "hide_ha_sidebar": True,
     },

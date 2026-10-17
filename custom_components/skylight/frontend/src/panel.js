@@ -1,21 +1,21 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.50.3";
-import { STYLES } from "./styles.js?v=1.50.3";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.50.3";
-import { CalendarView } from "./calendar.js?v=1.50.3";
-import { WeatherView } from "./weather.js?v=1.50.3";
-import { HomeView } from "./home.js?v=1.50.3";
-import { ChoresView } from "./chores.js?v=1.50.3";
-import { MealsView } from "./meals.js?v=1.50.3";
-import { ListsView } from "./lists.js?v=1.50.3";
-import { PhotosView } from "./photos.js?v=1.50.3";
-import { SettingsView } from "./settings.js?v=1.50.3";
-import { PickersView } from "./pickers.js?v=1.50.3";
-import { keepAwake } from "./wake.js?v=1.50.3";
-import { MlbView } from "./mlb.js?v=1.50.3";
-import { TravelView } from "./travel.js?v=1.50.3";
-import { NotesView } from "./notes.js?v=1.50.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.51.0";
+import { STYLES } from "./styles.js?v=1.51.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.51.0";
+import { CalendarView } from "./calendar.js?v=1.51.0";
+import { WeatherView } from "./weather.js?v=1.51.0";
+import { HomeView } from "./home.js?v=1.51.0";
+import { ChoresView } from "./chores.js?v=1.51.0";
+import { MealsView } from "./meals.js?v=1.51.0";
+import { ListsView } from "./lists.js?v=1.51.0";
+import { PhotosView } from "./photos.js?v=1.51.0";
+import { SettingsView } from "./settings.js?v=1.51.0";
+import { PickersView } from "./pickers.js?v=1.51.0";
+import { keepAwake } from "./wake.js?v=1.51.0";
+import { MlbView } from "./mlb.js?v=1.51.0";
+import { TravelView } from "./travel.js?v=1.51.0";
+import { NotesView } from "./notes.js?v=1.51.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1123,9 +1123,11 @@ export class SkylightPanel extends HTMLElement {
     if (this.dataset.scheme !== (dark ? "dark" : "light")) this.dataset.scheme = dark ? "dark" : "light";
     const accent = s.seasonal ? seasonFor(now).accent : "";
     if (accent) this.style.setProperty("--accent", accent); else this.style.removeProperty("--accent");
-    // Without a brightness entity, dim pixels with an overlay at night (also over the photo screensaver).
-    const overlay = s.night_dim && !s.brightness_entity && night;
-    const level = Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
+    // At night, dim pixels with an overlay (also over the photo screensaver): without a brightness entity
+    // that's the only dimming; with one, only as much extra as "night_overlay" asks (a backlight at 0 still glows).
+    const extra = Math.min(85, Math.max(0, Number(s.night_overlay || 0)));
+    const overlay = s.night_dim && night && (!s.brightness_entity || extra > 0);
+    const level = s.brightness_entity ? extra / 100 : Math.min(0.85, Math.max(0, 1 - Number(s.night_brightness ?? 20) / 100));
     if (this.$dim) {
       this.$dim.classList.toggle("on", !!overlay);
       const op = overlay ? String(level) : "";

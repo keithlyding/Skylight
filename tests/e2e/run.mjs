@@ -1181,6 +1181,21 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async night_overlay_with_entity(browser, base) {
+    // A brightness entity alone leaves the overlay off; "also darken by %" adds it on top.
+    const p = await open(browser, base, { at: "2026-10-17T23:00:00" });
+    const op = () => p.evaluate(() => { const d = el.shadowRoot.getElementById("dim"); return [d.classList.contains("on"), d.style.opacity]; });
+    await p.evaluate(() => { Object.assign(el.settings, { night_dim: true, night_start: "21:00", night_end: "06:30", brightness_entity: "number.kitchen_brightness", night_overlay: 0 }); el._applyLook(); });
+    eq(await op(), [false, ""], "entity set, no extra: overlay off");
+    await p.evaluate(() => { el.settings.night_overlay = 60; el._applyLook(); });
+    eq(await op(), [true, "0.6"], "extra 60%: overlay at 0.6 on top of the backlight");
+    await p.evaluate(() => { el.settings.night_overlay = 200; el._applyLook(); });
+    eq(await op(), [true, "0.85"], "capped so the screen never goes fully black");
+    await p.evaluate(() => { el.settings.brightness_entity = null; el.settings.night_brightness = 20; el._applyLook(); });
+    eq(await op(), [true, "0.8"], "no entity: the old overlay-only behavior");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);
