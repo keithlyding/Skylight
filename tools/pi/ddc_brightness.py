@@ -69,7 +69,11 @@ def set_brightness(value: int) -> None:
 
 class Service:
     def __init__(self) -> None:
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"ddc-{DEVICE_ID}")
+        # paho-mqtt 2.x wants the callback version; 1.x (older Debian/Ubuntu) doesn't know it.
+        if hasattr(mqtt, "CallbackAPIVersion"):
+            self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"ddc-{DEVICE_ID}")
+        else:
+            self.client = mqtt.Client(client_id=f"ddc-{DEVICE_ID}")
         if USER:
             self.client.username_pw_set(USER, PASSWORD)
         self.client.will_set(TOPIC_AVAIL, "offline", retain=True)
