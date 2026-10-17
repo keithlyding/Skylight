@@ -47,7 +47,7 @@ def log(msg: str) -> None:
 
 def ddc(*args: str) -> str:
     """Run ddcutil; DDC is slow and occasionally flaky, so retry once."""
-    cmd = ["ddcutil", "--display", DISPLAY, "--noverify", *args]
+    cmd = ["ddcutil", "--display", DISPLAY, *args]
     for attempt in (1, 2):
         try:
             return subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=True).stdout

@@ -12,6 +12,7 @@ Type=simple
 #   Environment=MQTT_PASSWORD=secret
 #   Environment=DEVICE_NAME=Kitchen screen
 Environment=MQTT_PORT=1883
+Environment=HOME=/root
 ExecStart=/usr/bin/python3 /usr/local/bin/ddc_brightness.py
 Restart=always
 RestartSec=10
