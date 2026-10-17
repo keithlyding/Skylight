@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.50.1";
-import { diagPrevious, diagText } from "./diag.js?v=1.50.1";
-import { MLB_TEAMS } from "./mlb.js?v=1.50.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.50.2";
+import { diagPrevious, diagText } from "./diag.js?v=1.50.2";
+import { MLB_TEAMS } from "./mlb.js?v=1.50.2";
 
 export class SettingsView {
 
@@ -404,7 +404,7 @@ export class SettingsView {
           ${[["severe", "Severe & extreme (warnings)"], ["extreme", "Extreme only"], ["all", "All alerts, including advisories"], ["off", "Off (banner only)"]].map(([v, l]) => `<option value="${v}" ${(s.alert_popup || "severe") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         ${s.weather_alerts !== false ? `<p class="hint" style="margin-bottom:4px">Alert types to pop up and show in the banner (the Weather tab always lists every alert):</p>
         <div class="daypick alerttypes">${[...ALERT_TYPES.map(([k]) => k), "other"].map((k) => `<label class="daychip"><input type="checkbox" data-change="alert-type" data-type="${k}" ${(s.alert_hide || []).includes(k) ? "" : "checked"}><span>${ALERT_TYPE_LABELS[k]}</span></label>`).join("")}</div>` : ""}
-        <label class="inline">Chime with alert pop-ups <input type="checkbox" ${s.alert_sound !== false ? "checked" : ""} data-change="setting" data-key="alert_sound"></label>
+        <label class="inline">Chime with alert pop-ups <span><button type="button" data-action="chime-test" title="Play the chime on this screen">🔔 Test</button> <input type="checkbox" ${s.alert_sound !== false ? "checked" : ""} data-change="setting" data-key="alert_sound"></span></label>
         <label class="inline">Rain-soon, air quality, comparisons (Open-Meteo, free) <input type="checkbox" ${s.weather_extra !== false ? "checked" : ""} data-change="setting" data-key="weather_extra"></label>
         <label class="inline">Weather tips on the Today screen <input type="checkbox" ${s.weather_hints !== false ? "checked" : ""} data-change="setting" data-key="weather_hints"></label>
         <p class="hint">Pollen in the US uses the Google Pollen API with the Google key from Location lookup (enable “Pollen API” in Google Cloud). Without it, pollen is shown only in Europe.</p>

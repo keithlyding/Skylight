@@ -865,6 +865,9 @@ const SCENARIOS = {
     eq([await p.evaluate(() => window.WAKE.at(-1)), await p.evaluate(() => localStorage.getItem("skylight.awake"))], ["screen", "1"], "keep this screen on");
     await p.S('select[data-change="screen-awake"]').selectOption(""); await p.waitForTimeout(200);
     eq(await p.evaluate(() => [window.WAKE.at(-1), localStorage.getItem("skylight.awake")]), ["released", null], "and off again");
+    await p.evaluate(() => { window.CHIMED = 0; el._chime = () => { window.CHIMED++; }; });
+    await p.S('[data-action="chime-test"]').click(); await p.waitForTimeout(100);
+    eq(await p.evaluate(() => window.CHIMED), 1, "Test plays the alert chime");
     eq(p.errors, [], "page errors");
     await p.context().close();
     // Next on a long recipe glides down; it must never jump back to the top first.
