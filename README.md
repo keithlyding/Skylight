@@ -151,6 +151,10 @@ Home Assistant can't attach a reminder to a Google (or other) calendar event, so
 - Reminders follow the event: Home Assistant looks up the event's current time before reminding, so moving it in Google Calendar moves the reminder. Each reminder is sent once.
 - Limits: reminders exist only in Lyding Strike (they don't show in the Google Calendar app), and only for events you set one on here. For a repeating Google event, the reminder covers the occurrence you edited; on a Local Calendar it covers every repeat.
 
+## Weather: "feels like"
+
+The Weather tab shows "Feels like" under the current temperature, as a dashed second line on the hourly chart, and as a row under it. Weather sources that provide an apparent temperature are used as-is; for the rest it's worked out from temperature, humidity and wind with the US National Weather Service wind-chill and heat-index formulas.
+
 ## Look and night mode
 
 Setup → **Look & night mode**:

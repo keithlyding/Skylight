@@ -103,3 +103,16 @@ def test_no_hit_testing_through_shadow_roots():
     """v1.42.1: walking elementFromPoint down nested shadow roots could loop forever on iPhones (WebKit)
     and freeze all of Home Assistant. Don't bring it back."""
     assert "elementFromPoint" not in ALL and "elementsFromPoint" not in ALL
+
+
+def test_feels_like_matches_nws_tables():
+    """Wind chill and heat index agree with the NWS reference tables (whole degrees)."""
+    import json
+    import subprocess
+    cases = [[20, None, 20, "°F", "mph"], [5, None, 30, "°F", "mph"], [90, 70, 0, "°F", "mph"], [100, 40, 3, "°F", "mph"],
+             [70, 50, 10, "°F", "mph"], [-6.7, None, 32.2, "°C", "km/h"], [None, 50, 5, "°F", "mph"]]
+    script = HELPERS + "console.log(JSON.stringify(" + json.dumps(cases) + ".map((c) => feelsLike(...c))))"
+    got = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+    assert [round(v) if v is not None else None for v in got[:5]] == [4, -19, 106, 109, 70]
+    assert round(got[5]) == -15  # 20°F / 20 mph in metric: about -15.5°C
+    assert got[6] is None

@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS } from "./helpers.js?v=1.55.0";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.56.0";
 
 export class WeatherView {
 
@@ -181,6 +181,15 @@ export class WeatherView {
     this._loadWeatherFull(true); this._loadForecast(); this._loadWxExtra(true);
   }
 
+  // "Feels like" for one hourly entry or the current conditions: the source's own apparent temperature,
+  // else worked out from temperature, humidity and wind (feelsLike in helpers.js).
+  _feels(h, units) {
+    const n = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
+    if (n(h?.apparent_temperature) !== null) return n(h.apparent_temperature);
+    const u = units || this.wxState()?.attributes || {};
+    return feelsLike(h?.temperature, h?.humidity, h?.wind_speed, u.temperature_unit || "°F", u.wind_speed_unit || "mph");
+  }
+
   // ----- extra weather data (Open-Meteo rain-by-15-min, comparisons, air quality, pollen) -----
   async _loadWxExtra(force = false) {
     if (this.settings.weather_extra === false) { this.wxx = null; return; }
@@ -248,7 +257,7 @@ export class WeatherView {
       const h = hours.reduce((best, x) => (!best || Math.abs(x.t - e.start) < Math.abs(best.t - e.start) ? x : best), null);
       if (!h || Math.abs(h.t - e.start) > 2 * 3600000) continue;
       const when = `${esc(e.summary)} (${this.fmtTime(e.start)})`;
-      const p = n(h.precipitation_probability), feel = n(h.apparent_temperature) ?? n(h.temperature);
+      const p = n(h.precipitation_probability), feel = this._feels(h) ?? n(h.temperature);
       if (p !== null && p >= 40) out.push({ icon: "☔", text: `${p}% chance of rain for ${when}. Bring an umbrella` });
       else if (feel !== null && feel >= F(90)) out.push({ icon: "💧", text: `Hot for ${when}, feels like ${Math.round(feel)}°. Bring water` });
       else if (feel !== null && feel <= F(45)) out.push({ icon: "🧤", text: `Chilly for ${when}, ${Math.round(feel)}°. Dress warm` });
@@ -261,10 +270,10 @@ export class WeatherView {
     }
     // Jacket for the morning / school run
     const morning = hours.filter((h) => h.t.getHours() >= 7 && h.t.getHours() <= 9 && sameDay(h.t, now));
-    const coldAM = morning.length ? Math.min(...morning.map((h) => n(h.apparent_temperature) ?? n(h.temperature))) : null;
+    const coldAM = morning.length ? Math.min(...morning.map((h) => this._feels(h) ?? n(h.temperature))) : null;
     if (coldAM !== null && coldAM <= F(50)) out.push({ icon: "🧥", text: `Jacket weather this morning, ${Math.round(coldAM)}°` });
     // Heat
-    const feels = today.map((h) => n(h.apparent_temperature) ?? n(h.temperature)).filter((v) => v !== null);
+    const feels = today.map((h) => this._feels(h) ?? n(h.temperature)).filter((v) => v !== null);
     const maxFeel = feels.length ? Math.max(...feels) : null;
     if (maxFeel !== null && maxFeel >= F(95)) out.push({ icon: "🥵", text: `Very hot, feels like ${Math.round(maxFeel)}°. Limit time outside and drink water` });
     else if (maxFeel !== null && maxFeel >= F(88)) out.push({ icon: "☀️", text: `Hot afternoon, feels like ${Math.round(maxFeel)}°. Drink water` });
@@ -466,7 +475,7 @@ export class WeatherView {
       <div class="wbig">${WEATHER_ICONS[w.state] || "🌡️"}</div>
       <div class="wmain"><div class="wtemp">${round(a.temperature)}${tu}</div>
         <div class="wcond">${cond(w.state)}${today ? ` · H ${round(today.temperature)}°${today.templow !== undefined && today.templow !== null ? ` L ${round(today.templow)}°` : ""}` : ""}</div>
-        ${a.apparent_temperature !== undefined ? `<div class="hint">Feels like ${round(a.apparent_temperature)}${tu}</div>` : ""}</div>
+        ${(() => { const f = this._feels(a, a); return f === null ? "" : `<div class="hint">Feels like ${round(f)}${tu}</div>`; })()}</div>
       <div class="wstats">
         ${stat("Humidity", a.humidity !== undefined ? `${round(a.humidity)}%` : null)}
         ${stat("Wind gust", a.wind_gust_speed !== undefined && a.wind_gust_speed !== null ? `${round(a.wind_gust_speed)} ${wu}` : null)}
@@ -487,18 +496,22 @@ export class WeatherView {
     if (hours.length > 1) {
       const W = 44 * hours.length, H = 120, top = 26, bottom = 30;
       const temps = hours.map((h) => Number(h.temperature));
-      const lo = Math.min(...temps), hi = Math.max(...temps), span = Math.max(1, hi - lo);
+      const feels = hours.map((h) => this._feels(h, a));
+      const showFeels = feels.every((v) => v !== null) && feels.some((v, i) => Math.abs(v - temps[i]) >= 1);
+      const all = showFeels ? [...temps, ...feels] : temps;
+      const lo = Math.min(...all), hi = Math.max(...all), span = Math.max(1, hi - lo);
       const x = (i) => 22 + i * 44, y = (t) => top + (1 - (t - lo) / span) * (H - top - bottom);
       const pts = temps.map((t, i) => `${x(i)},${y(t).toFixed(1)}`).join(" ");
       const iHi = temps.indexOf(hi), iLo = temps.indexOf(lo);
       const precip = (h) => (h.precipitation_probability !== undefined && h.precipitation_probability !== null
         ? (h.precipitation_probability >= 20 ? `${Math.round(h.precipitation_probability)}%` : "")
         : h.precipitation ? `${Number(h.precipitation).toFixed(1)}${pu}` : "");
-      hourly = `<section class="wcard"><h3>Next ${hours.length} hours</h3><div class="whourly">
+      hourly = `<section class="wcard"><h3>Next ${hours.length} hours${showFeels ? ` <small class="wlegend"><i class="wl-temp"></i> temperature <i class="wl-feels"></i> feels like</small>` : ""}</h3><div class="whourly">
         <svg width="${W}" height="${H}" role="img" aria-label="Hourly temperature">
+          ${showFeels ? `<polyline class="wfeels" points="${feels.map((t, i) => `${x(i)},${y(t).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>` : ""}
           <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
           ${temps.map((t, i) => `<g class="wpt"><circle cx="${x(i)}" cy="${y(t).toFixed(1)}" r="${i === iHi || i === iLo ? 4 : 2.5}" fill="var(--accent)" stroke="var(--card)" stroke-width="2"/>
-            <title>${this.fmtTime(new Date(hours[i].datetime))}: ${Math.round(t)}${tu}${precip(hours[i]) ? `, precip ${precip(hours[i])}` : ""}</title>
+            <title>${this.fmtTime(new Date(hours[i].datetime))}: ${Math.round(t)}${tu}${showFeels ? `, feels like ${Math.round(feels[i])}${tu}` : ""}${precip(hours[i]) ? `, precip ${precip(hours[i])}` : ""}</title>
             <rect x="${x(i) - 22}" y="0" width="44" height="${H}" fill="transparent"/></g>`).join("")}
           ${[iHi, iLo].filter((v, k, arr) => arr.indexOf(v) === k).map((i) => `<text x="${x(i)}" y="${(y(temps[i]) + (i === iHi ? -9 : 17)).toFixed(1)}" text-anchor="middle" class="wlab">${Math.round(temps[i])}°</text>`).join("")}
         </svg>
@@ -647,7 +660,7 @@ export class WeatherView {
     const num = (v) => (v === undefined || v === null || v === "" || Number.isNaN(Number(v)) ? null : Number(v));
     const deg = (v) => (num(v) === null ? null : `${Math.round(num(v))}°`);
     const rows = [
-      ["Real feel", (h) => deg(h.apparent_temperature)],
+      ["Feels like", (h) => deg(this._feels(h, { temperature_unit: tu, wind_speed_unit: wu }))],
       ["Rain chance", (h) => (num(h.precipitation_probability) === null ? null : `${Math.round(num(h.precipitation_probability))}%`)],
       [`Rain (${pu || "amt"})`, (h) => (num(h.precipitation) === null ? null : num(h.precipitation).toFixed(pu === "in" ? 2 : 1))],
       [`Wind (${wu})`, (h) => (num(h.wind_speed) === null ? null : `${Math.round(num(h.wind_speed))} ${compass(h.wind_bearing)}`)],

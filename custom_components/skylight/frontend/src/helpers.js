@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.55.0";
+export const PANEL_VERSION = "1.56.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -333,4 +333,34 @@ export const nightLevels = (settings) => {
     return { backlight: Math.max(0, 100 - 2 * level), overlay: level > 50 ? Math.round(((level - 50) / 50) * 85) : 0 };
   }
   return { backlight: null, overlay: Math.round(level * 0.85) };
+};
+
+// "Feels like" when the weather source doesn't give one: the US NWS wind chill (cold, windy) and heat
+// index (hot, humid) formulas, worked in °F / mph and returned in the source's temperature unit.
+// Null when there's nothing to go on. Sources: https://www.weather.gov/media/epz/wxcalc/windChill.pdf,
+// https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml
+export const feelsLike = (temp, humidity, wind, tempUnit = "°F", windUnit = "mph") => {
+  const t0 = Number(temp);
+  if (temp === undefined || temp === null || temp === "" || Number.isNaN(t0)) return null;
+  const metric = /c/i.test(String(tempUnit));
+  const T = metric ? t0 * 9 / 5 + 32 : t0;
+  const w0 = Number(wind);
+  const wu = String(windUnit || "").toLowerCase();
+  const V = wind === undefined || wind === null || Number.isNaN(w0) ? null
+    : /km/.test(wu) ? w0 / 1.609 : /m\/s/.test(wu) ? w0 * 2.237 : /kn/.test(wu) ? w0 * 1.151 : /ft\/s/.test(wu) ? w0 * 0.6818 : w0;
+  const R = humidity === undefined || humidity === null || Number.isNaN(Number(humidity)) ? null : Number(humidity);
+  let F = T;
+  if (T <= 50 && V !== null && V > 3) {
+    F = 35.74 + 0.6215 * T - 35.75 * V ** 0.16 + 0.4275 * T * V ** 0.16;
+  } else if (T >= 80 && R !== null) {
+    const simple = 0.5 * (T + 61 + (T - 68) * 1.2 + R * 0.094);
+    F = simple;
+    if ((simple + T) / 2 >= 80) {
+      F = -42.379 + 2.04901523 * T + 10.14333127 * R - 0.22475541 * T * R - 6.83783e-3 * T * T - 5.481717e-2 * R * R
+        + 1.22874e-3 * T * T * R + 8.5282e-4 * T * R * R - 1.99e-6 * T * T * R * R;
+      if (R < 13 && T <= 112) F -= ((13 - R) / 4) * Math.sqrt((17 - Math.abs(T - 95)) / 17);
+      else if (R > 85 && T <= 87) F += ((R - 85) / 10) * ((87 - T) / 5);
+    }
+  }
+  return metric ? (F - 32) * 5 / 9 : F;
 };

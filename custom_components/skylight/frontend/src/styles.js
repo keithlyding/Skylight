@@ -400,6 +400,7 @@ label.check input { width:22px; height:22px; }
 .wcard { background:var(--card); border-radius:var(--radius); padding:14px 18px; }
 .wcard h3 { margin:0 0 8px; }
 .whourly { overflow-x:auto; padding-bottom:6px; }
+.wlegend { font-weight:600; color:var(--muted); font-size:12px; margin-left:8px; } .wlegend i { display:inline-block; width:18px; height:0; border-top:2px solid var(--accent); vertical-align:middle; margin:0 4px 0 8px; } .wlegend .wl-feels { border-top:2px dashed var(--muted); }
 .whourly svg { display:block; margin-left:104px; }
 .whourly .whrow { margin-left:104px; }
 .wtable { border-collapse:collapse; margin-top:10px; font-size:13px; table-layout:fixed; }

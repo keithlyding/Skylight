@@ -612,7 +612,9 @@ const SCENARIOS = {
     check(heads.length >= 3 && heads.every((h) => /\d+°/.test(h)), `day-header weather missing: ${heads}`);
     await p.tab("weather");
     const rows = await text(p.S(".wtable th"));
-    for (const r of ["Real feel", "Rain chance", "Wind (mph)", "Humidity", "UV index"]) check(rows.some((x) => x.startsWith(r)), `hourly row ${r}`);
+    for (const r of ["Feels like", "Rain chance", "Wind (mph)", "Humidity", "UV index"]) check(rows.some((x) => x.startsWith(r)), `hourly row ${r}`);
+    eq(await p.S(".whourly svg polyline.wfeels").count(), 1, "feels-like line on the hourly chart");
+    check((await text(p.S(".wnow .hint")))[0]?.startsWith("Feels like"), "feels like under the current temperature");
     check((await p.S(".rsline").textContent()).includes("Rain"), "rain-soon card");
     check((await p.S(".moonnow").count()) === 1, "moon card");
     eq(p.errors, [], "page errors");
@@ -1253,6 +1255,31 @@ const SCENARIOS = {
     await p.evaluate(() => { el.closeDialog(); const ev = el.visibleEvents()[0]; el.openEventDialog(ev); }); await p.waitForTimeout(300);
     eq(await p.evaluate(() => el.shadowRoot.activeElement?.id || null), null, "nothing focused on open (existing event)");
     eq(await p.evaluate(() => el.shadowRoot.getElementById("ev-start")?.readOnly), true, "touch time picker in use");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+  async feels_like_computed(browser, base) {
+    // A source with no apparent temperature: "feels like" is worked out from temperature, humidity and wind.
+    const p = await open(browser, base);
+    await p.evaluate(() => {
+      window.hass.states["weather.home"].attributes = { ...window.hass.states["weather.home"].attributes, temperature: 90, humidity: 70, wind_speed: 5, temperature_unit: "°F", wind_speed_unit: "mph" };
+      delete window.hass.states["weather.home"].attributes.apparent_temperature;
+      const orig = window.hass.callWS;
+      window.hass.callWS = async (m) => {
+        if (m.type === "call_service" && m.domain === "weather" && m.service_data.type === "hourly") {
+          return { response: { "weather.home": { forecast: [...Array(12)].map((_, k) => ({ datetime: new Date(Date.now() + k * 36e5).toISOString(), condition: "sunny", temperature: 20 + k, humidity: 50, wind_speed: 20 })) } } };
+        }
+        return orig(m);
+      };
+      el.hass = { ...window.hass }; el.wx = null; el._noForecast = null;
+    });
+    await p.tab("weather");
+    await p.evaluate(() => el._loadWeatherFull(true)); await p.waitForTimeout(800);
+    const feels = (await text(p.S(".wnow .hint")))[0] || "";
+    check(/Feels like 10[5-7]°/.test(feels), `heat index for 90°F / 70% (NWS table says 106): ${feels}`);
+    eq(await p.S(".whourly svg polyline.wfeels").count(), 1, "computed wind chill drawn on the hourly chart");
+    const row = (await text(p.S(".wtable tr"))).find((r) => r.startsWith("Feels like")) || "";
+    check(/Feels like\s*4°/.test(row.replace(/−/g, "-")), `wind chill for 20°F at 20 mph (NWS table says 4): ${row.slice(0, 40)}`);
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
