@@ -150,6 +150,7 @@ Home Assistant can't attach a reminder to a Google (or other) calendar event, so
 - In the event editor, pick a **Reminder**: at the start, 5/10/15/30 minutes, 1 or 2 hours, 1 day before, or the evening before (7 PM). Setup → **⏰ Reminders** sets the default for new events.
 - **Phones:** every phone with the Home Assistant app (`notify.mobile_app_…`) is listed under Setup → Reminders with **Off / All events / Only events for…** (pick people), e.g. a shared kids' phone that only gets the kids' events. Home Assistant sends a push notification, so it arrives with the app closed.
 - **Screens:** each screen showing the panel chooses for itself (saved on that device) whether reminders pop up there with a chime. The wall display defaults to all events; phones default to off, since they get push notifications.
+- A reminder (or a weather alert pop-up) counts as someone needing the screen: it clears the photo screensaver, and the screensaver stays off until someone taps OK.
 - Reminders follow the event: Home Assistant looks up the event's current time before reminding, so moving it in Google Calendar moves the reminder. Each reminder is sent once.
 - Limits: reminders exist only in Lyding Strike (they don't show in the Google Calendar app), and only for events you set one on here. For a repeating Google event, the reminder covers the occurrence you edited; on a Local Calendar it covers every repeat.
 

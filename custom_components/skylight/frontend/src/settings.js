@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.57.1";
-import { diagPrevious, diagText } from "./diag.js?v=1.57.1";
-import { MLB_TEAMS } from "./mlb.js?v=1.57.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.57.2";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.57.2";
+import { MLB_TEAMS } from "./mlb.js?v=1.57.2";
 
 export class SettingsView {
 
@@ -474,7 +474,8 @@ export class SettingsView {
     if (cfg.mode === "off") return;
     if (cfg.mode === "members" && !(r.members || []).some((m) => (cfg.members || []).includes(m))) return;
     this.ui.reminderPop = [...(this.ui.reminderPop || []), r];
-    if (this.ui.saver) this.stopSaver();
+    diag("reminder", r.summary);
+    if (this.ui.saver) this.stopSaver(); // and _checkIdle won't start it again while the pop-up waits for OK
     this._lastActivity = Date.now();
     if (this.settings.alert_sound !== false) this._chime();
     this.render();

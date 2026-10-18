@@ -1260,6 +1260,29 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async reminder_stops_saver(browser, base) {
+    // A reminder going off clears the photo screensaver and keeps it off until someone taps OK.
+    const p = await open(browser, base);
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); el.render(); });
+    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.ui.saver), true, "screensaver running");
+    await p.evaluate(() => window.remCb({ summary: "Dentist", message: "Today at 4:00 PM", members: [] })); await p.waitForTimeout(400);
+    eq(await p.evaluate(() => el.ui.saver), false, "reminder stopped the screensaver");
+    eq(await p.S(".saver").count(), 0, "screensaver element gone");
+    check((await p.S(".remcard").textContent()).includes("Dentist"), "reminder pop-up visible");
+    // nobody touches the screen for longer than the screensaver delay: it must stay off over the reminder
+    await p.evaluate(() => { el._lastActivity = Date.now() - 60 * 60000; el._checkIdle(); }); await p.waitForTimeout(400);
+    eq(await p.evaluate(() => el.ui.saver), false, "screensaver stays off while the reminder waits for OK");
+    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.ui.saver), false, "even a direct start is refused");
+    await p.S('[data-action="reminder-dismiss"]').click(); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => [el.ui.reminderPop?.length || 0, el.ui.alertPop, !!el.ui.dialog]), [0, null, false], "nothing left waiting for OK");
+    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(400); // (the fake has no photo source for _checkIdle)
+    eq(await p.evaluate(() => el.ui.saver), true, "after OK, the screensaver can come back");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async jump_to_date(browser, base) {
     // Meals and calendar: 📅 opens a date picker; picking a far-off date goes straight to that week.
     for (const [w, h] of [[1300, 912], [390, 844]]) {

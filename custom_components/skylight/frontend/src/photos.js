@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.57.1";
+import { parseYmd, esc } from "./helpers.js?v=1.57.2";
 
 export class PhotosView {
 
@@ -32,7 +32,7 @@ export class PhotosView {
       this._scrollGridHome();
     }
     const mins = Number(this.settings.screensaver_minutes || 0);
-    if (!mins || this.ui.saver || this.ui.dialog || !this._hasPhotoSource()) return;
+    if (!mins || this.ui.saver || this.ui.dialog || this.popupShowing || !this._hasPhotoSource()) return;
     if (Date.now() - this._lastActivity > mins * 60000) this.startSaver();
   }
   _hasPhotoSource() {
@@ -48,8 +48,10 @@ export class PhotosView {
     this._urlCache = { at: Date.now(), urls: items, n: (this.data.photos || []).length, error: res.error };
     return items;
   }
+  // A reminder or weather alert waiting for OK counts as someone needing the screen: no screensaver over it.
+  get popupShowing() { return !!(this.ui.reminderPop?.length || this.ui.alertPop?.length); }
   async startSaver() {
-    if (this.ui.saver) return;
+    if (this.ui.saver || this.popupShowing) return;
     this.relock();
     this.ui.saver = true; // guard against double start while loading
     let photos = [];
