@@ -202,6 +202,15 @@ On the Lists tab, **↕ Arrange lists** moves lists up and down (within each per
 - **Message board:** the Today screen has a 📌 Messages card. Tap **＋ Note** to post a sticky note, optionally saying who it's from, in one of six colors. Each note can last until the end of today, tomorrow, a week, or until someone removes it. Anyone at the screen can post or remove notes; the setup PIN isn't needed. Turn the card off in Setup → Birthdays & anniversaries.
 - **Countdowns:** tick **⏳ Show countdown on the Today screen** in the event editor. The event then shows in the Upcoming card ("Disney trip · 23 days · Fri, Oct 30"), and on the day "Today! 🎉". It disappears after the event. If the event is moved in Google Calendar, the countdown keeps the old date until the event is opened and saved again here (calendars that can edit events in place are followed automatically).
 
+## Bible verse of the day
+
+One verse a day, the same on every screen: a 📖 card on the Today screen and a line under the clock on the photo screensaver. Setup → Bible verse:
+
+- **Translation:** ESV, NET Bible, World English Bible or King James. The **ESV** needs a key from Crossway, free for personal use: sign up at [api.esv.org](https://api.esv.org/), create an application and paste its key into Setup (it stays on the server, like the other keys, and isn't in backups). Until a key is saved the NET Bible is shown. NASB, NIV and CSB aren't offered: their publishers only license them through paid API plans.
+- **Our family's verses:** references, one per line ("Joshua 24:15", "Psalm 23:1-3"). They take every other day, alternating with a built-in list of about 80 well-known verses, or every day with "Only our verses".
+- Home Assistant fetches the day's text once and remembers it. If the service can't be reached (or the key is wrong), the built-in King James text is shown and Setup says why.
+- Each translation's own quoting terms apply to what's on your screen (the ESV API, for example, is for non-commercial use).
+
 ## "Leave by" times (Waze)
 
 For today's events that have a location and start within 4 hours, the Today screen shows when to leave: "🚗 Leave by 3:25 PM · Soccer · 22 min drive". When it's time, it turns red and says **Leave now**. The agenda view shows the same on each event.
@@ -258,9 +267,10 @@ Lyding Strike keeps family data on your Home Assistant server. Some features ask
 | Waze (through Home Assistant's Waze Travel Time integration) | "Leave by" times | Your Home zone location and the locations of today's upcoming events |
 | Open-Meteo and Photon (OpenStreetMap) | 📍 Here weather, only on screens set to it | That screen's location rounded to about 1 km |
 | MLB stats (statsapi.mlb.com) | Favorite team's games, scores and standings | Only the team and date asked for (no location) |
+| Crossway ESV API, NET Bible API (labs.bible.org) or bible-api.com | Verse of the day, in the chosen translation | The day's verse reference (and your ESV key, for the ESV) |
 | Your own Mealie and Immich servers | Recipes, meal plans, photos | Talks only to the addresses you entered |
 
-To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, set the favorite baseball team to Off, turn off "Leave by" times, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
+To avoid a service: turn off weather alerts or the Open-Meteo extras in Setup, set the favorite baseball team to Off, turn off "Leave by" times, turn the Bible verse off on Today and the screensaver, don't add a Google key, and set the radar map to Off. The weather integration you pick in Home Assistant has its own privacy terms.
 
 Nothing is sent to the author of Lyding Strike, and there is no tracking or analytics.
 

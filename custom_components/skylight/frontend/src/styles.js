@@ -290,16 +290,23 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .saver-clock { position:absolute; left:36px; bottom:28px; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.6); }
 #sv-time { font-size:72px; font-weight:800; }
 #sv-date { font-size:24px; font-weight:600; }
+.saver-verse { position:absolute; top:28px; left:50%; transform:translateX(-50%); width:min(72%, 980px); text-align:center; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.8); }
+.saver-verse:empty { display:none; }
+.saver-verse p { margin:0 0 4px; font-size:26px; font-style:italic; line-height:1.3; } .saver-verse p.long { font-size:21px; }
+.saver-verse small { font-size:17px; font-weight:600; opacity:.9; }
 /* Phones: a smaller clock at the top, so the photo's date and place have the bottom to themselves. */
 @media (max-width: 600px) {
   .saver-clock { top:calc(16px + env(safe-area-inset-top)); bottom:auto; left:20px; }
   #sv-time { font-size:44px; } #sv-date { font-size:16px; }
   .saver-cap { left:20px; right:20px; max-width:none; bottom:calc(16px + env(safe-area-inset-bottom)); font-size:15px; }
+  .saver-verse { top:calc(92px + env(safe-area-inset-top)); width:calc(100% - 40px); }
+  .saver-verse p { font-size:18px; } .saver-verse p.long { font-size:15px; } .saver-verse small { font-size:14px; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .saver-clock { left:calc(20px + env(safe-area-inset-left)); bottom:16px; }
   #sv-time { font-size:40px; } #sv-date { font-size:15px; }
   .saver-cap { right:calc(20px + env(safe-area-inset-right)); bottom:16px; max-width:50%; font-size:14px; }
+  .saver-verse { top:10px; width:70%; } .saver-verse p { font-size:17px; } .saver-verse p.long { font-size:14px; } .saver-verse small { font-size:13px; }
 }
 /* settings */
 .settings { display:flex; flex-direction:column; gap:16px; max-width:900px; }
@@ -350,6 +357,9 @@ label.check input { width:22px; height:22px; }
 .swatch.on { border-color:var(--ink, #222); }
 .wwhere { width:fit-content; margin:0 auto 10px; }
 .rangewrap { display:flex; align-items:center; gap:10px; } .rangewrap input[type=range] { width:200px; min-width:120px; }
+.verse { background:var(--card); border-left:6px solid #8e6cc9; border-radius:var(--radius); padding:10px 14px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+.verse p { margin:0 0 4px; font-style:italic; line-height:1.35; font-size:1.05em; } .verse.long p { font-size:.95em; }
+.verse small { color:var(--muted); } .verse .vtr { opacity:.75; }
 .leavenote { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--card); border:0; border-left:6px solid #2e7dd7; border-radius:var(--radius); padding:10px 12px; color:var(--text); font:inherit; cursor:pointer; }
 .leavenote .lvicon { font-size:1.6em; } .leavenote .lvtxt { display:flex; flex-direction:column; min-width:0; }
 .leavenote small { color:var(--muted); } .leavenote b { font-size:1.15em; }

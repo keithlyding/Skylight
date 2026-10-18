@@ -422,18 +422,20 @@ const SCENARIOS = {
   },
 
   async savercaption(browser, base) {
-    // Screensaver on phones: the clock never covers the photo's date and place.
+    // Screensaver on phones: the clock, the verse of the day and the photo's date and place never cover each other.
     for (const [w, h] of [[390, 844], [844, 390], [1300, 912]]) {
       const p = await open(browser, base, { width: w, height: h, ctx: w < 1000 ? { isMobile: true, hasTouch: true } : {} });
       await p.evaluate(() => {
         el.ui.saver = true; el.render();
+        el.verse = { date: "2026-01-01", reference: "Joshua 24:15", translation: "KJV", text: "And if it seem evil unto you to serve the LORD, choose you this day whom ye will serve; whether the gods which your fathers served that were on the other side of the flood, or the gods of the Amorites, in whose land ye dwell: but as for me and my house, we will serve the LORD." };
         el.$saver.innerHTML = `<div class="saver"><div class="saver-clock"><div id="sv-time">10:42 AM</div><div id="sv-date">Sunday, October 4</div></div>
-          <div class="saver-cap"><span>September 14, 2025</span><span>Gatlinburg, Tennessee, United States</span></div></div>`;
+          <div class="saver-cap"><span>September 14, 2025</span><span>Gatlinburg, Tennessee, United States</span></div>${el.renderSaverVerse()}</div>`;
       });
       await p.waitForTimeout(200);
-      const [a, b] = await p.evaluate(() => [".saver-clock", ".saver-cap"].map((s) => { const r = el.shadowRoot.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }));
-      const overlap = a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-      eq(overlap, false, `${w}x${h}: clock and photo caption don't overlap`);
+      const boxes = await p.evaluate(() => [".saver-clock", ".saver-cap", ".saver-verse"].map((s) => { const r = el.shadowRoot.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }));
+      const overlap = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+      eq(overlap(boxes[0], boxes[1]), false, `${w}x${h}: clock and photo caption don't overlap`);
+      eq(overlap(boxes[0], boxes[2]) || overlap(boxes[1], boxes[2]), false, `${w}x${h}: a long verse covers neither the clock nor the caption (${JSON.stringify(boxes)})`);
       await p.context().close();
     }
   },
@@ -1258,6 +1260,43 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async verse_of_day(browser, base) {
+    // Today card, screensaver line, and the Setup section (key, translation, family verses).
+    const p = await open(browser, base);
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); el.render(); });
+    await p.waitForTimeout(400);
+    const card = (await text(p.S(".verse")))[0] || "";
+    check(card.includes("Be strong and courageous") && card.includes("Joshua 1:9") && card.includes("ESV"), `verse card: ${card}`);
+    eq(await p.evaluate(() => window.VERSECALLS), 1, "fetched once");
+    await p.evaluate(() => el._tickClock()); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => window.VERSECALLS), 1, "not fetched again the same day");
+    // screensaver: the verse sits under the clock, with the photo's caption still at the bottom
+    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(400);
+    const sv = (await text(p.S("#sv-verse")))[0] || "";
+    check(sv.includes("Be strong and courageous") && sv.includes("Joshua 1:9 (ESV)"), `saver verse: ${sv}`);
+    await p.evaluate(() => el.stopSaver());
+    // Setup: save a key (never echoed back), pick a translation, type family verses
+    await p.tab("settings"); await p.waitForTimeout(300);
+    await p.S("#esv-key").fill("esv-secret-123");
+    await p.S('[data-action="esv-save"]').click(); await p.waitForTimeout(400);
+    const cfg = await p.evaluate(() => calls.filter((c) => c.type === "skylight/verse/configure").at(-1));
+    eq(cfg?.esv_key, "esv-secret-123", "key sent to the server");
+    check((await p.S("#esv-key").getAttribute("placeholder")).includes("saved"), "key shown as saved");
+    check(!(await p.content()).includes("esv-secret-123"), "key not echoed into the page");
+    await p.S('select[data-key="verse_translation"]').selectOption("net"); await p.waitForTimeout(400);
+    eq(await p.evaluate(() => D.settings.verse_translation), "net", "translation saved");
+    await p.S("#family-verses").fill("Joshua 24:15\n\nPhilippians 4:13 ");
+    await p.S("#family-verses").dispatchEvent("change"); await p.waitForTimeout(400);
+    eq(await p.evaluate(() => D.settings.family_verses), ["Joshua 24:15", "Philippians 4:13"], "family verses saved as a list");
+    check(await p.evaluate(() => window.VERSECALLS) >= 3, "verse fetched again after Setup changes");
+    // off on Today: the card goes away
+    await p.S('input[data-key="verse_today"]').uncheck(); await p.waitForTimeout(300);
+    await p.evaluate(() => { el.ui.tab = "home"; el.render(); });
+    eq(await p.S(".verse").count(), 0, "card hidden when off");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async feels_like_computed(browser, base) {
     // A source with no apparent temperature: "feels like" is worked out from temperature, humidity and wind.
     const p = await open(browser, base);

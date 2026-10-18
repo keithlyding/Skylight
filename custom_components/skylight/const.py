@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.56.0"
+VERSION = "1.57.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -60,6 +60,8 @@ DEFAULT_DATA = {
     "immich": {"url": "", "api_key": "", "albums": [], "favorites": False},
     # Optional Google Places key for location lookup (never sent to the browser).
     "places": {"google_key": ""},
+    # Optional ESV API key for the verse of the day (never sent to the browser).
+    "bible": {"esv_key": ""},
     # Settings PIN: salt + PBKDF2 hash only. Never sent to the browser (see SkylightStore.public).
     "security": {"salt": "", "pin_hash": ""},
     "settings": {
@@ -94,6 +96,13 @@ DEFAULT_DATA = {
         "message_board": True,  # sticky notes on the Today screen
         "leave_buffer": 5,
         "waze_region": "us",
+        # Verse of the day (verses.py): on the Today screen, on the photo screensaver, which translation,
+        # and the family's own references (shown on alternate days, or only these).
+        "verse_today": True,
+        "verse_saver": True,
+        "verse_translation": "esv",
+        "family_verses": [],
+        "verse_only_family": False,
         # Look: theme preset, seasonal accents, dark mode and night dimming.
         "theme": "warm",            # warm | cool | slate | contrast
         "seasonal": False,

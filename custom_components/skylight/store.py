@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from . import chores, security
+from . import chores, security, verses
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION, VERSION, app_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -208,6 +208,7 @@ class SkylightStore:
         immich["has_key"] = bool(immich.pop("api_key", ""))
         data["immich"] = immich
         data["places"] = {"has_google_key": bool(data["places"].get("google_key"))}
+        data["bible"] = {"has_esv_key": bool(data.get("bible", {}).get("esv_key"))}
         data["version"] = VERSION  # screens reload themselves when this is newer than the page they run
         return data
 
@@ -224,6 +225,11 @@ class SkylightStore:
             self.data["places"] = {"google_key": key}
             self._changed()
 
+    async def async_set_bible_key(self, key: str) -> None:
+        async with self._lock:
+            self.data["bible"] = {"esv_key": key}
+            self._changed()
+
     async def async_set_immich(self, url: str, api_key: str | None, albums: list, favorites: bool) -> None:
         async with self._lock:
             current = self.data["immich"]
@@ -236,7 +242,7 @@ class SkylightStore:
             self._changed()
 
     # ----- backup / restore -----
-    SECRET_KEYS = ("security", "places")  # never exported, never overwritten by an import
+    SECRET_KEYS = ("security", "places", "bible")  # never exported, never overwritten by an import
 
     def export(self) -> dict[str, Any]:
         """Everything a family set up, without API keys or the PIN hash."""
@@ -301,6 +307,10 @@ class SkylightStore:
                     value["app_name"] = app_name({"settings": value})
                 if "family_color" in value:
                     value["family_color"] = safe_color(value["family_color"], "#ff9f43")
+                if "family_verses" in value:
+                    value["family_verses"] = verses.clean_refs(value["family_verses"])
+                if "verse_translation" in value and value["verse_translation"] not in verses.TRANSLATIONS:
+                    value["verse_translation"] = verses.DEFAULT_TRANSLATION
             elif key == "info_calendars":
                 value = [{**c, **({"color": safe_color(c.get("color"), "#8e9aaf")} if "color" in c else {}),
                           **({"icon": safe_token(c.get("icon")) or "📌"} if "icon" in c else {})}

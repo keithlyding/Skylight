@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.56.0";
-import { diagPrevious, diagText } from "./diag.js?v=1.56.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.56.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.57.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.57.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.57.0";
 
 export class SettingsView {
 
@@ -336,6 +336,8 @@ export class SettingsView {
       </section>
 
       ${this.renderOccasionsCard()}
+
+      ${this.renderVerseSettings()}
       <section class="card">
         <h2>Backup</h2>
         <p class="hint">Saves family members, chores and their history, lists, meals, birthdays and settings to a file. API keys and the setup PIN aren't included. Restoring replaces what's here now; the current data is kept on the Home Assistant server first (<code>.storage/skylight.data.before_import</code>).</p>

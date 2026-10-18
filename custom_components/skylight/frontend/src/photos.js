@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.56.0";
+import { parseYmd, esc } from "./helpers.js?v=1.57.0";
 
 export class PhotosView {
 
@@ -64,7 +64,7 @@ export class PhotosView {
     this.$saver.innerHTML = `<div class="saver" data-action="stop-saver">
       <img class="bg" id="sv-bg"><img id="sv-a" class="show"><img id="sv-b">
       <div class="saver-clock"><div id="sv-time"></div><div id="sv-date"></div></div>
-      <div class="saver-cap" id="sv-cap"></div></div>`;
+      <div class="saver-cap" id="sv-cap"></div>${this.renderSaverVerse()}</div>`;
     this._nextSlide(); this._tickClock();
     clearInterval(this._slideTimer);
     this._slideTimer = setInterval(() => this._nextSlide(), Math.max(5, Number(this.settings.photo_seconds || 15)) * 1000);

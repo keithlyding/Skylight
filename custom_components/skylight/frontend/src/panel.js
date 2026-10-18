@@ -1,21 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.56.0";
-import { STYLES } from "./styles.js?v=1.56.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.56.0";
-import { CalendarView } from "./calendar.js?v=1.56.0";
-import { WeatherView } from "./weather.js?v=1.56.0";
-import { HomeView } from "./home.js?v=1.56.0";
-import { ChoresView } from "./chores.js?v=1.56.0";
-import { MealsView } from "./meals.js?v=1.56.0";
-import { ListsView } from "./lists.js?v=1.56.0";
-import { PhotosView } from "./photos.js?v=1.56.0";
-import { SettingsView } from "./settings.js?v=1.56.0";
-import { PickersView } from "./pickers.js?v=1.56.0";
-import { keepAwake } from "./wake.js?v=1.56.0";
-import { MlbView } from "./mlb.js?v=1.56.0";
-import { TravelView } from "./travel.js?v=1.56.0";
-import { NotesView } from "./notes.js?v=1.56.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.0";
+import { STYLES } from "./styles.js?v=1.57.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.0";
+import { CalendarView } from "./calendar.js?v=1.57.0";
+import { WeatherView } from "./weather.js?v=1.57.0";
+import { HomeView } from "./home.js?v=1.57.0";
+import { ChoresView } from "./chores.js?v=1.57.0";
+import { MealsView } from "./meals.js?v=1.57.0";
+import { ListsView } from "./lists.js?v=1.57.0";
+import { PhotosView } from "./photos.js?v=1.57.0";
+import { SettingsView } from "./settings.js?v=1.57.0";
+import { PickersView } from "./pickers.js?v=1.57.0";
+import { keepAwake } from "./wake.js?v=1.57.0";
+import { MlbView } from "./mlb.js?v=1.57.0";
+import { TravelView } from "./travel.js?v=1.57.0";
+import { NotesView } from "./notes.js?v=1.57.0";
+import { VerseView } from "./verses.js?v=1.57.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -569,6 +570,18 @@ export class SkylightPanel extends HTMLElement {
         this._toast("Google Places key saved"); break;
       }
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
+      case "esv-save": {
+        const key = this.shadowRoot.getElementById("esv-key").value.trim();
+        if (!key) return;
+        await this._ws({ type: "skylight/verse/configure", esv_key: key });
+        this._toast("ESV key saved"); this._verseReset(); break;
+      }
+      case "esv-clear": await this._ws({ type: "skylight/verse/configure", esv_key: "" }); this._toast("ESV key removed"); this._verseReset(); break;
+      case "family-verses": {
+        const refs = el.value.split("\n").map((r) => r.trim()).filter(Boolean);
+        await this._set("settings", { family_verses: refs });
+        this._verseReset(); break;
+      }
       case "icon-open": this.ui.dialog.iconOpen = !this.ui.dialog.iconOpen; this.renderDialog(); break;
       case "icon-pick": this.ui.dialog.icon = d.icon; this.ui.dialog.iconOpen = false; this.renderDialog(); break;
       case "backup-export": {
@@ -758,6 +771,7 @@ export class SkylightPanel extends HTMLElement {
         if (d.key === "leave_by" || d.key === "waze_region") { this.travel = null; this._travelKey = ""; }
         if (d.key === "mlb_team") { this.mlbToday = null; this.mlbTeamData = null; this._mlbAt = 0; setTimeout(() => this._loadMlb(), 300); }
         if (d.key === "week_start") { this._eventsKey = ""; }
+        if (d.key === "verse_translation" || d.key === "verse_only_family") this._verseReset();
         break;
       }
 
@@ -1172,6 +1186,7 @@ export class SkylightPanel extends HTMLElement {
     if (turned && !this.ui.dialog && !this.ui.saver && (this.ui.tab === "home" || this.ui.tab === "calendar" || this.ui.tab === "team")) this.render();
     this._mlbMaybe();
     this._travelMaybe();
+    this._verseMaybe();
     // roll over "today" at midnight
     if (this._lastDay && this._lastDay !== ymd(now)) { this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this.render(); this._loadEvents(); this._loadForecast(); }
     this._lastDay = ymd(now);
@@ -1288,7 +1303,7 @@ export class SkylightPanel extends HTMLElement {
 }
 
 // Each view's methods become SkylightPanel methods (getters and setters included).
-for (const View of [CalendarView, WeatherView, HomeView, ChoresView, MealsView, ListsView, PhotosView, SettingsView, PickersView, MlbView, TravelView, NotesView]) {
+for (const View of [CalendarView, WeatherView, HomeView, ChoresView, MealsView, ListsView, PhotosView, SettingsView, PickersView, MlbView, TravelView, NotesView, VerseView]) {
   for (const key of Object.getOwnPropertyNames(View.prototype)) {
     if (key === "constructor") continue;
     if (Object.prototype.hasOwnProperty.call(SkylightPanel.prototype, key)) throw new Error(`Skylight: ${key} defined twice`);

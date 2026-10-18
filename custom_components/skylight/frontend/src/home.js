@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.56.0";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.0";
 
 export class HomeView {
 
@@ -91,6 +91,7 @@ export class HomeView {
         ${this.settings.message_board !== false ? this.renderBoard() : ""}
         ${this.renderMlbNote()}
         ${this.renderTonight()}
+        ${this.renderVerseNote()}
         ${this.renderUpcoming()}
         ${chores ? `<div class="hcols">${chores}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}

@@ -10,7 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
 
-from . import mealie, mlb, nightmode, notes, places, reminders, security, travel, weather_alerts, weather_extra, weather_here, websocket_api
+from . import mealie, mlb, nightmode, notes, places, reminders, security, travel, verses, weather_alerts, weather_extra, weather_here, websocket_api
 from .const import (
     DOMAIN,
     EVENT_UPDATED,
@@ -67,6 +67,7 @@ async def _async_register_once(hass: HomeAssistant) -> None:
     mlb.async_register(hass)
     travel.async_register(hass)
     notes.async_register(hass)
+    verses.async_register(hass)
     # Also load the element on every dashboard so it can be used as a card.
     hass.data[f"{DOMAIN}_module_url"] = await hass.async_add_executor_job(_module_url)
     frontend.add_extra_js_url(hass, hass.data[f"{DOMAIN}_module_url"])
