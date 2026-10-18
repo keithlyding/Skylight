@@ -109,6 +109,9 @@ For a Pi 5 driving an HDMI touch monitor, [TouchKio](https://github.com/leukipp/
 4. Try `--web-widget false` and `--web-pager false` if TouchKio's own side controls get in the way of the full-width layout.
 5. With MQTT set up, TouchKio's *display power* switch appears in Home Assistant: automate it (motion sensor, schedule) instead of using the in-page screensaver, or use both. Pick its brightness entity in Setup → Look & night mode to dim at night.
 6. The in-page **Keep this screen on** setting isn't needed on the Pi: TouchKio keeps the display on.
+7. Pi OS has no color emoji font, so avatars and chore icons look wrong until you add one: `sudo apt install -y fonts-noto-color-emoji && fc-cache -f`, then restart TouchKio.
+8. The panel shows the Pi's own clock: `sudo timedatectl set-timezone America/New_York` (your zone) if it's off.
+9. On the Argon ONE V3 the Pi can't see the power supply's 5 A rating; Argon's script (`argon1.sh`) sets `PSU_MAX_CURRENT=5000` in the bootloader, or add `usb_max_current_enable=1` to `config.txt`.
 
 ### Monitor brightness from Home Assistant (DDC/CI)
 
