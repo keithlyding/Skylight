@@ -1260,6 +1260,32 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async jump_to_date(browser, base) {
+    // Meals and calendar: 📅 opens a date picker; picking a far-off date goes straight to that week.
+    for (const [w, h] of [[1300, 912], [390, 844]]) {
+      const p = await open(browser, base, { width: w, height: h, ctx: w < 1000 ? { isMobile: true, hasTouch: true } : {} });
+      await p.tab("meals"); await p.waitForTimeout(300);
+      eq(await p.S('[data-action="jump"]').count(), 1, `${w}: jump button on meals`);
+      const year = new Date().getFullYear() + 1;
+      await p.S("#jump-date").evaluate((i, y) => { i.value = `${y}-12-25`; i.dispatchEvent(new Event("change", { bubbles: true })); }, year);
+      await p.waitForTimeout(600);
+      const head = (await text(p.S(".nav h1")))[0] || "";
+      check(head.includes("Dec") && head.includes(String(year)), `${w}: meals header shows the week of Christmas: ${head}`);
+      const wk = await p.evaluate(() => calls.filter((c) => c.type === "skylight/mealie/week").at(-1));
+      check(wk && wk.start <= `${year}-12-25` && wk.end >= `${year}-12-25`, `${w}: Mealie asked for that week: ${JSON.stringify(wk)}`);
+      await p.S('[data-action="today"]').click(); await p.waitForTimeout(300);
+      check(!((await text(p.S(".nav h1")))[0] || "").includes(String(year)), `${w}: back to this week`);
+      if (w >= 1000) {
+        await p.tab("calendar"); await p.waitForTimeout(300);
+        await p.S("#jump-date").evaluate((i, y) => { i.value = `${y}-07-04`; i.dispatchEvent(new Event("change", { bubbles: true })); }, year);
+        await p.waitForTimeout(600);
+        eq(await p.evaluate(() => el.ui.anchor.getMonth()), 6, "calendar moved to July");
+      }
+      eq(p.errors, [], "page errors");
+      await p.context().close();
+    }
+  },
+
   async verse_of_day(browser, base) {
     // Today card, screensaver line, and the Setup section (key, translation, family verses).
     const p = await open(browser, base);

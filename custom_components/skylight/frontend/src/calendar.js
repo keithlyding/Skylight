@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.57.0";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.57.1";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -592,7 +592,7 @@ export class CalendarView {
     }
     const noCals = !this.shownCalendars().length;
     const toolbar = `<div class="toolbar caltool">
-      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button></div>
+      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button><span class="jump"><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button><input type="date" id="jump-date" class="jumpdate" data-change="jump-date" value="${ymd(this.ui.anchor)}" tabindex="-1" aria-hidden="true"></span></div>
       <h1>${title}</h1>
       <div class="seg">${CAL_VIEWS.filter(([x]) => !this.isPhone || (x !== "5day" && x !== "7day")).map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
       <button class="icon searchbtn" data-action="search-open" title="Search events">🔍</button>

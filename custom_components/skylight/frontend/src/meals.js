@@ -1,7 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.57.0";
-import { keepAwake } from "./wake.js?v=1.57.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.57.1";
+import { keepAwake } from "./wake.js?v=1.57.1";
 
 export class MealsView {
   async _loadMealie() {
@@ -320,8 +320,8 @@ export class MealsView {
     const [s] = [this.weekStart(this.ui.anchor)];
     const days = [...Array(7)].map((_, i) => addDays(s, i));
     if (this.isPhone) return this.renderMealsPhone(days, toggle);
-    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
-      <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div>
+    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button><span class="jump"><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button><input type="date" id="jump-date" class="jumpdate" data-change="jump-date" value="${ymd(this.ui.anchor)}" tabindex="-1" aria-hidden="true"></span>
+      <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric", ...(s.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) })}</h1></div>
       ${toggle}</div>
       ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
       <div class="meals">
@@ -346,8 +346,8 @@ export class MealsView {
   // Phone: one card per day with its meals listed, instead of the 7-column grid.
   renderMealsPhone(days, toggle) {
     const s = days[0];
-    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button>
-      <h1>${s.toLocaleDateString([], { month: "short", day: "numeric" })}</h1></div>${toggle}</div>
+    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button><span class="jump"><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button><input type="date" id="jump-date" class="jumpdate" data-change="jump-date" value="${ymd(this.ui.anchor)}" tabindex="-1" aria-hidden="true"></span>
+      <h1>${s.toLocaleDateString([], { month: "short", day: "numeric", ...(s.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) })}</h1></div>${toggle}</div>
       ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
       <div class="pmeals">${days.map((d) => `<section class="pmday ${sameDay(d, new Date()) ? "today" : ""}">
         <h3>${d.toLocaleDateString([], { weekday: "long" })} <small>${d.toLocaleDateString([], { month: "short", day: "numeric" })}</small></h3>

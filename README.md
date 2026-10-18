@@ -50,6 +50,8 @@ Requires Home Assistant **2024.7 or newer**. The automated tests run against 202
 
 ## Meal planning with Mealie (recommended)
 
+On the Meals and Calendar tabs, **📅** next to ‹ › opens a date picker, so a week months away (Christmas dinner, a trip) is one tap away instead of a week at a time; **This week** / **Today** brings you back.
+
 Lyding Strike uses Home Assistant's built-in **Mealie** integration, so the tablet reads and writes your Mealie meal plan.
 
 **One-time setup (admin):**
