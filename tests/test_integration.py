@@ -173,3 +173,8 @@ async def test_info_calendars_saved(hass: HomeAssistant, setup, hass_ws_client) 
     store = hass.data["skylight"]["store"]
     assert store.data["info_calendars"] == value
     assert store.data["settings"]["info_on_today"] is True
+
+
+async def test_public_data_carries_the_version(hass, setup):
+    from custom_components.skylight.const import VERSION
+    assert hass.data["skylight"]["store"].public()["version"] == VERSION

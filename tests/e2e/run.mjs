@@ -1213,6 +1213,21 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async auto_reload_on_update(browser, base) {
+    // When Home Assistant reports a newer version than the page, the screen reloads itself, once.
+    const p = await open(browser, base);
+    await p.evaluate(() => { window.RELOADS = 0; el._reloadPage = () => { window.RELOADS++; }; sessionStorage.removeItem("skylight.reloadedFor"); });
+    await p.evaluate(() => { D.version = "99.0.0"; push(); }); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => window.RELOADS), 1, "reloaded for the new version");
+    await p.evaluate(() => { push(); }); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => window.RELOADS), 1, "not again for the same version (no reload loop if the files didn't change)");
+    await p.evaluate(() => { sessionStorage.removeItem("skylight.reloadedFor"); el.openEventDialog(null, "2026-10-05", 10); D.version = "99.0.1"; push(); }); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => window.RELOADS), 1, "waits while someone is in a dialog");
+    await p.evaluate(() => { el.closeDialog(); D.version = "99.0.1"; push(); }); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => window.RELOADS), 2, "reloads once the dialog is closed");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);

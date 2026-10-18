@@ -1,21 +1,21 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.51.1";
-import { STYLES } from "./styles.js?v=1.51.1";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.51.1";
-import { CalendarView } from "./calendar.js?v=1.51.1";
-import { WeatherView } from "./weather.js?v=1.51.1";
-import { HomeView } from "./home.js?v=1.51.1";
-import { ChoresView } from "./chores.js?v=1.51.1";
-import { MealsView } from "./meals.js?v=1.51.1";
-import { ListsView } from "./lists.js?v=1.51.1";
-import { PhotosView } from "./photos.js?v=1.51.1";
-import { SettingsView } from "./settings.js?v=1.51.1";
-import { PickersView } from "./pickers.js?v=1.51.1";
-import { keepAwake } from "./wake.js?v=1.51.1";
-import { MlbView } from "./mlb.js?v=1.51.1";
-import { TravelView } from "./travel.js?v=1.51.1";
-import { NotesView } from "./notes.js?v=1.51.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.52.0";
+import { STYLES } from "./styles.js?v=1.52.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.52.0";
+import { CalendarView } from "./calendar.js?v=1.52.0";
+import { WeatherView } from "./weather.js?v=1.52.0";
+import { HomeView } from "./home.js?v=1.52.0";
+import { ChoresView } from "./chores.js?v=1.52.0";
+import { MealsView } from "./meals.js?v=1.52.0";
+import { ListsView } from "./lists.js?v=1.52.0";
+import { PhotosView } from "./photos.js?v=1.52.0";
+import { SettingsView } from "./settings.js?v=1.52.0";
+import { PickersView } from "./pickers.js?v=1.52.0";
+import { keepAwake } from "./wake.js?v=1.52.0";
+import { MlbView } from "./mlb.js?v=1.52.0";
+import { TravelView } from "./travel.js?v=1.52.0";
+import { NotesView } from "./notes.js?v=1.52.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -223,6 +223,7 @@ export class SkylightPanel extends HTMLElement {
 
   _onData(data) {
     const firstLoad = !this.data;
+    if (this._updateAvailable(data)) return;
     // Avatars, icons and colors go straight into the page (not through esc), so keep them plain.
     const token = (v, d = "") => String(v ?? "").replace(/[<>&"'`\\]/g, "").slice(0, 8) || d;
     const color = (v, d) => (/^#[0-9a-f]{3,8}$/i.test(String(v || "").trim()) ? String(v).trim() : d);
@@ -247,6 +248,22 @@ export class SkylightPanel extends HTMLElement {
     this._loadEvents();
     if (firstLoad) { this._loadForecast(); this._loadMealieInfo(); this._loadCalInfo(); this._loadAlerts(); this._loadWxExtra(); }
   }
+
+  // After an update of the integration, Home Assistant sends a newer version than this page is running:
+  // reload once (not while someone is cooking or in a dialog), and never twice for the same version.
+  _updateAvailable(data) {
+    const server = data?.version;
+    if (!server || server === PANEL_VERSION) return false;
+    let done = "";
+    try { done = sessionStorage.getItem("skylight.reloadedFor") || ""; } catch (e) { /* no storage */ }
+    if (done === server) return false; // already tried: the files served are still this version
+    if (this.cook || this.ui.dialog) { clearTimeout(this._updTimer); this._updTimer = setTimeout(() => this._updateAvailable(data), 60000); return false; }
+    diag("update", `${PANEL_VERSION} -> ${server}`);
+    try { sessionStorage.setItem("skylight.reloadedFor", server); } catch (e) { /* no storage */ }
+    this._reloadPage();
+    return true;
+  }
+  _reloadPage() { location.reload(); }
 
   async _loadMealieInfo() {
     try { this.mealie = await this._hass.callWS({ type: "skylight/mealie/info" }); }

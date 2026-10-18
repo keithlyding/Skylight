@@ -17,7 +17,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from . import chores, security
-from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION, app_name
+from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION, VERSION, app_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -196,6 +196,7 @@ class SkylightStore:
         immich["has_key"] = bool(immich.pop("api_key", ""))
         data["immich"] = immich
         data["places"] = {"has_google_key": bool(data["places"].get("google_key"))}
+        data["version"] = VERSION  # screens reload themselves when this is newer than the page they run
         return data
 
     async def async_set_pin(self, pin: str | None) -> None:
