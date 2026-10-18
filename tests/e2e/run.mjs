@@ -811,7 +811,7 @@ const SCENARIOS = {
     await set({ night_start: "23:00" });
     eq((await look())[1], "light", "before the window");
     await p.evaluate(() => localStorage.setItem("skylight.screenScheme", "light"));
-    await set({ seasonal: true, night_dim: true, brightness_entity: null, night_brightness: 30, night_start: "21:00" });
+    await set({ seasonal: true, night_dim: true, brightness_entity: null, night_level: 82, night_start: "21:00" });
     eq((await look())[3], "0.7", "dim overlay at night without a brightness entity");
     eq(await p.evaluate(() => getComputedStyle(el.$dim).display), "block", "dim layer shown while dimming");
     eq(await p.S(".season").textContent(), "🎃", "Halloween accent");
@@ -1181,18 +1181,22 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
-  async night_overlay_with_entity(browser, base) {
-    // A brightness entity alone leaves the overlay off; "also darken by %" adds it on top.
+  async night_level_slider(browser, base) {
+    // One "how dark at night" slider: with a backlight entity the first half only turns the backlight down,
+    // the second half darkens the picture on top; without one the picture alone darkens.
     const p = await open(browser, base, { at: "2026-10-17T23:00:00" });
     const op = () => p.evaluate(() => { const d = el.shadowRoot.getElementById("dim"); return [d.classList.contains("on"), d.style.opacity]; });
-    await p.evaluate(() => { Object.assign(el.settings, { night_dim: true, night_start: "21:00", night_end: "06:30", brightness_entity: "number.kitchen_brightness", night_overlay: 0 }); el._applyLook(); });
-    eq(await op(), [false, ""], "entity set, no extra: overlay off");
-    await p.evaluate(() => { el.settings.night_overlay = 60; el._applyLook(); });
-    eq(await op(), [true, "0.6"], "extra 60%: overlay at 0.6 on top of the backlight");
-    await p.evaluate(() => { el.settings.night_overlay = 200; el._applyLook(); });
-    eq(await op(), [true, "0.85"], "capped so the screen never goes fully black");
-    await p.evaluate(() => { el.settings.brightness_entity = null; el.settings.night_brightness = 20; el._applyLook(); });
-    eq(await op(), [true, "0.8"], "no entity: the old overlay-only behavior");
+    const lv = (o) => p.evaluate((o) => { Object.assign(el.settings, o); el._applyLook(); return window.__h.nightLevels(el.settings); }, o);
+    await p.evaluate(() => import("/src/helpers.js").then((h) => { window.__h = h; }));
+    await p.evaluate(() => { Object.assign(el.settings, { night_dim: true, night_start: "21:00", night_end: "06:30" }); });
+    eq(await lv({ brightness_entity: "number.kitchen_brightness", night_level: 40 }), { backlight: 20, overlay: 0 }, "40%: backlight 20, no overlay");
+    eq(await op(), [false, ""], "no overlay in the page");
+    eq(await lv({ night_level: 50 }), { backlight: 0, overlay: 0 }, "50%: backlight at 0, still no overlay");
+    eq(await lv({ night_level: 80 }), { backlight: 0, overlay: 51 }, "80%: backlight 0 + picture 51%");
+    eq(await op(), [true, "0.51"], "overlay in the page matches");
+    eq(await lv({ night_level: 100 }), { backlight: 0, overlay: 85 }, "100%: never fully black");
+    eq(await lv({ brightness_entity: null, night_level: 94 }), { backlight: null, overlay: 80 }, "no entity: picture only");
+    eq(await op(), [true, "0.8"], "overlay-only in the page");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
@@ -1200,7 +1204,7 @@ const SCENARIOS = {
     // Setup must draw with every optional section switched on (night dim with and without an entity, etc.).
     const p = await open(browser, base);
     const combos = [
-      { night_dim: true, brightness_entity: null }, { night_dim: true, brightness_entity: "number.kitchen_brightness", night_overlay: 50, night_by: "sun" },
+      { night_dim: true, brightness_entity: null }, { night_dim: true, brightness_entity: "number.kitchen_brightness", night_level: 80, night_by: "sun" },
       { night_dim: true, night_by: "schedule" }, { seasonal: true, weather_alerts: true, weather_extra: true, mlb_team: 109, leave_by: true, message_board: true },
       { allow_uploads: false, hide_chrome: true, photo_source: "immich" },
       { screen_off: true, screen_off_entity: "light.touchkio_display" }, { screen_off: true, screen_off_entity: null },

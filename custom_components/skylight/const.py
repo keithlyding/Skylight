@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.53.0"
+VERSION = "1.54.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -105,8 +105,7 @@ DEFAULT_DATA = {
         "night_dim": False,
         "brightness_entity": None,  # e.g. number.<tablet>_screen_brightness (Fully Kiosk)
         "day_brightness": 80,
-        "night_brightness": 20,
-        "night_overlay": 0,  # with a brightness entity: also darken the picture this much (%) at night
+        "night_level": 60,  # "how dark at night", 0-100: backlight down, then the picture darkened (nightmode.night_levels)
         # Turn the screen fully off later at night (a kiosk app's display entity: light.* or switch.*).
         "screen_off": False,
         "screen_off_start": "23:30",

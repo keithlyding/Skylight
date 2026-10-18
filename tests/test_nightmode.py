@@ -115,7 +115,7 @@ async def test_brightness_follows_night(hass: HomeAssistant, tmp_path):
     hass.states.async_set("light.kitchen", "on")
     store = hass.data[DOMAIN]["store"]
     store.data["settings"].update({"night_dim": True, "brightness_entity": "number.tablet_screen_brightness",
-                                   "day_brightness": 80, "night_brightness": 20, "night_start": "21:00", "night_end": "06:30"})
+                                   "day_brightness": 80, "night_level": 40, "night_start": "21:00", "night_end": "06:30"})
     day, night = datetime(2026, 1, 15, 12), datetime(2026, 1, 15, 22)
     assert await nightmode.async_apply(hass, day) is False
     assert await nightmode.async_apply(hass, day) is False  # no change -> no second call
@@ -216,3 +216,23 @@ async def test_screen_off_switches_the_display(hass: HomeAssistant, tmp_path):
     await nightmode.async_apply(hass, datetime(2026, 1, 16, 23, 45))
     await hass.async_block_till_done()
     assert len(off_calls) == 1  # turned off: nothing more is sent
+
+
+def test_night_levels_match_javascript():
+    """The slider's rule is in both nightmode.py and helpers.js; they must agree."""
+    cases = [{"night_level": lv, "brightness_entity": ent} for lv in (0, 25, 50, 60, 80, 100, 130, -5) for ent in (None, "number.x")]
+    script = HELPERS + "console.log(JSON.stringify(" + json.dumps(cases) + ".map((s) => nightLevels(s))))"
+    js = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+    py = [{"backlight": b, "overlay": o} for b, o in (nightmode.night_levels(c) for c in cases)]
+    assert js == py
+    assert nightmode.night_levels({"night_level": 80, "brightness_entity": "x"}) == (0, 51)
+    assert nightmode.night_levels({"night_level": "bad", "brightness_entity": None}) == (None, 51)
+
+
+def test_migrate_two_knobs_to_one_level():
+    from custom_components.skylight.store import migrate
+    d = {"settings": {"night_brightness": 20, "night_overlay": 0}, "members": []}
+    assert migrate(d) and d["settings"]["night_level"] == 80 and "night_brightness" not in d["settings"]
+    d = {"settings": {"night_brightness": 0, "night_overlay": 50, "brightness_entity": "number.k"}, "members": []}
+    migrate(d)
+    assert d["settings"]["night_level"] == 79  # backlight 0 (50) + 50/85 of the overlay half (29)

@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.53.0";
+export const PANEL_VERSION = "1.54.0";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -322,3 +322,15 @@ export const REMINDERS = [["", "None"], ["0", "At the start"], ["5", "5 minutes 
 // A touch screen? Media queries alone say "fine pointer" on a desktop Linux kiosk with a touch monitor
 // (the Pi), so count touch points too. Used to keep the on-screen keyboard from popping up uninvited.
 export const isTouchScreen = () => !!(window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
+
+// Night dimming: Setup has one slider, "How dark at night" (0-100). Behind it, with a backlight entity
+// the first half of the range turns the backlight down (100% -> 0%) and the second half darkens the
+// picture on top (0 -> 85%, since a backlight at 0 still glows); without one, the picture alone darkens.
+// nightmode.py has the same rule; tests keep the two in step.
+export const nightLevels = (settings) => {
+  const level = Math.min(100, Math.max(0, Number(settings?.night_level ?? 60)));
+  if (settings?.brightness_entity) {
+    return { backlight: Math.max(0, 100 - 2 * level), overlay: level > 50 ? Math.round(((level - 50) / 50) * 85) : 0 };
+  }
+  return { backlight: null, overlay: Math.round(level * 0.85) };
+};

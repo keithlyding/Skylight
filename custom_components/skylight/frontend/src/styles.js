@@ -349,6 +349,7 @@ label.check input { width:22px; height:22px; }
 .swatches { display:flex; gap:8px; } .swatch { width:34px; height:34px; border-radius:50%; border:2px solid transparent; padding:0; min-height:0; }
 .swatch.on { border-color:var(--ink, #222); }
 .wwhere { width:fit-content; margin:0 auto 10px; }
+.rangewrap { display:flex; align-items:center; gap:10px; } .rangewrap input[type=range] { width:200px; min-width:120px; }
 .leavenote { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--card); border:0; border-left:6px solid #2e7dd7; border-radius:var(--radius); padding:10px 12px; color:var(--text); font:inherit; cursor:pointer; }
 .leavenote .lvicon { font-size:1.6em; } .leavenote .lvtxt { display:flex; flex-direction:column; min-width:0; }
 .leavenote small { color:var(--muted); } .leavenote b { font-size:1.15em; }

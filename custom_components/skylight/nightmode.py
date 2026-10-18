@@ -106,6 +106,20 @@ def is_screen_off(settings: dict[str, Any], now: datetime) -> bool:
     return in_window(now.hour * 60 + now.minute, start, end)
 
 
+def night_levels(settings: dict[str, Any]) -> tuple[float | None, int]:
+    """(backlight % at night or None without an entity, picture darkening %) from the one "how dark at
+    night" slider. With a backlight entity: 0-50 turns the backlight from 100% down to 0, 50-100 then
+    darkens the picture up to 85% (a backlight at 0 still glows). Same rule as helpers.js nightLevels."""
+    try:
+        level = min(100.0, max(0.0, float(settings.get("night_level", 60))))
+    except (TypeError, ValueError):
+        level = 60.0
+    half_up = lambda x: int(x + 0.5)  # like Math.round in helpers.js (Python's round() halves to even)
+    if settings.get("brightness_entity"):
+        return max(0.0, 100 - 2 * level), (half_up((level - 50) / 50 * 85) if level > 50 else 0)
+    return None, half_up(level * 0.85)
+
+
 def display_call(entity_id: str, off: bool) -> tuple[str, str, dict[str, Any]] | None:
     domain = entity_id.split(".")[0]
     if domain not in DISPLAY_DOMAINS:
@@ -155,7 +169,7 @@ async def async_apply(hass: HomeAssistant, now: datetime | None = None, force: b
     if not settings.get("night_dim") or not entity:
         hass.data.pop(STATE_KEY, None)
         return None
-    pct = settings.get("night_brightness", 20) if night else settings.get("day_brightness", 80)
+    pct = night_levels(settings)[0] if night else settings.get("day_brightness", 80)
     key = (entity, night, pct)
     if not force and hass.data.get(STATE_KEY) == key:
         return night

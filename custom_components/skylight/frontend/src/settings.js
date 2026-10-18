@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.53.0";
-import { diagPrevious, diagText } from "./diag.js?v=1.53.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.53.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.54.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.54.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.54.0";
 
 export class SettingsView {
 
@@ -123,14 +123,12 @@ export class SettingsView {
         <label class="inline">ends <input type="time" value="${esc(s.night_end || "06:30")}" data-change="setting" data-key="night_end"></label></div>` : ""}
       <label class="inline">Dim this family's screens during night hours <input type="checkbox" ${s.night_dim ? "checked" : ""} data-change="setting" data-key="night_dim"></label>
       ${s.night_dim ? `
-        <label class="inline">How: backlight control (Home Assistant entity) <select data-change="setting" data-key="brightness_entity"><option value="">None: darken the picture only</option>${bright.map((e) => `<option value="${e}" ${e === s.brightness_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
-        <div class="row"><label class="inline">Backlight by day % <input type="number" min="1" max="100" value="${Number(s.day_brightness ?? 80)}" data-change="setting" data-key="day_brightness" data-num="1"></label>
-          <label class="inline">Backlight at night % <input type="number" min="0" max="100" value="${Number(s.night_brightness ?? 20)}" data-change="setting" data-key="night_brightness" data-num="1"></label></div>
-        ${s.brightness_entity ? `<label class="inline">Extra: also darken the picture at night by <span><input type="number" min="0" max="85" value="${Number(s.night_overlay ?? 0)}" data-change="setting" data-key="night_overlay" data-num="1"> %</span></label>
-        <p class="hint">Most monitors still glow at their lowest backlight setting; darkening the picture on top gets the screen properly dim. 0 = off. Turning the screen fully off is a job for a kiosk app's display switch (TouchKio, Fully Kiosk) and a Home Assistant automation.</p>` : ""}
-        <p class="hint">${s.brightness_entity
-          ? "When night starts, Home Assistant sets the backlight to the night level; when it ends, to the day level (a manual change in between stays until the next switch). With Fully Kiosk Browser, use its integration's “Screen brightness” entity."
-          : "No brightness entity: ${this.appName} darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}
+        <label class="inline">How dark at night <span class="rangewrap"><input type="range" min="0" max="100" step="5" value="${Number(s.night_level ?? 60)}" data-change="setting" data-key="night_level" data-num="1"> <b>${Number(s.night_level ?? 60)}%</b></span></label>
+        <label class="inline">Backlight control <small class="hint">(optional)</small> <select data-change="setting" data-key="brightness_entity"><option value="">None: darken the picture only</option>${bright.map((e) => `<option value="${e}" ${e === s.brightness_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
+        ${s.brightness_entity ? `<label class="inline">Daytime backlight % <input type="number" min="1" max="100" value="${Number(s.day_brightness ?? 80)}" data-change="setting" data-key="day_brightness" data-num="1"></label>` : ""}
+        <p class="hint">${(() => { const lv = nightLevels(s); return s.brightness_entity
+          ? `At ${Number(s.night_level ?? 60)}%: backlight ${lv.backlight}%${lv.overlay ? ` and the picture darkened ${lv.overlay}%` : ""} during night hours, back to ${Number(s.day_brightness ?? 80)}% after. Up to the middle of the slider only the backlight goes down; past it the picture darkens too, since most monitors still glow at their lowest setting.`
+          : `No backlight control: the picture is darkened ${lv.overlay}% during night hours. For real dimming pick a backlight entity (TouchKio + the DDC brightness script, or Fully Kiosk Browser's "Screen brightness").`; })()}
           Night hours ${s.night_by === "sun" ? "follow sunset and sunrise" : "use the times above"}; the photo screensaver is dimmed too.</p>` : ""}
       <label class="inline">Turn the screen off when everyone's in bed <input type="checkbox" ${s.screen_off ? "checked" : ""} data-change="setting" data-key="screen_off"></label>
       ${s.screen_off ? `

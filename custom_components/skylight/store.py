@@ -31,8 +31,20 @@ ROLES = ("adult", "kid", "home")  # home = Household (house maintenance etc.): h
 def migrate(data: dict[str, Any]) -> bool:
     """Bring older stored data up to date in place. Returns True if anything changed."""
     changed = False
-    # v1.42: light/dark is chosen per screen; the family setting only keeps when night is.
     settings = data.get("settings")
+    # v1.53: one "how dark at night" slider replaces night brightness % + picture darkening %.
+    if isinstance(settings, dict) and "night_level" not in settings and ("night_brightness" in settings or "night_overlay" in settings):
+        try:
+            nb = float(settings.get("night_brightness", 20))
+            ov = float(settings.get("night_overlay", 0))
+        except (TypeError, ValueError):
+            nb, ov = 20.0, 0.0
+        level = (100 - nb) / 2 + min(85.0, max(0.0, ov)) / 85 * 50 if settings.get("brightness_entity") else 100 - nb
+        settings["night_level"] = int(round(min(100.0, max(0.0, level))))
+        settings.pop("night_brightness", None)
+        settings.pop("night_overlay", None)
+        changed = True
+    # v1.42: light/dark is chosen per screen; the family setting only keeps when night is.
     if isinstance(settings, dict) and "dark_mode" in settings:
         settings.setdefault("night_by", "sun" if settings.get("dark_mode") == "sun" else "schedule")
         settings.pop("dark_mode")
