@@ -17,7 +17,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EVENT_UPDATED
@@ -146,6 +146,16 @@ async def _apply_screen_off(hass: HomeAssistant, settings: dict[str, Any], now: 
     hass.data[OFF_STATE_KEY] = key
 
 
+def room_empty(hass: HomeAssistant, settings: dict[str, Any]) -> bool:
+    """The "also dim when nobody's around" entity says the room is empty (state off). Unknown/unavailable
+    counts as occupied, so a broken sensor never leaves the screen dim."""
+    entity = settings.get("idle_entity")
+    if not entity:
+        return False
+    st = hass.states.get(entity)
+    return st is not None and st.state == "off"
+
+
 def current_night(settings: dict[str, Any], hass: HomeAssistant | None = None, now: datetime | None = None) -> bool:
     """Is it night right now, by the family's rule (used by the Night binary sensor too)."""
     sun = _sun_times(hass) if hass is not None else (None, None)
@@ -169,7 +179,8 @@ async def async_apply(hass: HomeAssistant, now: datetime | None = None, force: b
     if not settings.get("night_dim") or not entity:
         hass.data.pop(STATE_KEY, None)
         return None
-    pct = night_levels(settings)[0] if night else settings.get("day_brightness", 80)
+    dim = night or room_empty(hass, settings)
+    pct = night_levels(settings)[0] if dim else settings.get("day_brightness", 80)
     key = (entity, night, pct)
     if not force and hass.data.get(STATE_KEY) == key:
         return night
@@ -189,13 +200,40 @@ def async_start(hass: HomeAssistant):
         await async_apply(hass)
 
     unsub_timer = async_track_time_interval(hass, tick, timedelta(minutes=1))
-    unsub_event = hass.bus.async_listen(EVENT_UPDATED, tick)
+    watch: dict[str, Any] = {"entity": None, "unsub": None}
+
+    @callback
+    def on_presence(_event) -> None:
+        hass.async_create_task(tick())
+
+    @callback
+    def watch_idle_entity() -> None:
+        """React the moment the presence entity changes, not at the next minute."""
+        store = hass.data.get(DOMAIN, {}).get("store")
+        entity = store.data["settings"].get("idle_entity") if store else None
+        if entity == watch["entity"]:
+            return
+        if watch["unsub"]:
+            watch["unsub"]()
+            watch["unsub"] = None
+        watch["entity"] = entity
+        if entity:
+            watch["unsub"] = async_track_state_change_event(hass, [entity], on_presence)
+
+    async def on_updated(_event=None) -> None:
+        watch_idle_entity()
+        await tick()
+
+    unsub_event = hass.bus.async_listen(EVENT_UPDATED, on_updated)
+    watch_idle_entity()
     hass.async_create_task(tick())
 
     @callback
     def stop() -> None:
         unsub_timer()
         unsub_event()
+        if watch["unsub"]:
+            watch["unsub"]()
         hass.data.pop(STATE_KEY, None)
         hass.data.pop(NIGHT_KEY, None)
         hass.data.pop(OFF_KEY, None)

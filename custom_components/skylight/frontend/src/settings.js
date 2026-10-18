@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.54.0";
-import { diagPrevious, diagText } from "./diag.js?v=1.54.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.54.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.55.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.55.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.55.0";
 
 export class SettingsView {
 
@@ -107,6 +107,7 @@ export class SettingsView {
   renderLookCard() {
     const s = this.settings, mine = this._screenScheme() || "follow";
     const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
+    const presence = Object.keys(this._hass.states).filter((e) => /^(binary_sensor|input_boolean|switch)\./.test(e)).sort((a, b) => (/occup|presence|motion|people|kitchen/i.test(b + this.entityName(b)) - /occup|presence|motion|people|kitchen/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const displays = Object.keys(this._hass.states).filter((e) => /^(light|switch)\./.test(e)).sort((a, b) => (/display|screen|monitor|kiosk/i.test(b + this.entityName(b)) - /display|screen|monitor|kiosk/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const showTimes = s.night_by !== "sun";
     return `<section class="card">
@@ -125,6 +126,8 @@ export class SettingsView {
       ${s.night_dim ? `
         <label class="inline">How dark at night <span class="rangewrap"><input type="range" min="0" max="100" step="5" value="${Number(s.night_level ?? 60)}" data-change="setting" data-key="night_level" data-num="1"> <b>${Number(s.night_level ?? 60)}%</b></span></label>
         <label class="inline">Backlight control <small class="hint">(optional)</small> <select data-change="setting" data-key="brightness_entity"><option value="">None: darken the picture only</option>${bright.map((e) => `<option value="${e}" ${e === s.brightness_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
+        <label class="inline">Also dim when nobody's around <small class="hint">(optional)</small> <select data-change="setting" data-key="idle_entity"><option value="">Off</option>${presence.map((e) => `<option value="${e}" ${e === s.idle_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
+        ${s.idle_entity ? `<p class="hint">While ${esc(this.entityName(s.idle_entity))} is off (room empty) the screen dims to the level above, any time of day; when it turns on, back to normal within a second. Use a presence or motion sensor, or a toggle helper an Alexa routine switches on when an Echo detects people and off after 10 minutes without.</p>` : ""}
         ${s.brightness_entity ? `<label class="inline">Daytime backlight % <input type="number" min="1" max="100" value="${Number(s.day_brightness ?? 80)}" data-change="setting" data-key="day_brightness" data-num="1"></label>` : ""}
         <p class="hint">${(() => { const lv = nightLevels(s); return s.brightness_entity
           ? `At ${Number(s.night_level ?? 60)}%: backlight ${lv.backlight}%${lv.overlay ? ` and the picture darkened ${lv.overlay}%` : ""} during night hours, back to ${Number(s.day_brightness ?? 80)}% after. Up to the middle of the slider only the backlight goes down; past it the picture darkens too, since most monitors still glow at their lowest setting.`

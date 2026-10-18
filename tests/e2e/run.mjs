@@ -1197,6 +1197,11 @@ const SCENARIOS = {
     eq(await lv({ night_level: 100 }), { backlight: 0, overlay: 85 }, "100%: never fully black");
     eq(await lv({ brightness_entity: null, night_level: 94 }), { backlight: null, overlay: 80 }, "no entity: picture only");
     eq(await op(), [true, "0.8"], "overlay-only in the page");
+    // Daytime, but the room is empty: dims; someone walks in: back to normal on the next state update.
+    await p.evaluate(() => { el.settings.idle_entity = "input_boolean.kitchen_occupied"; window.hass.states["input_boolean.kitchen_occupied"] = { state: "off" }; el.settings.night_start = "23:30"; el.settings.night_end = "23:45"; el.hass = { ...window.hass }; });
+    eq(await op(), [true, "0.8"], "empty room in the daytime dims");
+    await p.evaluate(() => { window.hass.states["input_boolean.kitchen_occupied"] = { state: "on" }; el.hass = { ...window.hass }; });
+    eq(await op(), [false, ""], "someone's there: normal again");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
@@ -1208,6 +1213,7 @@ const SCENARIOS = {
       { night_dim: true, night_by: "schedule" }, { seasonal: true, weather_alerts: true, weather_extra: true, mlb_team: 109, leave_by: true, message_board: true },
       { allow_uploads: false, hide_chrome: true, photo_source: "immich" },
       { screen_off: true, screen_off_entity: "light.touchkio_display" }, { screen_off: true, screen_off_entity: null },
+      { night_dim: true, idle_entity: "input_boolean.kitchen_occupied" },
     ];
     for (const c of combos) {
       await p.evaluate((c) => { Object.assign(el.settings, c); el.ui.tab = "settings"; el.render(); }, c);

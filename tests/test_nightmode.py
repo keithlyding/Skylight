@@ -236,3 +236,35 @@ def test_migrate_two_knobs_to_one_level():
     d = {"settings": {"night_brightness": 0, "night_overlay": 50, "brightness_entity": "number.k"}, "members": []}
     migrate(d)
     assert d["settings"]["night_level"] == 79  # backlight 0 (50) + 50/85 of the overlay half (29)
+
+
+async def test_dim_when_room_is_empty(hass: HomeAssistant, tmp_path):
+    hass.config.config_dir = str(tmp_path)
+    (tmp_path / ".storage").mkdir()
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain=DOMAIN, data={})
+    e.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(e.entry_id)
+    await hass.async_block_till_done()
+    calls = async_mock_service(hass, "number", "set_value")
+    hass.states.async_set("number.kitchen_brightness", "80", {"min": 0, "max": 100, "step": 1})
+    hass.states.async_set("input_boolean.kitchen_occupied", "on")
+    store = hass.data[DOMAIN]["store"]
+    store.data["settings"].update({"night_dim": True, "brightness_entity": "number.kitchen_brightness", "day_brightness": 80,
+                                   "night_level": 40, "night_start": "23:00", "night_end": "06:00",
+                                   "idle_entity": "input_boolean.kitchen_occupied"})
+    hass.bus.async_fire("skylight_updated")  # settings changed: start watching the presence entity
+    await hass.async_block_till_done()
+    noon = datetime(2026, 1, 15, 12)
+    await nightmode.async_apply(hass, noon)
+    await hass.async_block_till_done()
+    assert calls[-1].data["value"] == 80.0  # daytime, someone there
+    hass.states.async_set("input_boolean.kitchen_occupied", "off")  # nobody for 10 minutes (the routine flipped it)
+    await hass.async_block_till_done()
+    assert calls[-1].data["value"] == 20.0  # dimmed right away, not at the next minute
+    hass.states.async_set("input_boolean.kitchen_occupied", "unavailable")
+    await hass.async_block_till_done()
+    assert calls[-1].data["value"] == 80.0  # a broken sensor never keeps the screen dim
+    hass.states.async_set("input_boolean.kitchen_occupied", "on")
+    await hass.async_block_till_done()
+    assert calls[-1].data["value"] == 80.0

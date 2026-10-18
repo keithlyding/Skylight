@@ -1,21 +1,21 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.54.0";
-import { STYLES } from "./styles.js?v=1.54.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.54.0";
-import { CalendarView } from "./calendar.js?v=1.54.0";
-import { WeatherView } from "./weather.js?v=1.54.0";
-import { HomeView } from "./home.js?v=1.54.0";
-import { ChoresView } from "./chores.js?v=1.54.0";
-import { MealsView } from "./meals.js?v=1.54.0";
-import { ListsView } from "./lists.js?v=1.54.0";
-import { PhotosView } from "./photos.js?v=1.54.0";
-import { SettingsView } from "./settings.js?v=1.54.0";
-import { PickersView } from "./pickers.js?v=1.54.0";
-import { keepAwake } from "./wake.js?v=1.54.0";
-import { MlbView } from "./mlb.js?v=1.54.0";
-import { TravelView } from "./travel.js?v=1.54.0";
-import { NotesView } from "./notes.js?v=1.54.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.55.0";
+import { STYLES } from "./styles.js?v=1.55.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.55.0";
+import { CalendarView } from "./calendar.js?v=1.55.0";
+import { WeatherView } from "./weather.js?v=1.55.0";
+import { HomeView } from "./home.js?v=1.55.0";
+import { ChoresView } from "./chores.js?v=1.55.0";
+import { MealsView } from "./meals.js?v=1.55.0";
+import { ListsView } from "./lists.js?v=1.55.0";
+import { PhotosView } from "./photos.js?v=1.55.0";
+import { SettingsView } from "./settings.js?v=1.55.0";
+import { PickersView } from "./pickers.js?v=1.55.0";
+import { keepAwake } from "./wake.js?v=1.55.0";
+import { MlbView } from "./mlb.js?v=1.55.0";
+import { TravelView } from "./travel.js?v=1.55.0";
+import { NotesView } from "./notes.js?v=1.55.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -43,6 +43,7 @@ export class SkylightPanel extends HTMLElement {
     const first = !this._hass;
     this._hass = hass;
     if (first) this._start();
+    else if (this.settings?.idle_entity && hass?.states?.[this.settings.idle_entity]?.state !== this._idleState) this._applyLook(); // someone came in or left
   }
   get hass() { return this._hass; }
   set panel(_p) {}
@@ -1143,7 +1144,9 @@ export class SkylightPanel extends HTMLElement {
     // At night, darken the picture with an overlay (also over the photo screensaver) by however much the
     // "how dark" slider asks on top of the backlight (nightLevels: the shared rule with nightmode.py).
     const darken = nightLevels(s).overlay;
-    const overlay = s.night_dim && night && darken > 0;
+    this._idleState = s.idle_entity ? this._hass.states[s.idle_entity]?.state : undefined;
+    const empty = !!s.idle_entity && this._idleState === "off"; // nobody around
+    const overlay = s.night_dim && (night || empty) && darken > 0;
     const level = darken / 100;
     if (this.$dim) {
       this.$dim.classList.toggle("on", !!overlay);
