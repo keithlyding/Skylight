@@ -1,7 +1,7 @@
 /* Skylight panel: constants and helpers shared by every part of the panel (no DOM). */
 
 export const DEFAULT_APP_NAME = "Lyding Strike";
-export const PANEL_VERSION = "1.52.0";
+export const PANEL_VERSION = "1.52.1";
 // Profile colors: each column is a color family, rows go light -> dark.
 export const MEMBER_COLORS = [
   // light
@@ -318,3 +318,7 @@ export const ALERT_TYPE_LABELS = Object.fromEntries([...ALERT_TYPES.map(([k, l])
 export const REMINDERS = [["", "None"], ["0", "At the start"], ["5", "5 minutes before"], ["10", "10 minutes before"],
   ["15", "15 minutes before"], ["30", "30 minutes before"], ["60", "1 hour before"], ["120", "2 hours before"],
   ["1440", "1 day before"], ["eve", "The evening before (7 PM)"]];
+
+// A touch screen? Media queries alone say "fine pointer" on a desktop Linux kiosk with a touch monitor
+// (the Pi), so count touch points too. Used to keep the on-screen keyboard from popping up uninvited.
+export const isTouchScreen = () => !!(window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);

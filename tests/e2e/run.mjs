@@ -1228,6 +1228,20 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async kiosk_no_autofocus(browser, base) {
+    // A desktop kiosk with a touch monitor reports a fine pointer but has touch points: no auto-focus
+    // (which would pop the on-screen keyboard and select the title) and the touch time picker.
+    const p = await open(browser, base, { width: 1920, height: 1080, ctx: { hasTouch: true } });
+    const fine = await p.evaluate(() => !window.matchMedia("(pointer: coarse)").matches && navigator.maxTouchPoints > 0);
+    check(fine, "test setup: fine pointer with touch points, like the Pi");
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.shadowRoot.activeElement?.id || null), null, "nothing focused on open (new event)");
+    await p.evaluate(() => { el.closeDialog(); const ev = el.visibleEvents()[0]; el.openEventDialog(ev); }); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.shadowRoot.activeElement?.id || null), null, "nothing focused on open (existing event)");
+    eq(await p.evaluate(() => el.shadowRoot.getElementById("ev-start")?.readOnly), true, "touch time picker in use");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
 };
 
 const wanted = process.argv.slice(2);

@@ -1,21 +1,21 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, esc } from "./helpers.js?v=1.52.0";
-import { STYLES } from "./styles.js?v=1.52.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.52.0";
-import { CalendarView } from "./calendar.js?v=1.52.0";
-import { WeatherView } from "./weather.js?v=1.52.0";
-import { HomeView } from "./home.js?v=1.52.0";
-import { ChoresView } from "./chores.js?v=1.52.0";
-import { MealsView } from "./meals.js?v=1.52.0";
-import { ListsView } from "./lists.js?v=1.52.0";
-import { PhotosView } from "./photos.js?v=1.52.0";
-import { SettingsView } from "./settings.js?v=1.52.0";
-import { PickersView } from "./pickers.js?v=1.52.0";
-import { keepAwake } from "./wake.js?v=1.52.0";
-import { MlbView } from "./mlb.js?v=1.52.0";
-import { TravelView } from "./travel.js?v=1.52.0";
-import { NotesView } from "./notes.js?v=1.52.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, esc } from "./helpers.js?v=1.52.1";
+import { STYLES } from "./styles.js?v=1.52.1";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.52.1";
+import { CalendarView } from "./calendar.js?v=1.52.1";
+import { WeatherView } from "./weather.js?v=1.52.1";
+import { HomeView } from "./home.js?v=1.52.1";
+import { ChoresView } from "./chores.js?v=1.52.1";
+import { MealsView } from "./meals.js?v=1.52.1";
+import { ListsView } from "./lists.js?v=1.52.1";
+import { PhotosView } from "./photos.js?v=1.52.1";
+import { SettingsView } from "./settings.js?v=1.52.1";
+import { PickersView } from "./pickers.js?v=1.52.1";
+import { keepAwake } from "./wake.js?v=1.52.1";
+import { MlbView } from "./mlb.js?v=1.52.1";
+import { TravelView } from "./travel.js?v=1.52.1";
+import { NotesView } from "./notes.js?v=1.52.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1012,7 +1012,7 @@ export class SkylightPanel extends HTMLElement {
     // Focus the first box only where there's a real keyboard; on touch screens wait for a tap, so the
     // on-screen keyboard doesn't pop up every time a dialog opens. (Search always focuses: you open it to type.)
     const first = this.$dialog.querySelector("[data-autofocus]");
-    if (first && (first.dataset.autofocus === "always" || !window.matchMedia?.("(pointer: coarse)").matches)) first.focus();
+    if (first && (first.dataset.autofocus === "always" || !isTouchScreen())) first.focus();
   }
   _openDialog(dlg) { this.ui.dialog = dlg; this.$dialog.innerHTML = ""; this.renderDialog(); }
 

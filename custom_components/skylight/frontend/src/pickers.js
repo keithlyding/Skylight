@@ -1,6 +1,6 @@
 /* Skylight panel: location lookup, time picker and emoji/icon pickers (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, esc } from "./helpers.js?v=1.52.0";
+import { PANEL_VERSION, AVATARS, TONEABLE, withTone, CHORE_ICONS, pad, ymd, parseYmd, isTouchScreen, esc } from "./helpers.js?v=1.52.1";
 
 export class PickersView {
 
@@ -61,7 +61,7 @@ export class PickersView {
   timeInput(id, hm) {
     const [h, m] = hm.split(":").map(Number);
     // Touch screens: tapping the time opens the 15-minute list without the keyboard; ⌨ switches to typing.
-    const touch = !!window.matchMedia?.("(pointer: coarse)").matches;
+    const touch = isTouchScreen();
     return `<span class="tpick ${touch ? "touch" : ""}"><input type="text" id="${id}" class="tinput" inputmode="text" autocomplete="off" ${touch ? "readonly" : ""}
       value="${this.fmtHM(h, m)}" data-hm="${hm}" data-change="time-norm" data-enter="time-norm">${touch ? `<button type="button" class="ttype" data-action="time-type" data-for="${id}" aria-label="Type a time" title="Type a time">⌨</button>` : ""}<span class="tlist" hidden></span></span>`;
   }

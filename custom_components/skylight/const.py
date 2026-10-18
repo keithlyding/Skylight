@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.52.0"
+VERSION = "1.52.1"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
