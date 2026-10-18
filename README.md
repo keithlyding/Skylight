@@ -234,6 +234,39 @@ Every family member is an **Adult**, a **Kid** or **Household** (Setup → famil
 
 Update through HACS, then restart Home Assistant. Every open screen notices the new version on its next data refresh and reloads itself once (not while someone is in cook mode or has a dialog open), so a wall display picks up updates without being touched.
 
+## Automatic updates (HACS)
+
+HACS adds an update entity for Lyding Strike (`update.lyding_strike_update`; check the exact id under Settings → Devices & services → Entities). An automation can install new versions on its own and restart Home Assistant, and the screens then reload themselves (see above). Settings → Automations → Create → ⋮ → Edit in YAML:
+
+```yaml
+alias: Lyding Strike auto-update
+description: Install new Lyding Strike versions overnight and restart Home Assistant
+triggers:
+  - trigger: time
+    at: "03:30:00"
+conditions: []
+actions:
+  - action: homeassistant.update_entity
+    target:
+      entity_id: update.lyding_strike_update
+  - delay: "00:00:30"
+  - if:
+      - condition: state
+        entity_id: update.lyding_strike_update
+        state: "on"
+    then:
+      - action: update.install
+        target:
+          entity_id: update.lyding_strike_update
+      - delay: "00:01:00"
+      - action: homeassistant.restart
+mode: single
+```
+
+- The time trigger plus `homeassistant.update_entity` makes HACS look for a new version at that moment, so the schedule doesn't depend on how often HACS checks by itself.
+- To install the moment a version appears instead, use a state trigger on the update entity going to `on` (and keep the restart; Home Assistant doesn't restart by itself after a HACS update). An overnight window is kinder to a kitchen screen in use.
+- Without releases on GitHub, HACS follows the latest commit on the repository's default branch.
+
 ## Upgrading from v1.27 or earlier
 
 v1.28 removes **stars and rewards**. On the first start after upgrading, Lyding Strike deletes the saved star balances, the rewards and each chore's star value (logged once in the Home Assistant log). Chores and their completion history are kept, and the history now holds up to 400 check-offs per chore for the Progress view. Weeks before a chore was created don't count against it; for chores made before v1.28, the first check-off is used as the start.
