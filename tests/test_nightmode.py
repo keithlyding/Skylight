@@ -251,7 +251,7 @@ async def test_dim_when_room_is_empty(hass: HomeAssistant, tmp_path):
     hass.states.async_set("input_boolean.kitchen_occupied", "on")
     store = hass.data[DOMAIN]["store"]
     store.data["settings"].update({"night_dim": True, "brightness_entity": "number.kitchen_brightness", "day_brightness": 80,
-                                   "night_level": 40, "night_start": "23:00", "night_end": "06:00",
+                                   "night_level": 40, "night_start": "00:00", "night_end": "00:00",  # no night hours: presence only
                                    "idle_entity": "input_boolean.kitchen_occupied"})
     hass.bus.async_fire("skylight_updated")  # settings changed: start watching the presence entity
     await hass.async_block_till_done()
