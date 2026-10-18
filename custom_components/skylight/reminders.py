@@ -135,7 +135,8 @@ class Reminders:
                             changed = True
                     if hit:
                         all_day = not isinstance(ev.start, datetime)
-                        occ.append((key, meta, start, all_day, ev.location))
+                        end = _as_dt(ev.end) if getattr(ev, "end", None) else start + timedelta(hours=1)
+                        occ.append((key, meta, start, all_day, ev.location, end))
         if changed:  # re-key entries that just learned their uid
             self.store.data["event_meta"] = {meta_key(m): m for m in metas.values()}
             self.store.save_soon()
@@ -156,7 +157,7 @@ class Reminders:
     async def send_due(self, now: datetime) -> None:
         sent: dict[str, str] = self.store.data.setdefault("reminders_sent", {})
         new = False
-        for key, meta, start, all_day, location in self._occurrences:
+        for key, meta, start, all_day, location, end in self._occurrences:
             when = fire_time(start, meta["remind"])
             if not (when <= now < when + LATE_OK):
                 continue
@@ -165,13 +166,14 @@ class Reminders:
                 continue
             sent[mark] = now.isoformat()
             new = True
-            await self.notify(meta, start, all_day, location, now)
+            await self.notify(meta, start, all_day, location, now, end)
         if new:
             cutoff = (now - timedelta(days=3)).isoformat()
             self.store.data["reminders_sent"] = {k: v for k, v in sent.items() if v >= cutoff}
             self.store.save_soon()
 
-    async def notify(self, meta: dict, start: datetime, all_day: bool, location: str | None, now: datetime) -> None:
+    async def notify(self, meta: dict, start: datetime, all_day: bool, location: str | None, now: datetime,
+                     end: datetime | None = None) -> None:
         summary = meta.get("summary") or "Event"
         title = f"⏰ {summary}"
         message = _when_text(start, all_day, now) + (f" · {location}" if location else "")
@@ -191,6 +193,7 @@ class Reminders:
                     _LOGGER.warning("Reminders: couldn't notify %s: %s", service, err)
         self.hass.bus.async_fire(EVENT_REMINDER, {
             "summary": summary, "message": message, "start": start.isoformat(), "all_day": all_day,
+            "end": (end or start + timedelta(hours=1)).isoformat(),  # screens close the pop-up once the event is over
             "members": sorted(members), "location": location,
         })
 

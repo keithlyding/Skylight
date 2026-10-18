@@ -27,8 +27,9 @@ def test_clean_meta():
 
 
 class _Ev:
-    def __init__(self, uid, summary, start, location=None):
+    def __init__(self, uid, summary, start, location=None, end=None):
         self.uid, self.summary, self.start, self.location, self.rrule = uid, summary, start, location, None
+        self.end = end
 
 
 class _Cal:
@@ -84,14 +85,14 @@ async def test_reminder_flow(hass, tmp_path, hass_ws_client):
         "entity": "calendar.family", "summary": "Dentist", "start": start.isoformat(), "remind": "30", "members": ["alex"]}})
     r = await ws.receive_json()
     assert r["success"] and r["result"]["key"] == f"calendar.family|Dentist|{start.isoformat()}"
-    cal.events.append(_Ev("g-123", "Dentist", start, "Main St"))
+    cal.events.append(_Ev("g-123", "Dentist", start, "Main St", start + timedelta(minutes=45)))
 
     await rem._tick(now)
     await hass.async_block_till_done()
     assert list(store.data["event_meta"]) == ["g-123"]  # learned the event's uid
     assert [s for s, _ in sent] == ["mobile_app_alex"]  # kids' phone only gets Sam's events; wife's is off
     assert sent[0][1]["title"] == "⏰ Dentist" and "Main St" in sent[0][1]["message"]
-    assert fired and fired[0]["summary"] == "Dentist"
+    assert fired and fired[0]["summary"] == "Dentist" and fired[0]["end"] == (start + timedelta(minutes=45)).isoformat()
 
     await rem._tick(now + timedelta(minutes=1))
     await hass.async_block_till_done()

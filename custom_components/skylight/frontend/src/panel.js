@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.2";
-import { STYLES } from "./styles.js?v=1.57.2";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.2";
-import { CalendarView } from "./calendar.js?v=1.57.2";
-import { WeatherView } from "./weather.js?v=1.57.2";
-import { HomeView } from "./home.js?v=1.57.2";
-import { ChoresView } from "./chores.js?v=1.57.2";
-import { MealsView } from "./meals.js?v=1.57.2";
-import { ListsView } from "./lists.js?v=1.57.2";
-import { PhotosView } from "./photos.js?v=1.57.2";
-import { SettingsView } from "./settings.js?v=1.57.2";
-import { PickersView } from "./pickers.js?v=1.57.2";
-import { keepAwake } from "./wake.js?v=1.57.2";
-import { MlbView } from "./mlb.js?v=1.57.2";
-import { TravelView } from "./travel.js?v=1.57.2";
-import { NotesView } from "./notes.js?v=1.57.2";
-import { VerseView } from "./verses.js?v=1.57.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.3";
+import { STYLES } from "./styles.js?v=1.57.3";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.3";
+import { CalendarView } from "./calendar.js?v=1.57.3";
+import { WeatherView } from "./weather.js?v=1.57.3";
+import { HomeView } from "./home.js?v=1.57.3";
+import { ChoresView } from "./chores.js?v=1.57.3";
+import { MealsView } from "./meals.js?v=1.57.3";
+import { ListsView } from "./lists.js?v=1.57.3";
+import { PhotosView } from "./photos.js?v=1.57.3";
+import { SettingsView } from "./settings.js?v=1.57.3";
+import { PickersView } from "./pickers.js?v=1.57.3";
+import { keepAwake } from "./wake.js?v=1.57.3";
+import { MlbView } from "./mlb.js?v=1.57.3";
+import { TravelView } from "./travel.js?v=1.57.3";
+import { NotesView } from "./notes.js?v=1.57.3";
+import { VerseView } from "./verses.js?v=1.57.3";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1158,6 +1158,9 @@ export class SkylightPanel extends HTMLElement {
     const sun = this._hass.states["sun.sun"]?.attributes || {};
     const rise = sun.next_rising ? new Date(sun.next_rising) : null, set = sun.next_setting ? new Date(sun.next_setting) : null;
     const night = isNightAt(s, now, rise, set);
+    // Morning: a pop-up that waited under the screensaver all night comes back into view.
+    if (this._night && !night && this.ui.saver && this.popupShowing) this.stopSaver();
+    this._night = night;
     // A screen can override the family setting for itself (e.g. a phone that follows its own Dark Mode).
     // Light/dark is per screen (saved on this device): follow the device, always light/dark, or dark at night.
     const mode = this._screenScheme() || "follow";
@@ -1199,6 +1202,7 @@ export class SkylightPanel extends HTMLElement {
     this._mlbMaybe();
     this._travelMaybe();
     this._verseMaybe();
+    this._expireReminders(now);
     // roll over "today" at midnight
     if (this._lastDay && this._lastDay !== ymd(now)) { this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this.render(); this._loadEvents(); this._loadForecast(); }
     this._lastDay = ymd(now);

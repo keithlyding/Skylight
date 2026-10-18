@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.57.2";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.57.2";
-import { MLB_TEAMS } from "./mlb.js?v=1.57.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.57.3";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.57.3";
+import { MLB_TEAMS } from "./mlb.js?v=1.57.3";
 
 export class SettingsView {
 
@@ -479,6 +479,17 @@ export class SettingsView {
     this._lastActivity = Date.now();
     if (this.settings.alert_sound !== false) this._chime();
     this.render();
+  }
+  // The event is over: its pop-up closes by itself (and the screensaver may come back).
+  _expireReminders(now = new Date()) {
+    const pops = this.ui.reminderPop || [];
+    if (!pops.length) return;
+    const over = (r) => { const t = Date.parse(r.end || ""); return !Number.isNaN(t) && t <= now.getTime(); };
+    const keep = pops.filter((r) => !over(r));
+    if (keep.length === pops.length) return;
+    this.ui.reminderPop = keep;
+    diag("reminder-expired", String(pops.length - keep.length));
+    if (!this.ui.saver && !this.ui.dialog) this.render();
   }
   renderReminderPop() {
     const r = (this.ui.reminderPop || [])[0];

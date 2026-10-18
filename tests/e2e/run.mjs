@@ -1262,25 +1262,49 @@ const SCENARIOS = {
   },
   async reminder_stops_saver(browser, base) {
     // A reminder going off clears the photo screensaver and keeps it off until someone taps OK.
-    const p = await open(browser, base);
+    const p = await open(browser, base, { at: "2026-10-17T12:00:00" }); // daytime: night hours are the exception below
     await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); el.render(); });
-    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(300);
+    await p.evaluate(async () => { await el.startSaver(); }); await wait(p, 300);
     eq(await p.evaluate(() => el.ui.saver), true, "screensaver running");
-    await p.evaluate(() => window.remCb({ summary: "Dentist", message: "Today at 4:00 PM", members: [] })); await p.waitForTimeout(400);
+    await p.evaluate(() => window.remCb({ summary: "Dentist", message: "Today at 4:00 PM", members: [] })); await wait(p, 400);
     eq(await p.evaluate(() => el.ui.saver), false, "reminder stopped the screensaver");
     eq(await p.S(".saver").count(), 0, "screensaver element gone");
     check((await p.S(".remcard").textContent()).includes("Dentist"), "reminder pop-up visible");
     // nobody touches the screen for longer than the screensaver delay: it must stay off over the reminder
-    await p.evaluate(() => { el._lastActivity = Date.now() - 60 * 60000; el._checkIdle(); }); await p.waitForTimeout(400);
+    await p.evaluate(() => { el._lastActivity = Date.now() - 60 * 60000; el._checkIdle(); }); await wait(p, 400);
     eq(await p.evaluate(() => el.ui.saver), false, "screensaver stays off while the reminder waits for OK");
-    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(300);
+    await p.evaluate(async () => { await el.startSaver(); }); await wait(p, 300);
     eq(await p.evaluate(() => el.ui.saver), false, "even a direct start is refused");
-    await p.S('[data-action="reminder-dismiss"]').click(); await p.waitForTimeout(200);
+    await p.S('[data-action="reminder-dismiss"]').click(); await wait(p, 200);
     eq(await p.evaluate(() => [el.ui.reminderPop?.length || 0, el.ui.alertPop, !!el.ui.dialog]), [0, null, false], "nothing left waiting for OK");
-    await p.evaluate(async () => { await el.startSaver(); }); await p.waitForTimeout(400); // (the fake has no photo source for _checkIdle)
+    await p.evaluate(async () => { await el.startSaver(); }); await wait(p, 400); // (the fake has no photo source for _checkIdle)
     eq(await p.evaluate(() => el.ui.saver), true, "after OK, the screensaver can come back");
+    await p.evaluate(() => el.stopSaver());
+
+    // The event is over: the pop-up closes by itself
+    await p.evaluate(() => window.remCb({ summary: "Piano", message: "Today at 3:00 PM", members: [], end: new Date(Date.now() + 1500).toISOString() }));
+    await wait(p, 300);
+    eq(await p.S(".remcard").count(), 1, "pop-up for an event that is still on");
+    await p.evaluate(() => el._expireReminders()); eq(await p.S(".remcard").count(), 1, "not closed early");
+    await wait(p, 1500); await p.evaluate(() => el._expireReminders()); await wait(p, 200);
+    eq(await p.S(".remcard").count(), 0, "closed by itself once the event ended");
+    await p.evaluate(async () => { await el.startSaver(); }); await wait(p, 300);
+    eq(await p.evaluate(() => el.ui.saver), true, "and the screensaver is allowed again");
     eq(p.errors, [], "page errors");
     await p.context().close();
+
+    // Night hours are the exception: the screensaver may come back over a waiting pop-up, and in the morning
+    // the pop-up is shown again.
+    const n = await open(browser, base, { at: "2026-10-17T23:00:00" });
+    await n.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); Object.assign(el.settings, { night_start: "21:00", night_end: "06:30" }); el._applyLook(); el.render(); });
+    await n.evaluate(() => window.remCb({ summary: "Trash out", message: "Tomorrow (all day)", members: [], end: "2026-10-19T00:00:00" })); await wait(n, 300);
+    eq(await n.evaluate(() => [el.ui.saver, el.popupShowing, el._night]), [false, true, true], "night: reminder shown, screensaver stopped");
+    await n.evaluate(async () => { await el.startSaver(); }); await wait(n, 300);
+    eq(await n.evaluate(() => el.ui.saver), true, "night: the screensaver may come back over the pop-up");
+    await n.clock.setFixedTime(new Date("2026-10-18T06:31:00")); await n.evaluate(() => el._applyLook()); await wait(n, 300);
+    eq(await n.evaluate(() => [el.ui.saver, el.ui.reminderPop.length]), [false, 1], "morning: screensaver off, the reminder is back in view");
+    eq(n.errors, [], "page errors (night)");
+    await n.context().close();
   },
 
   async jump_to_date(browser, base) {
