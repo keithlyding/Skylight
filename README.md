@@ -111,7 +111,7 @@ For a Pi 5 driving an HDMI touch monitor, [TouchKio](https://github.com/leukipp/
 6. The in-page **Keep this screen on** setting isn't needed on the Pi: TouchKio keeps the display on.
 7. Pi OS has no color emoji font, so avatars and chore icons look wrong until you add one: `sudo apt install -y fonts-noto-color-emoji && fc-cache -f`, then restart TouchKio.
 8. Dates look British (17/10/2026)? Pi OS defaults to the `en_GB` locale: `sudo raspi-config nonint do_change_locale en_US.UTF-8` and reboot. The panel shows the Pi's own clock: `sudo timedatectl set-timezone America/New_York` (your zone) if it's off.
-9. The desktop's taskbar shows under the on-screen keyboard. A kiosk doesn't need it: `mkdir -p ~/.config/labwc && grep -v wf-panel-pi /etc/xdg/labwc/autostart > ~/.config/labwc/autostart`, then reboot.
+9. The desktop's taskbar shows under the on-screen keyboard. A kiosk doesn't need it, and it's started through a respawner, so killing it doesn't stick: comment it out with `sudo sed -i 's|^\([^#].*wf-panel-pi.*\)$|# \1|' /etc/xdg/labwc/autostart` and reboot. (An OS update may restore the line.)
 10. On the Argon ONE V3 the Pi can't see the power supply's 5 A rating; Argon's script (`argon1.sh`) sets `PSU_MAX_CURRENT=5000` in the bootloader, or add `usb_max_current_enable=1` to `config.txt`.
 
 ### Monitor brightness from Home Assistant (DDC/CI)
