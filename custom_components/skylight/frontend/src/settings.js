@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.52.1";
-import { diagPrevious, diagText } from "./diag.js?v=1.52.1";
-import { MLB_TEAMS } from "./mlb.js?v=1.52.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.53.0";
+import { diagPrevious, diagText } from "./diag.js?v=1.53.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.53.0";
 
 export class SettingsView {
 
@@ -107,6 +107,7 @@ export class SettingsView {
   renderLookCard() {
     const s = this.settings, mine = this._screenScheme() || "follow";
     const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
+    const displays = Object.keys(this._hass.states).filter((e) => /^(light|switch)\./.test(e)).sort((a, b) => (/display|screen|monitor|kiosk/i.test(b + this.entityName(b)) - /display|screen|monitor|kiosk/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const showTimes = s.night_by !== "sun";
     return `<section class="card">
       <h2>Look &amp; night mode</h2>
@@ -131,6 +132,12 @@ export class SettingsView {
           ? "When night starts, Home Assistant sets the backlight to the night level; when it ends, to the day level (a manual change in between stays until the next switch). With Fully Kiosk Browser, use its integration's “Screen brightness” entity."
           : "No brightness entity: ${this.appName} darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}
           Night hours ${s.night_by === "sun" ? "follow sunset and sunrise" : "use the times above"}; the photo screensaver is dimmed too.</p>` : ""}
+      <label class="inline">Turn the screen off when everyone's in bed <input type="checkbox" ${s.screen_off ? "checked" : ""} data-change="setting" data-key="screen_off"></label>
+      ${s.screen_off ? `
+        <div class="row"><label class="inline">Off from <input type="time" value="${esc(s.screen_off_start || "23:30")}" data-change="setting" data-key="screen_off_start"></label>
+          <label class="inline">back on at <input type="time" value="${esc(s.screen_off_end || "06:00")}" data-change="setting" data-key="screen_off_end"></label></div>
+        <label class="inline">Display to switch (Home Assistant entity) <select data-change="setting" data-key="screen_off_entity"><option value="">Choose…</option>${displays.map((e) => `<option value="${e}" ${e === s.screen_off_entity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select></label>
+        <p class="hint">Separate from dimming: dim during night hours, then fully off from this time until the morning. Home Assistant switches the entity off and on at those times (a manual change in between stays). With TouchKio that's its "Display" entity; with Fully Kiosk Browser, its "Screen" switch. The \`${esc(this.appName)} Screen off\` sensor in Home Assistant follows the same window, for your own automations.</p>` : ""}
     </section>`;
   }
 

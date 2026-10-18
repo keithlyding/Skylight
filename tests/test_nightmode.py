@@ -147,3 +147,72 @@ def test_family_dark_mode_becomes_night_by():
     sched = {"settings": {"dark_mode": "scheduled", "night_start": "21:00"}}
     assert migrate(sched) and sched["settings"] == {"night_by": "schedule", "night_start": "21:00"}
     assert nightmode.night_source({"night_by": "sun"}) == "sun" and nightmode.night_source({}) == "schedule"
+
+
+async def test_night_binary_sensor_follows_setup(hass: HomeAssistant, tmp_path):
+    """binary_sensor.*_night is on during the family's night hours, even without any dimming set up."""
+    hass.config.config_dir = str(tmp_path)
+    (tmp_path / ".storage").mkdir()
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain=DOMAIN, data={})
+    e.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(e.entry_id)
+    await hass.async_block_till_done()
+    store = hass.data[DOMAIN]["store"]
+    store.data["settings"].update({"night_dim": False, "night_start": "23:00", "night_end": "06:00"})
+    eid = next(s.entity_id for s in hass.states.async_all("binary_sensor") if s.entity_id.endswith("_night"))
+    assert eid == "binary_sensor.lyding_strike_night"
+    await nightmode.async_apply(hass, datetime(2026, 1, 15, 12))
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).state == "off"
+    await nightmode.async_apply(hass, datetime(2026, 1, 15, 23, 30))
+    await hass.async_block_till_done()
+    st = hass.states.get(eid)
+    assert st.state == "on" and st.attributes["night_start"] == "23:00"
+    await nightmode.async_apply(hass, datetime(2026, 1, 16, 6, 0))
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).state == "off"
+
+
+def test_screen_off_window():
+    s = {"screen_off": True, "screen_off_start": "23:30", "screen_off_end": "06:00"}
+    assert nightmode.is_screen_off(s, datetime(2026, 1, 15, 23, 45))
+    assert nightmode.is_screen_off(s, datetime(2026, 1, 16, 5, 59))
+    assert not nightmode.is_screen_off(s, datetime(2026, 1, 16, 6, 0))
+    assert not nightmode.is_screen_off(s, datetime(2026, 1, 15, 22, 0))
+    assert not nightmode.is_screen_off({**s, "screen_off": False}, datetime(2026, 1, 15, 23, 45))
+    assert nightmode.display_call("light.kitchen_display", True) == ("light", "turn_off", {"entity_id": "light.kitchen_display"})
+    assert nightmode.display_call("switch.screen", False) == ("switch", "turn_on", {"entity_id": "switch.screen"})
+    assert nightmode.display_call("number.nope", True) is None
+
+
+async def test_screen_off_switches_the_display(hass: HomeAssistant, tmp_path):
+    hass.config.config_dir = str(tmp_path)
+    (tmp_path / ".storage").mkdir()
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain=DOMAIN, data={})
+    e.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(e.entry_id)
+    await hass.async_block_till_done()
+    off_calls = async_mock_service(hass, "light", "turn_off")
+    on_calls = async_mock_service(hass, "light", "turn_on")
+    store = hass.data[DOMAIN]["store"]
+    store.data["settings"].update({"screen_off": True, "screen_off_start": "23:30", "screen_off_end": "06:00",
+                                   "screen_off_entity": "light.touchkio_display", "night_dim": False})
+    sensor = next(s.entity_id for s in hass.states.async_all("binary_sensor") if s.entity_id.endswith("_screen_off"))
+    await nightmode.async_apply(hass, datetime(2026, 1, 15, 22, 0))
+    await hass.async_block_till_done()
+    assert [c.data for c in on_calls] == [{"entity_id": "light.touchkio_display"}] and not off_calls  # evening: on
+    assert hass.states.get(sensor).state == "off"
+    await nightmode.async_apply(hass, datetime(2026, 1, 15, 23, 30))
+    await nightmode.async_apply(hass, datetime(2026, 1, 15, 23, 31))  # no change -> no second call
+    await hass.async_block_till_done()
+    assert [c.data for c in off_calls] == [{"entity_id": "light.touchkio_display"}]
+    assert hass.states.get(sensor).state == "on"
+    await nightmode.async_apply(hass, datetime(2026, 1, 16, 6, 0))
+    await hass.async_block_till_done()
+    assert len(on_calls) == 2 and hass.states.get(sensor).state == "off"
+    store.data["settings"]["screen_off"] = False
+    await nightmode.async_apply(hass, datetime(2026, 1, 16, 23, 45))
+    await hass.async_block_till_done()
+    assert len(off_calls) == 1  # turned off: nothing more is sent

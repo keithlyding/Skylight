@@ -1203,6 +1203,7 @@ const SCENARIOS = {
       { night_dim: true, brightness_entity: null }, { night_dim: true, brightness_entity: "number.kitchen_brightness", night_overlay: 50, night_by: "sun" },
       { night_dim: true, night_by: "schedule" }, { seasonal: true, weather_alerts: true, weather_extra: true, mlb_team: 109, leave_by: true, message_board: true },
       { allow_uploads: false, hide_chrome: true, photo_source: "immich" },
+      { screen_off: true, screen_off_entity: "light.touchkio_display" }, { screen_off: true, screen_off_entity: null },
     ];
     for (const c of combos) {
       await p.evaluate((c) => { Object.assign(el.settings, c); el.ui.tab = "settings"; el.render(); }, c);

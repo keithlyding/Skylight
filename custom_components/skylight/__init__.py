@@ -25,7 +25,7 @@ from .photos import SkylightPhotoFileView, SkylightPhotoUploadView, photo_dir
 from .store import SkylightStore
 
 PANEL_JS = pathlib.Path(__file__).parent / "frontend" / "skylight-panel.js"
-PLATFORMS = ["todo"]
+PLATFORMS = ["binary_sensor", "todo"]
 
 
 def _module_url() -> str:

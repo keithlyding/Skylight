@@ -161,6 +161,9 @@ Setup → **Look & night mode**:
 - **Night is** (for everyone): between set start and end times (can cross midnight) or sunset to sunrise (from Home Assistant's `sun.sun`). Used by screens set to *Dark at night* and by night dimming. Upgrading from v1.41 or earlier keeps your old choice of sunset-to-sunrise or times; each screen starts on *Follow this device*.
 - **Dim during night hours:** pick a **backlight control entity** and Home Assistant sets it to your day or night level whenever night starts or ends. With Fully Kiosk Browser, add its Home Assistant integration and choose its "Screen brightness" entity; lights and `input_number` entities work too. A manual brightness change stays until the next switch. Without an entity, Lyding Strike darkens the picture with an overlay instead; that dims pixels, not the backlight. With an entity, **Extra: also darken the picture at night by %** adds that overlay on top, for monitors that still glow at their lowest backlight setting. Night hours are the dark-mode schedule (or sunset to sunrise), and the photo screensaver is dimmed too.
 
+- **Turn the screen off when everyone's in bed:** a second, later window with its own off and on times, separate from dimming. Pick the kiosk's display entity (TouchKio's "Display" light, Fully Kiosk's "Screen" switch) and Home Assistant switches it off and on at those times; a manual change in between stays until the next switch.
+- **For your own automations:** `binary_sensor.<name>_night` is on during night hours and `binary_sensor.<name>_screen_off` during the screen-off window, so automations follow Setup without copying times into them.
+
 ## Birthdays and anniversaries
 
 - **Family members' birthdays:** in each person's editor (month and day; the year is optional).
