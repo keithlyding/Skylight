@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.51.0";
-import { diagPrevious, diagText } from "./diag.js?v=1.51.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.51.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS } from "./helpers.js?v=1.51.1";
+import { diagPrevious, diagText } from "./diag.js?v=1.51.1";
+import { MLB_TEAMS } from "./mlb.js?v=1.51.1";
 
 export class SettingsView {
 
@@ -130,7 +130,7 @@ export class SettingsView {
         <p class="hint">${s.brightness_entity
           ? "Home Assistant sets this entity to the day or night level when night starts and ends (a manual change stays until the next switch). With Fully Kiosk Browser, use its integration's “Screen brightness” entity."
           : "No brightness entity: ${this.appName} darkens the picture with an overlay. That dims pixels, not the backlight, so the screen still glows a little. For real dimming, add the Fully Kiosk Browser integration in Home Assistant and pick its “Screen brightness” entity here."}
-          Night hours ${mode === "sun" ? "follow sunset and sunrise" : "use the times above"}; the photo screensaver is dimmed too.</p>` : ""}
+          Night hours ${s.night_by === "sun" ? "follow sunset and sunrise" : "use the times above"}; the photo screensaver is dimmed too.</p>` : ""}
     </section>`;
   }
 
