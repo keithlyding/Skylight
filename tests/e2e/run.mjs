@@ -1261,25 +1261,28 @@ const SCENARIOS = {
     await p.context().close();
   },
   async today_chores_fit(browser, base) {
-    // Today screen: with fewer calendar days the side column is wider and the kids' chores sit beside the other
-    // cards, so all three kids fit on screen in agenda, 1-, 3- and 5-day views; 7 days keeps one column.
-    const p = await open(browser, base);
+    // Today screen at the kitchen screen's size (1080p at zoom 1.25): up to 5 calendar days, the family cards span
+    // the side column and the kids' chores, lists and tonight's dinner flow in columns under them, all on screen.
+    const p = await open(browser, base, { width: 1536, height: 864 });
     await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); });
     const layout = () => p.evaluate(() => {
-      const info = el.shadowRoot.querySelector(".hinfo").getBoundingClientRect();
-      return { infoRight: Math.round(info.right), bottom: window.innerHeight,
-        cards: [...el.shadowRoot.querySelectorAll(".hchores")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.bottom)]; }) };
+      const body = el.shadowRoot.querySelector(".hbody").getBoundingClientRect(), info = el.shadowRoot.querySelector(".hinfo").getBoundingClientRect();
+      return { fullWidth: Math.abs(info.width - body.width) < 2, bottom: Math.round(el.shadowRoot.querySelector(".hside").getBoundingClientRect().bottom), infoBottom: Math.round(info.bottom),
+        cards: [...el.shadowRoot.querySelectorAll(".hchores, .hcols .tonight")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }) };
     });
     for (const v of ["agenda", "1", "3", "5"]) {
       await p.evaluate((v) => { el.homeAgenda = v === "agenda"; if (v !== "agenda") el.homeDays = Number(v); el.render(); }, v); await p.waitForTimeout(300);
       const l = await layout();
-      eq(l.cards.length, 3, `${v}: three kids' chore cards`);
-      check(l.cards.every(([left]) => left >= l.infoRight), `${v}: chores beside the other cards, not under them (${JSON.stringify(l)})`);
-      check(l.cards.every(([, bottom]) => bottom <= l.bottom), `${v}: every kid's chores fully on screen (${JSON.stringify(l)})`);
+      eq(l.cards.length, 4, `${v}: three kids' chores plus tonight's dinner in the columns`);
+      check(l.fullWidth, `${v}: tips, messages and verse span the whole side column`);
+      check(new Set(l.cards.map(([left]) => left)).size >= 2, `${v}: cards flow into 2+ columns (${JSON.stringify(l)})`);
+      check(l.cards.every(([, top]) => top >= l.infoBottom), `${v}: columns start under the family cards`);
+      check(l.cards.every(([, , bottom]) => bottom <= l.bottom), `${v}: every card fully on screen (${JSON.stringify(l)})`);
     }
     await p.evaluate(() => { el.homeAgenda = false; el.homeDays = 7; el.render(); }); await p.waitForTimeout(300);
     const l7 = await layout();
-    check(l7.cards.every(([left]) => left < l7.infoRight), "7 days: one narrow column, chores under the cards");
+    eq(new Set(l7.cards.map(([left]) => left)).size, 1, "7 days: one narrow column");
+    eq(await p.S(".hinfo .tonight").count(), 1, "7 days: tonight's dinner stays with the family cards");
     check((await text(p.S(".board")))[0]?.includes("none yet"), "empty message board is one line");
     eq(p.errors, [], "page errors");
     await p.context().close();

@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.4";
-import { STYLES } from "./styles.js?v=1.57.4";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.4";
-import { CalendarView } from "./calendar.js?v=1.57.4";
-import { WeatherView } from "./weather.js?v=1.57.4";
-import { HomeView } from "./home.js?v=1.57.4";
-import { ChoresView } from "./chores.js?v=1.57.4";
-import { MealsView } from "./meals.js?v=1.57.4";
-import { ListsView } from "./lists.js?v=1.57.4";
-import { PhotosView } from "./photos.js?v=1.57.4";
-import { SettingsView } from "./settings.js?v=1.57.4";
-import { PickersView } from "./pickers.js?v=1.57.4";
-import { keepAwake } from "./wake.js?v=1.57.4";
-import { MlbView } from "./mlb.js?v=1.57.4";
-import { TravelView } from "./travel.js?v=1.57.4";
-import { NotesView } from "./notes.js?v=1.57.4";
-import { VerseView } from "./verses.js?v=1.57.4";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.5";
+import { STYLES } from "./styles.js?v=1.57.5";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.5";
+import { CalendarView } from "./calendar.js?v=1.57.5";
+import { WeatherView } from "./weather.js?v=1.57.5";
+import { HomeView } from "./home.js?v=1.57.5";
+import { ChoresView } from "./chores.js?v=1.57.5";
+import { MealsView } from "./meals.js?v=1.57.5";
+import { ListsView } from "./lists.js?v=1.57.5";
+import { PhotosView } from "./photos.js?v=1.57.5";
+import { SettingsView } from "./settings.js?v=1.57.5";
+import { PickersView } from "./pickers.js?v=1.57.5";
+import { keepAwake } from "./wake.js?v=1.57.5";
+import { MlbView } from "./mlb.js?v=1.57.5";
+import { TravelView } from "./travel.js?v=1.57.5";
+import { NotesView } from "./notes.js?v=1.57.5";
+import { VerseView } from "./verses.js?v=1.57.5";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {

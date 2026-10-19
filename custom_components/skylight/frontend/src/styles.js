@@ -149,7 +149,7 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .hometool { margin-top:0; }
 /* Fewer calendar days = a wider side column, so every kid's chores fit without scrolling. */
 .home.d7 { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
-.home.d5 { grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr); }
+.home.d5 { grid-template-columns:minmax(0,1.15fr) minmax(260px,1fr); }
 .home.d3 { grid-template-columns:minmax(0,1.05fr) minmax(260px,1fr); }
 .home.d1, .home.agenda { grid-template-columns:minmax(0,1fr) minmax(260px,1.25fr); }
 /* day (legacy) */
@@ -347,14 +347,10 @@ label.check input { width:22px; height:22px; }
 .home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
 
 .hside { overflow-y:auto; container-type:inline-size; }
-.hbody, .hinfo { display:flex; flex-direction:column; gap:10px; min-width:0; }
-.hchorecol { min-width:0; }
-/* A wide side column (agenda, 1-, 3- and 5-day views) puts the chores beside the other cards instead of under them. */
-@container (min-width: 440px) {
-  .hbody:has(.hchorecol) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; align-content:start; }
-}
+.hbody, .hinfo { display:flex; flex-direction:column; gap:8px; min-width:0; }
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
-.hcols { column-width:225px; column-gap:10px; }
+.hcols { column-width:225px; column-gap:8px; }
+.hcols .tonight { break-inside:avoid; margin-bottom:8px; padding:8px 10px; } .hcols .tonight img, .hcols .tnoimg { width:64px; height:64px; }
 .board { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
 .board .uhead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .board .uhead .hint { margin-right:auto; font-weight:500; text-transform:none; letter-spacing:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -402,9 +398,9 @@ label.check input { width:22px; height:22px; }
 .mlbroot { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
 .mlbfor { font-weight:700; }
 .mlbnote2 { margin:0 0 8px; font-weight:600; }
-.hchores { background:var(--card); border-radius:var(--radius); padding:10px 12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:5px;
-  break-inside:avoid; margin-bottom:10px; }
-.hchores .chore .ctoggle { padding:6px 10px; font-size:15px; border-radius:12px; }
+.hchores { background:var(--card); border-radius:var(--radius); padding:8px 12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:4px;
+  break-inside:avoid; margin-bottom:8px; }
+.hchores .chore .ctoggle { padding:5px 10px; font-size:15px; border-radius:12px; }
 .hchores .ci { font-size:19px; }
 .hchores .box { width:24px; height:24px; }
 .hadd { padding:6px 10px; font-size:14px; border-radius:10px; background:var(--bg); }
@@ -549,6 +545,8 @@ label.check input { width:22px; height:22px; }
 .pinpad .actions { width:100%; }
 @media (max-width: 600px) { .pinkeys { grid-template-columns:repeat(3, 76px); gap:10px; } .pinkeys button { height:68px; font-size:28px; } }
 .hints { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+@container (min-width: 440px) { .hinfo.wide .hints { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); } } /* a wide side column: tips two to a row */
+.hinfo.wide .verse p { font-size:1em; } .hinfo.wide .verse.long p { font-size:.9em; }
 .hintrow { display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-radius:12px; background:var(--chip, rgba(127,127,127,.1)); }
 .hintrow span { font-size:20px; line-height:1.2; flex:none; }
 .hintrow p { margin:0; font-size:15px; font-weight:600; line-height:1.35; }
