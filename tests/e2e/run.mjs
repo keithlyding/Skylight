@@ -1392,8 +1392,14 @@ const SCENARIOS = {
     const p = await open(browser, base);
     await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); el.render(); });
     await p.waitForTimeout(400);
+    const hv = (await text(p.S("header .hverse")))[0] || "";
+    check(hv.includes("Be strong and courageous") && hv.includes("Joshua 1:9") && hv.includes("ESV"), `verse in the header under the date: ${hv}`);
+    eq(await p.S(".verse").count(), 0, "no card while it's in the header");
+    await p.evaluate(() => { D.settings.verse_place = "card"; push(); }); await p.waitForTimeout(300);
     const card = (await text(p.S(".verse")))[0] || "";
     check(card.includes("Be strong and courageous") && card.includes("Joshua 1:9") && card.includes("ESV"), `verse card: ${card}`);
+    eq(await p.S("header .hverse").count(), 0, "no header verse while it's a card");
+    await p.evaluate(() => { D.settings.verse_place = "header"; push(); }); await p.waitForTimeout(300);
     eq(await p.evaluate(() => window.VERSECALLS), 1, "fetched once");
     await p.evaluate(() => el._tickClock()); await p.waitForTimeout(200);
     eq(await p.evaluate(() => window.VERSECALLS), 1, "not fetched again the same day");
@@ -1417,9 +1423,9 @@ const SCENARIOS = {
     eq(await p.evaluate(() => D.settings.family_verses), ["Joshua 24:15", "Philippians 4:13"], "family verses saved as a list");
     check(await p.evaluate(() => window.VERSECALLS) >= 3, "verse fetched again after Setup changes");
     // off on Today: the card goes away
-    await p.S('input[data-key="verse_today"]').uncheck(); await p.waitForTimeout(300);
+    await p.S('select[data-change="verse-today"]').selectOption("off"); await p.waitForTimeout(300);
     await p.evaluate(() => { el.ui.tab = "home"; el.render(); });
-    eq(await p.S(".verse").count(), 0, "card hidden when off");
+    eq(await p.S(".verse, header .hverse").count(), 0, "verse hidden when off");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

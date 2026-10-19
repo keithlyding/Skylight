@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.8";
-import { STYLES } from "./styles.js?v=1.57.8";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.8";
-import { CalendarView } from "./calendar.js?v=1.57.8";
-import { WeatherView } from "./weather.js?v=1.57.8";
-import { HomeView } from "./home.js?v=1.57.8";
-import { ChoresView } from "./chores.js?v=1.57.8";
-import { MealsView } from "./meals.js?v=1.57.8";
-import { ListsView } from "./lists.js?v=1.57.8";
-import { PhotosView } from "./photos.js?v=1.57.8";
-import { SettingsView } from "./settings.js?v=1.57.8";
-import { PickersView } from "./pickers.js?v=1.57.8";
-import { keepAwake } from "./wake.js?v=1.57.8";
-import { MlbView } from "./mlb.js?v=1.57.8";
-import { TravelView } from "./travel.js?v=1.57.8";
-import { NotesView } from "./notes.js?v=1.57.8";
-import { VerseView } from "./verses.js?v=1.57.8";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.58.0";
+import { STYLES } from "./styles.js?v=1.58.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.58.0";
+import { CalendarView } from "./calendar.js?v=1.58.0";
+import { WeatherView } from "./weather.js?v=1.58.0";
+import { HomeView } from "./home.js?v=1.58.0";
+import { ChoresView } from "./chores.js?v=1.58.0";
+import { MealsView } from "./meals.js?v=1.58.0";
+import { ListsView } from "./lists.js?v=1.58.0";
+import { PhotosView } from "./photos.js?v=1.58.0";
+import { SettingsView } from "./settings.js?v=1.58.0";
+import { PickersView } from "./pickers.js?v=1.58.0";
+import { keepAwake } from "./wake.js?v=1.58.0";
+import { MlbView } from "./mlb.js?v=1.58.0";
+import { TravelView } from "./travel.js?v=1.58.0";
+import { NotesView } from "./notes.js?v=1.58.0";
+import { VerseView } from "./verses.js?v=1.58.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -589,6 +589,7 @@ export class SkylightPanel extends HTMLElement {
         this._toast("ESV key saved"); this._verseReset(); break;
       }
       case "esv-clear": await this._ws({ type: "skylight/verse/configure", esv_key: "" }); this._toast("ESV key removed"); this._verseReset(); break;
+      case "verse-today": await this._set("settings", el.value === "off" ? { verse_today: false } : { verse_today: true, verse_place: el.value }); break;
       case "family-verses": {
         const refs = el.value.split("\n").map((r) => r.trim()).filter(Boolean);
         await this._set("settings", { family_verses: refs });
@@ -1193,15 +1194,20 @@ export class SkylightPanel extends HTMLElement {
     }
   }
 
-  _tickClock() {
-    this._applyLook();
-    const now = new Date();
+  // The clock and date are text filled in after each render; done before the layout is measured, so the
+  // header has its real height when the calendar grid and the side column are sized.
+  _fillClock(now = new Date()) {
     const t = this.fmtTime(now);
     const dt = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-    this.shadowRoot.querySelectorAll(".tg-now").forEach((l) => { l.style.top = `calc(var(--h) * ${(now.getHours() + now.getMinutes() / 60).toFixed(3)})`; });
     for (const [id, v] of [["clock", t], ["date", dt], ["sv-time", t], ["sv-date", dt]]) {
       const el = this.shadowRoot.getElementById(id); if (el) el.textContent = v;
     }
+  }
+  _tickClock() {
+    this._applyLook();
+    const now = new Date();
+    this.shadowRoot.querySelectorAll(".tg-now").forEach((l) => { l.style.top = `calc(var(--h) * ${(now.getHours() + now.getMinutes() / 60).toFixed(3)})`; });
+    this._fillClock(now);
     // Countdowns, progress bars and dimming of finished events move on once a minute.
     // (Remember the minute before redrawing: drawing calls this again.)
     const minute = now.getHours() * 60 + now.getMinutes();
@@ -1275,6 +1281,7 @@ export class SkylightPanel extends HTMLElement {
         <div class="content">${body}</div>
       </main>${this.renderAlertPopup()}${this.renderReminderPop()}`;
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
+    this._fillClock();
     const restore = () => { for (const [sel, i, t, l] of kept) { const el = this.$app.querySelectorAll(sel)[i]; if (el) { el.scrollTop = t; el.scrollLeft = l; } } };
     restore();
     if (kept.length) requestAnimationFrame(restore); // again once heights are fitted (e.g. the Today column)
@@ -1290,7 +1297,8 @@ export class SkylightPanel extends HTMLElement {
     const grid = this.$app.querySelector(".tg-scroll");
     if (grid) {
       this._fitGrid();
-      requestAnimationFrame(() => this._onResize?.()); // settle once layout above the grid is final
+      restore(); // the side column only scrolls once _fitGrid gave it a height
+      requestAnimationFrame(() => { this._onResize?.(); restore(); }); // settle once layout above the grid is final
       // Re-fit if anything above the grid changes size after this render (fonts, chips, weather).
       if (this._ro) {
         this._ro.disconnect();
@@ -1316,7 +1324,7 @@ export class SkylightPanel extends HTMLElement {
     const weather = w ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(Number(w.attributes.temperature))}°</b></div>` : "";
     const showChips = ["calendar", "home"].includes(this.ui.tab);
     return `<header>
-      <div class="when"><div id="clock" class="clock"></div><div id="date" class="date"></div>${this.settings.seasonal ? `<span class="season" title="Seasonal accent">${seasonFor(new Date()).emoji}</span>` : ""}</div>
+      <div class="when ${this.verseInHeader ? "withverse" : ""}"><div id="clock" class="clock"></div><div class="dateline"><div id="date" class="date"></div>${this.settings.seasonal ? `<span class="season" title="Seasonal accent">${seasonFor(new Date()).emoji}</span>` : ""}</div>${this.renderHeaderVerse()}</div>
       ${showChips ? `<div class="chips members">${this.members.map((m) => `
         <button class="mchip ${this.ui.filter === m.id ? "on" : this.ui.filter ? "dim" : ""}" style="--c:${m.color}" data-action="filter" data-member="${m.id}">
           <span class="av" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}</button>`).join("")}

@@ -508,6 +508,11 @@ label.check input { width:22px; height:22px; }
 #dim { position:fixed; inset:0; background:#000; pointer-events:none; z-index:950; display:none; }
 #dim.on { display:block; }
 .season { margin-left:6px; font-size:20px; }
+.dateline { display:flex; align-items:center; gap:4px; }
+/* Verse of the day in the header, under the date: small, up to 5 lines (the longest built-in verse), the reference run in at the end. */
+.when.withverse { max-width:min(34vw, 460px); }
+.hverse { margin-top:5px; font-size:13px; line-height:1.3; font-style:italic; color:var(--text); display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
+.hverse small { font-style:normal; font-weight:600; color:var(--muted); white-space:nowrap; }
 .upcoming { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:10px; }
 .uhead { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:4px; }
 .urow { display:flex; align-items:center; gap:10px; padding:6px 4px; border-left:4px solid var(--c); padding-left:10px; margin:4px 0; border-radius:4px; }

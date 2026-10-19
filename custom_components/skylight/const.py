@@ -3,7 +3,7 @@
 DOMAIN = "skylight"  # internal id; kept so existing installs, data and entity ids carry on
 DEFAULT_APP_NAME = "Lyding Strike"
 APP_NAME_MAX = 40
-VERSION = "1.57.8"
+VERSION = "1.58.0"
 
 STORAGE_KEY = "skylight.data"
 STORAGE_VERSION = 1
@@ -99,6 +99,7 @@ DEFAULT_DATA = {
         # Verse of the day (verses.py): on the Today screen, on the photo screensaver, which translation,
         # and the family's own references (shown on alternate days, or only these).
         "verse_today": True,
+        "verse_place": "header",  # header (under the date) | card (beside the calendar); phones always get the card
         "verse_saver": True,
         "verse_translation": "esv",
         "family_verses": [],

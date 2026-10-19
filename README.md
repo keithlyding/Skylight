@@ -211,7 +211,7 @@ On the Lists tab, **↕ Arrange lists** moves lists up and down (within each per
 
 ## Bible verse of the day
 
-One verse a day, the same on every screen: a 📖 card on the Today screen and a line under the clock on the photo screensaver. Setup → Bible verse:
+One verse a day, the same on every screen: under the date in the Today screen's header (or a 📖 card beside the calendar; phones always get the card) and a line under the clock on the photo screensaver. Setup → Bible verse:
 
 - **Translation:** ESV, NET Bible, World English Bible or King James. The **ESV** needs a key from Crossway, free for personal use: sign up at [api.esv.org](https://api.esv.org/), create an application and paste its key into Setup (it stays on the server, like the other keys, and isn't in backups). Until a key is saved the NET Bible is shown. NASB, NIV and CSB aren't offered: their publishers only license them through paid API plans.
 - **Our family's verses:** references, one per line ("Joshua 24:15", "Psalm 23:1-3"). They take every other day, alternating with a built-in list of about 80 well-known verses, or every day with "Only our verses".
