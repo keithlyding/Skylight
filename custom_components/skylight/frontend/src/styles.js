@@ -147,6 +147,10 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .tg-now { position:absolute; left:0; right:0; border-top:2px solid #ff4757; z-index:2; pointer-events:none; }
 .tg-now::before { content:""; position:absolute; left:-5px; top:-6px; width:10px; height:10px; border-radius:50%; background:#ff4757; }
 .hometool { margin-top:0; }
+/* Big screens: the chips and, under them, the Today toolbar share the middle of the header. */
+.hmid { flex:1; min-width:0; display:flex; flex-direction:column; align-items:stretch; gap:8px; }
+.hmid .members { flex:none; }
+.hometool.inhead { margin:0; }
 /* Fewer calendar days = a wider side column, so every kid's chores fit without scrolling. */
 .home.d7 { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
 .home.d5 { grid-template-columns:minmax(0,1.15fr) minmax(260px,1fr); }

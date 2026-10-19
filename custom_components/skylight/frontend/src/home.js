@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.58.1";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.58.2";
 
 export class HomeView {
 
@@ -47,6 +47,15 @@ export class HomeView {
       ${others.length ? `<small class="tothers">${others.map((m) => `${(MEAL_SLOTS.find((s) => s[0] === m.slot) || [])[2] || ""} ${esc(this.mealieName(m))}`).join(" · ")}</small>` : ""}</div></div>`;
   }
 
+  // The view picker, ⚾ and + Event. On big screens they sit in the header under the family chips (otherwise
+  // empty space); on phones they're a toolbar above the calendar.
+  get toolInHeader() { return this.ui.tab === "home" && !this.isPhone; }
+  renderHomeTool() {
+    const n = this.homeDays, agenda = this.homeAgenda;
+    const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${(this.isPhone ? [1, 3] : [1, 3, 5, 7]).map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
+    return `<div class="toolbar hometool ${this.toolInHeader ? "inhead" : ""}">${picker}${this.renderMlbButton()}<button class="primary fab" data-action="new-event">+ Event</button></div>`;
+  }
+
   renderHome() {
     const today = startOfDay(new Date());
     const n = this.homeDays;
@@ -54,7 +63,7 @@ export class HomeView {
     const noCals = !this.shownCalendars().length;
     const label = (d) => this.dayLabel(d, n);
     const agenda = this.homeAgenda;
-    const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${(this.isPhone ? [1, 3] : [1, 3, 5, 7]).map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
+
     const cal = noCals
       ? `<div class="empty"><h2>No calendars yet</h2><button class="primary" data-action="tab" data-tab="settings">Set up in Setup</button></div>`
       : agenda ? `<div class="hagenda">${this.renderSchedule()}</div>`
@@ -88,7 +97,7 @@ export class HomeView {
     const wideSide = agenda || n <= 5;
     const tonight = this.renderTonight();
     const upcoming = this.renderUpcoming();
-    return `<div class="toolbar hometool">${picker}${this.renderMlbButton()}<button class="primary fab" data-action="new-event">+ Event</button></div>
+    return `${this.toolInHeader ? "" : this.renderHomeTool()}
       <div class="home ${agenda ? "agenda" : `d${n}`}">
       <section class="hcal">${cal}</section>
       <aside class="hside"><div class="hbody">

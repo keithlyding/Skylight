@@ -547,7 +547,7 @@ const SCENARIOS = {
 
   async keepscroll(browser, base) {
     // Today screen: checking off a chore far down the right column keeps the column where it was.
-    const p = await open(browser, base, { width: 1300, height: 700 });
+    const p = await open(browser, base, { width: 1300, height: 560 }); // short enough that the column has to scroll
     await p.tab("home");
     const side = p.S(".hside");
     const can = await side.evaluate((e) => e.scrollHeight > e.clientHeight + 50);

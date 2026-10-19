@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.58.1";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.58.2";
 
 export class WeatherView {
 
