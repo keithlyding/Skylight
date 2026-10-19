@@ -1,6 +1,6 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.57.3";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.57.4";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];

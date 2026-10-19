@@ -1008,7 +1008,7 @@ const SCENARIOS = {
   async board_and_countdowns(browser, base) {
     const p = await open(browser, base);
     await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); el.render(); });
-    check((await text(p.S(".board")))[0]?.includes("No messages"), "empty board");
+    check((await text(p.S(".board")))[0]?.includes("none yet"), "empty board");
     await p.S('[data-action="note-new"]').click(); await p.waitForTimeout(200);
     await p.S("#note-text").fill("Soccer moved to 5:00!");
     const who = await p.evaluate(() => el.members[0]?.name);
@@ -1260,6 +1260,31 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  async today_chores_fit(browser, base) {
+    // Today screen: with fewer calendar days the side column is wider and the kids' chores sit beside the other
+    // cards, so all three kids fit on screen in agenda, 1-, 3- and 5-day views; 7 days keeps one column.
+    const p = await open(browser, base);
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); });
+    const layout = () => p.evaluate(() => {
+      const info = el.shadowRoot.querySelector(".hinfo").getBoundingClientRect();
+      return { infoRight: Math.round(info.right), bottom: window.innerHeight,
+        cards: [...el.shadowRoot.querySelectorAll(".hchores")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.bottom)]; }) };
+    });
+    for (const v of ["agenda", "1", "3", "5"]) {
+      await p.evaluate((v) => { el.homeAgenda = v === "agenda"; if (v !== "agenda") el.homeDays = Number(v); el.render(); }, v); await p.waitForTimeout(300);
+      const l = await layout();
+      eq(l.cards.length, 3, `${v}: three kids' chore cards`);
+      check(l.cards.every(([left]) => left >= l.infoRight), `${v}: chores beside the other cards, not under them (${JSON.stringify(l)})`);
+      check(l.cards.every(([, bottom]) => bottom <= l.bottom), `${v}: every kid's chores fully on screen (${JSON.stringify(l)})`);
+    }
+    await p.evaluate(() => { el.homeAgenda = false; el.homeDays = 7; el.render(); }); await p.waitForTimeout(300);
+    const l7 = await layout();
+    check(l7.cards.every(([left]) => left < l7.infoRight), "7 days: one narrow column, chores under the cards");
+    check((await text(p.S(".board")))[0]?.includes("none yet"), "empty message board is one line");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async reminder_stops_saver(browser, base) {
     // A reminder going off clears the photo screensaver and keeps it off until someone taps OK.
     const p = await open(browser, base, { at: "2026-10-17T12:00:00" }); // daytime: night hours are the exception below

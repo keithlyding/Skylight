@@ -181,6 +181,10 @@ Setup → **Look & night mode**:
 - The calendar shows them as all-day markers in every view, in the person's color (or the family color). Tapping one points you to Setup; they aren't calendar events and aren't written to any calendar.
 - Adding or changing them needs the setup PIN, like other setup.
 
+## Today screen layout
+
+The Today screen is the calendar on the left and the family's cards on the right (weather tips, messages, tonight's dinner, the verse, upcoming dates, and each kid's chores). With fewer calendar days (Agenda, 1, 3 or 5 days) the right side is wider and the chores sit beside the other cards, so every kid's list is on screen without scrolling. 7 days keeps the calendar wide and stacks the cards in one column.
+
 ## Favorite baseball team
 
 Setup → **Birthdays & anniversaries** has a **Favorite baseball team** choice (Diamondbacks by default, or Off).

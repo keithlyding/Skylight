@@ -4,7 +4,7 @@
    disappear after today, tomorrow or a week, or stay. Countdowns: "Show countdown" in the event
    editor adds the event to the Upcoming card ("⏳ Disney trip · 23 days"). Stored by notes.py. */
 
-import { startOfDay, pad, uid, esc } from "./helpers.js?v=1.57.3";
+import { startOfDay, pad, uid, esc } from "./helpers.js?v=1.57.4";
 
 export const NOTE_COLORS = ["#fff3a8", "#ffd1dc", "#c8f0d0", "#cfe3ff", "#ffe0b8", "#e6d6ff"];
 const EXPIRY = [["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "A week"], ["never", "Until removed"]];
@@ -17,14 +17,14 @@ export class NotesView {
 
   renderBoard() {
     const notes = this.liveNotes();
-    return `<div class="board"><div class="uhead">📌 Messages<button class="boardadd" data-action="note-new">＋ Note</button></div>
+    return `<div class="board ${notes.length ? "" : "empty"}"><div class="uhead">📌 Messages${notes.length ? "" : `<span class="hint">· none yet</span>`}<button class="boardadd" data-action="note-new">＋ Note</button></div>
       ${notes.length ? `<div class="notes">${notes.slice().reverse().map((n) => {
         const m = n.by ? this.members.find((x) => x.id === n.by) : null;
         return `<div class="note" style="--nc:${esc(n.color || NOTE_COLORS[0])}">
           <p>${esc(n.text)}</p>
           <small>${m ? `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)} · ` : ""}${this._noteAge(n)}</small>
           <button class="notex" data-action="note-delete" data-id="${esc(n.id)}" aria-label="Remove note">✕</button></div>`;
-      }).join("")}</div>` : `<p class="hint">No messages. Tap ＋ Note to leave one for the family.</p>`}</div>`;
+      }).join("")}</div>` : ""}</div>`;
   }
 
   _noteAge(n) {

@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.3";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.4";
 
 export class HomeView {
 
@@ -83,9 +83,10 @@ export class HomeView {
     }).join("");
     if (this.settings.weather_hints !== false && this._wxSourceOk()) this._loadWeatherFull();
     return `<div class="toolbar hometool">${picker}${this.renderMlbButton()}<button class="primary fab" data-action="new-event">+ Event</button></div>
-      <div class="home ${n >= 5 ? "wide" : ""}">
+      <div class="home ${agenda ? "agenda" : `d${n}`}">
       <section class="hcal">${cal}</section>
-      <aside class="hside">
+      <aside class="hside"><div class="hbody">
+        <div class="hinfo">
         ${this.settings.weather_hints !== false ? this.renderHints(4) : ""}
         ${this.renderLeaveNote()}
         ${this.settings.message_board !== false ? this.renderBoard() : ""}
@@ -93,10 +94,11 @@ export class HomeView {
         ${this.renderTonight()}
         ${this.renderVerseNote()}
         ${this.renderUpcoming()}
-        ${chores ? `<div class="hcols">${chores}</div>` : ""}
-        ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
-      </aside></div>`;
+        </div>
+        ${chores || free.length ? `<div class="hchorecol">${chores ? `<div class="hcols">${chores}</div>` : ""}
+        ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}</div>` : ""}
+      </div></aside></div>`;
   }
 
   // A person's to-do / honey-do list on the Today screen.

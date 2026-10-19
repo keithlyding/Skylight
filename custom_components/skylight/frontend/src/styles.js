@@ -147,7 +147,11 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .tg-now { position:absolute; left:0; right:0; border-top:2px solid #ff4757; z-index:2; pointer-events:none; }
 .tg-now::before { content:""; position:absolute; left:-5px; top:-6px; width:10px; height:10px; border-radius:50%; background:#ff4757; }
 .hometool { margin-top:0; }
-.home.wide { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
+/* Fewer calendar days = a wider side column, so every kid's chores fit without scrolling. */
+.home.d7 { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
+.home.d5 { grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr); }
+.home.d3 { grid-template-columns:minmax(0,1.05fr) minmax(260px,1fr); }
+.home.d1, .home.agenda { grid-template-columns:minmax(0,1fr) minmax(260px,1.25fr); }
 /* day (legacy) */
 .hr { position:absolute; left:0; right:0; height:64px; border-top:1px solid var(--line); cursor:pointer; }
 .hr span { position:absolute; left:10px; top:4px; font-size:12px; color:var(--muted); }
@@ -342,11 +346,19 @@ label.check input { width:22px; height:22px; }
 .swatches:has(.emoji) { max-height:190px; overflow-y:auto; }
 .home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
 
-.hside { display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+.hside { overflow-y:auto; container-type:inline-size; }
+.hbody, .hinfo { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.hchorecol { min-width:0; }
+/* A wide side column (agenda, 1-, 3- and 5-day views) puts the chores beside the other cards instead of under them. */
+@container (min-width: 440px) {
+  .hbody:has(.hchorecol) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; align-content:start; }
+}
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
-.hcols { column-width:250px; column-gap:10px; }
+.hcols { column-width:225px; column-gap:10px; }
 .board { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
-.board .uhead { display:flex; align-items:center; justify-content:space-between; }
+.board .uhead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.board .uhead .hint { margin-right:auto; font-weight:500; text-transform:none; letter-spacing:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.board.empty .uhead { white-space:nowrap; } .board.empty .boardadd { flex:none; }
 .boardadd { padding:6px 14px; min-height:40px; }
 .notes { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; margin-top:6px; }
 .note { position:relative; background:var(--nc); color:#2b2b2b; border-radius:6px; padding:10px 36px 8px 10px; box-shadow:0 2px 5px rgba(0,0,0,.15); transform:rotate(-.6deg); }
