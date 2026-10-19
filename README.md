@@ -326,6 +326,8 @@ Each screen keeps a small flight recorder on the device: what the app did (start
 
 ## Known limitations
 
+- Repeating events that end on a date: Lyding Strike writes the end date the way each calendar wants it (Google: end of that day in UTC; Home Assistant's Local Calendar: local time). Calendars from other integrations get the standard (UTC) form.
+
 - **Keeping the screen on:** cook mode always asks to keep the screen on, and Setup → Look → **Keep this screen on** does it whenever Lyding Strike is open on that device. It uses the browser's screen wake lock plus a tiny silent video (which iPhones and iPads respect inside apps). It only works while the app is open and in front; the device's own settings still win when it's closed, in Low Power Mode, or locked by hand. For a wall tablet, a kiosk browser (Fully Kiosk on Android) or the device's own setting (iPad: Auto-Lock → Never, or Guided Access) is more reliable.
 
 - **Creating a calendar from the tablet** still adds a Local Calendar without a Home Assistant admin account, but only on a screen unlocked with the setup PIN. With no PIN set, anyone using Lyding Strike can do it.

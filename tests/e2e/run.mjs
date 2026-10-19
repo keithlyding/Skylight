@@ -1387,6 +1387,22 @@ const SCENARIOS = {
     }
   },
 
+  async rrule_until_forms(browser, base) {
+    // "Repeats until a date": Google wants UNTIL as the end of that day in UTC, Local Calendar the local form,
+    // all-day events a plain date; the plain-English text shows the right local day for the UTC form.
+    const p = await open(browser, base, { ctx: { timezoneId: "America/New_York" } });
+    await p.evaluate(() => { window.hass.entities = { "calendar.family": { platform: "google" }, "calendar.alex": { platform: "local_calendar" } }; el.hass = { ...window.hass }; });
+    const r = { freq: "DAILY", interval: 1, days: new Set(), end: "until", until: "2026-12-20", count: 10 };
+    eq(await p.evaluate((r) => el._buildRrule({ ...r, days: new Set() }, false, "calendar.family"), r), "FREQ=DAILY;UNTIL=20261221T045959Z", "Google, timed: end of Dec 20 Eastern in UTC");
+    eq(await p.evaluate((r) => el._buildRrule({ ...r, days: new Set() }, false, "calendar.alex"), r), "FREQ=DAILY;UNTIL=20261220T235959", "Local Calendar, timed: local form");
+    eq(await p.evaluate((r) => el._buildRrule({ ...r, days: new Set() }, true, "calendar.family"), r), "FREQ=DAILY;UNTIL=20261220", "all-day: plain date");
+    eq(await p.evaluate((r) => el._buildRrule({ ...r, days: new Set() }, false, "calendar.unknown"), r), "FREQ=DAILY;UNTIL=20261221T045959Z", "unknown calendar: the RFC 5545 form");
+    eq(await p.evaluate(() => el._rruleText("FREQ=DAILY;UNTIL=20261221T045959Z")), "every day, until Dec 20, 2026", "UTC until shown as the local day");
+    eq(await p.evaluate(() => el._rruleText("FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261220")), "every week on Tue, Thu, until Dec 20, 2026", "date until unchanged");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async verse_of_day(browser, base) {
     // Today card, screensaver line, and the Setup section (key, translation, family verses).
     const p = await open(browser, base);

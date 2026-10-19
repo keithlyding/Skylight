@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.58.0";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.58.1";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -300,8 +300,9 @@ export class CalendarView {
     }
     const until = get("UNTIL"), count = get("COUNT");
     if (until) {
-      const m = /^(\d{4})(\d{2})(\d{2})/.exec(until);
-      if (m) text += `, until ${new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+      const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/.exec(until);
+      const d = m && (m[7] ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])) : new Date(+m[1], +m[2] - 1, +m[3])); // UTC form: the local day it falls on
+      if (d) text += `, until ${d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
     } else if (count) text += `, ${count} times`;
     return text;
   }
@@ -332,7 +333,10 @@ export class CalendarView {
     </div>`;
   }
   // RRULE from the builder state (RFC 5545), e.g. FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH;UNTIL=20261218
-  _buildRrule(r, allDay = true) {
+  // For timed events the "until" form depends on the calendar: Google (and CalDAV, as RFC 5545 says) want the
+  // end of the day in UTC ("...T045959Z"); Home Assistant's Local Calendar rejects that and wants the local form.
+  _untilForm(entity) { return this._hass?.entities?.[entity]?.platform === "local_calendar" ? "local" : "utc"; }
+  _buildRrule(r, allDay = true, entity = "") {
     if (!r.freq) return "";
     const parts = [`FREQ=${r.freq}`];
     if (r.interval > 1) parts.push(`INTERVAL=${r.interval}`);
@@ -340,9 +344,10 @@ export class CalendarView {
       parts.push(`BYDAY=${[...r.days].sort().map((i) => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][i]).join(",")}`);
     }
     if (r.end === "until" && r.until) {
-      if (allDay) parts.push(`UNTIL=${r.until.replace(/-/g, "")}`);
-      // Timed events: end of that local day. (Home Assistant rejects the UTC "...Z" form here.)
-      else parts.push(`UNTIL=${r.until.replace(/-/g, "")}T235959`);
+      const day = r.until.replace(/-/g, "");
+      if (allDay) parts.push(`UNTIL=${day}`);
+      else if (this._untilForm(entity) === "local") parts.push(`UNTIL=${day}T235959`);
+      else { const d = parseYmd(r.until); d.setHours(23, 59, 59, 0); parts.push(`UNTIL=${d.toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`); }
     } else if (r.end === "count" && r.count > 0) parts.push(`COUNT=${r.count}`);
     return parts.join(";");
   }
@@ -369,7 +374,7 @@ export class CalendarView {
     const r = this.ui.dialog?.rep;
     let rrule = "";
     if (r && r.freq && !this.ui.dialog.event) {
-      rrule = this._buildRrule(r, allDay);
+      rrule = this._buildRrule(r, allDay, $("ev-cal").value);
       // Weekly on chosen days: start on the first chosen day so the first event matches the pattern.
       if (r.freq === "WEEKLY" && r.days.size && !r.days.has(start.getDay())) {
         let shift = 1;
