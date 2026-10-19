@@ -4,7 +4,7 @@
    clock. Home Assistant picks the reference (the family's own and a built-in list), fetches the text
    in the chosen translation and remembers it for the day (verses.py). */
 
-import { ymd, esc } from "./helpers.js?v=1.57.7";
+import { ymd, esc } from "./helpers.js?v=1.57.8";
 
 export const VERSE_TRANSLATIONS = [["esv", "ESV (English Standard Version, needs a free key)"], ["net", "NET Bible (no key)"], ["web", "World English Bible (no key)"], ["kjv", "King James Version (no key)"]];
 const RETRY = 10 * 60000; // offline text showing, or the request failed: ask again this often

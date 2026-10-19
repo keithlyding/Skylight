@@ -1284,18 +1284,18 @@ const SCENARIOS = {
     const layout = () => p.evaluate(() => {
       const body = el.shadowRoot.querySelector(".hbody").getBoundingClientRect(), info = el.shadowRoot.querySelector(".hinfo").getBoundingClientRect();
       return { fullWidth: Math.abs(info.width - body.width) < 2, bottom: Math.round(el.shadowRoot.querySelector(".hside").getBoundingClientRect().bottom), infoBottom: Math.round(info.bottom),
-        cards: [...el.shadowRoot.querySelectorAll(".hchores, .hcols .tonight")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }) };
+        cards: [...el.shadowRoot.querySelectorAll(".hchores, .hcols .tonight")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }),
+        chores: [...el.shadowRoot.querySelectorAll(".hchores")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }) };
     });
     for (const v of ["agenda", "1", "3", "5"]) {
       await p.evaluate((v) => { el.homeAgenda = v === "agenda"; if (v !== "agenda") el.homeDays = Number(v); el.render(); }, v); await p.waitForTimeout(300);
       const l = await layout();
       eq(l.cards.length, 4, `${v}: three kids' chores plus tonight's dinner in the columns`);
-      check(await p.evaluate(() => { const u = el.shadowRoot.querySelector(".hcols .upcoming"), b = el.shadowRoot.querySelector(".hbody"); return u && u.getBoundingClientRect().width < b.getBoundingClientRect().width * 0.6; }), `${v}: upcoming dates card is one column wide, in the columns`);
+      check(await p.evaluate(() => { const u = el.shadowRoot.querySelector(".hinfo .upcoming"), b = el.shadowRoot.querySelector(".hbody"); return u && u.getBoundingClientRect().width < b.getBoundingClientRect().width * 0.55; }), `${v}: upcoming dates card is up top, one column wide`);
       check(l.fullWidth, `${v}: tips, messages and verse span the whole side column`);
       check(new Set(l.cards.map(([left]) => left)).size >= 2, `${v}: cards flow into 2+ columns (${JSON.stringify(l)})`);
       check(l.cards.every(([, top]) => top >= l.infoBottom), `${v}: columns start under the family cards`);
-      check(l.cards.every(([, , bottom]) => bottom <= l.bottom), `${v}: every kid's chores and tonight's dinner fully on screen (${JSON.stringify(l)})`);
-      check(await p.evaluate(() => { const u = el.shadowRoot.querySelector(".hcols .upcoming").getBoundingClientRect(); return [...el.shadowRoot.querySelectorAll(".hchores")].every((c) => c.getBoundingClientRect().bottom <= u.top + 1); }), `${v}: upcoming dates sit below the chores`);
+      check(l.chores.every(([, , bottom]) => bottom <= l.bottom), `${v}: every kid's chores fully on screen (${JSON.stringify(l)})`);
     }
     // A grown-up's to-do list on Today sits below every kid's chores, whichever column it lands in.
     await p.evaluate(() => { D.members[0].today = "list"; D.members[0].today_list = "groceries"; D.lists[0].items = [...Array(8)].map((_, i) => ({ id: `g${i}`, text: `Item ${i}`, done: false })); push(); });

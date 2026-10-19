@@ -347,10 +347,14 @@ label.check input { width:22px; height:22px; }
 .home { display:grid; grid-template-columns:minmax(0,2fr) minmax(260px,1fr); gap:14px; }
 
 .hside { overflow-y:auto; container-type:inline-size; }
-.hbody, .hinfo { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.hbody, .hinfo { display:flex; flex-direction:column; gap:7px; min-width:0; }
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
 .hcols { column-width:225px; column-gap:8px; }
-.hcols .tonight, .hcols .upcoming { break-inside:avoid; margin-bottom:8px; padding:8px 10px; } .hcols .tonight img, .hcols .tnoimg { width:64px; height:64px; }
+.hcols .tonight { break-inside:avoid; margin-bottom:8px; padding:8px 10px; }
+.hinfo.wide .upcoming { width:calc(50% - 4px); margin-bottom:0; padding:8px 10px; } /* one column wide, up top with the other cards */
+.hinfo.wide .hintrow { padding:6px 10px; }
+.hinfo.wide .board.empty { padding:6px 12px; } .hinfo.wide .board.empty .boardadd { min-height:32px; padding:4px 12px; }
+.hinfo.wide .verse { padding:8px 12px; } .hcols .tonight img, .hcols .tnoimg { width:64px; height:64px; }
 .board { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
 .board .uhead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .board .uhead .hint { margin-right:auto; font-weight:500; text-transform:none; letter-spacing:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -400,7 +404,7 @@ label.check input { width:22px; height:22px; }
 .mlbnote2 { margin:0 0 8px; font-weight:600; }
 .hchores { background:var(--card); border-radius:var(--radius); padding:8px 12px; border-left:6px solid var(--c); display:flex; flex-direction:column; gap:4px;
   break-inside:avoid; margin-bottom:8px; }
-.hchores .chore .ctoggle { padding:5px 10px; font-size:15px; border-radius:12px; }
+.hchores .chore .ctoggle { padding:4px 10px; font-size:15px; border-radius:12px; }
 .hchores .ci { font-size:19px; }
 .hchores .box { width:24px; height:24px; }
 .hadd { padding:6px 10px; font-size:14px; border-radius:10px; background:var(--bg); }

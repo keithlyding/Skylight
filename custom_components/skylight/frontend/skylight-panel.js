@@ -2,7 +2,7 @@
  *   type: custom:skylight-panel
  * ). Plain web component, no build step. */
 
-import { SkylightPanel } from "./src/panel.js?v=1.57.7";
+import { SkylightPanel } from "./src/panel.js?v=1.57.8";
 
 
 if (!customElements.get("skylight-panel")) customElements.define("skylight-panel", SkylightPanel);

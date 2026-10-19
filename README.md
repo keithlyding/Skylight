@@ -183,7 +183,7 @@ Setup → **Look & night mode**:
 
 ## Today screen layout
 
-The Today screen is the calendar on the left and the family's side column on the right. With up to 5 calendar days (Agenda, 1, 3 or 5 days) the side column is wide: the weather tips (two to a row), messages, verse and upcoming dates span it, and below them the kids' chores (with tonight's dinner beside them) flow side by side in columns, then grown-ups' lists in their own block underneath, so every kid's chores are on screen without scrolling and a long list never sits above them (sized for a 1080p screen at TouchKio's 1.25 zoom). 7 days keeps the calendar wide and stacks everything in one narrow column.
+The Today screen is the calendar on the left and the family's side column on the right. With up to 5 calendar days (Agenda, 1, 3 or 5 days) the side column is wide: the weather tips (two to a row), messages and verse span it, upcoming dates take one column, and below them the kids' chores (with tonight's dinner beside them) flow side by side in columns, then grown-ups' lists in their own block underneath, so every kid's chores are on screen without scrolling and a long list never sits above them (sized for a 1080p screen at TouchKio's 1.25 zoom). 7 days keeps the calendar wide and stacks everything in one narrow column.
 
 ## Favorite baseball team
 
