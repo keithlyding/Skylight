@@ -1208,6 +1208,20 @@ const SCENARIOS = {
     eq(await op(), [false, ""], "someone's there: normal again");
     eq(p.errors, [], "page errors");
     await p.context().close();
+
+    // Phones and tablets keep their own brightness: no overlay at night unless this screen is switched on in Setup.
+    const ph = await open(browser, base, { at: "2026-10-17T23:00:00", width: 390, height: 844,
+      ctx: { isMobile: true, hasTouch: true, userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Home Assistant/2025.9" } });
+    const pop = () => ph.evaluate(() => { const d = el.shadowRoot.getElementById("dim"); return [d.classList.contains("on"), d.style.opacity]; });
+    await ph.evaluate(() => { Object.assign(el.settings, { night_dim: true, night_start: "21:00", night_end: "06:30", night_level: 94, brightness_entity: null }); el._applyLook(); });
+    eq(await pop(), [false, ""], "phone: no night overlay by default");
+    await ph.tab("settings");
+    await ph.S('select[data-change="screen-dim"]').selectOption("1"); await wait(ph, 200);
+    eq(await pop(), [true, "0.8"], "phone: dims once this screen is switched on");
+    await ph.S('select[data-change="screen-dim"]').selectOption("0"); await wait(ph, 200);
+    eq(await pop(), [false, ""], "phone: and back off");
+    eq(ph.errors, [], "page errors (phone)");
+    await ph.context().close();
   },
   async settings_every_section(browser, base) {
     // Setup must draw with every optional section switched on (night dim with and without an entity, etc.).
@@ -1264,7 +1278,9 @@ const SCENARIOS = {
     // Today screen at the kitchen screen's size (1080p at zoom 1.25): up to 5 calendar days, the family cards span
     // the side column and the kids' chores, lists and tonight's dinner flow in columns under them, all on screen.
     const p = await open(browser, base, { width: 1536, height: 864 });
-    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer); });
+    await p.evaluate(() => { el.ui.alertPop = null; clearInterval(el._alertTimer);
+      const d = new Date(Date.now() + 12 * 864e5); D.occasions = [{ id: "o1", title: "Matt's birthday", type: "birthday", month: d.getMonth() + 1, day: d.getDate() }]; push(); });
+    await p.waitForTimeout(300);
     const layout = () => p.evaluate(() => {
       const body = el.shadowRoot.querySelector(".hbody").getBoundingClientRect(), info = el.shadowRoot.querySelector(".hinfo").getBoundingClientRect();
       return { fullWidth: Math.abs(info.width - body.width) < 2, bottom: Math.round(el.shadowRoot.querySelector(".hside").getBoundingClientRect().bottom), infoBottom: Math.round(info.bottom),
@@ -1274,10 +1290,12 @@ const SCENARIOS = {
       await p.evaluate((v) => { el.homeAgenda = v === "agenda"; if (v !== "agenda") el.homeDays = Number(v); el.render(); }, v); await p.waitForTimeout(300);
       const l = await layout();
       eq(l.cards.length, 4, `${v}: three kids' chores plus tonight's dinner in the columns`);
+      check(await p.evaluate(() => { const u = el.shadowRoot.querySelector(".hcols .upcoming"), b = el.shadowRoot.querySelector(".hbody"); return u && u.getBoundingClientRect().width < b.getBoundingClientRect().width * 0.6; }), `${v}: upcoming dates card is one column wide, in the columns`);
       check(l.fullWidth, `${v}: tips, messages and verse span the whole side column`);
       check(new Set(l.cards.map(([left]) => left)).size >= 2, `${v}: cards flow into 2+ columns (${JSON.stringify(l)})`);
       check(l.cards.every(([, top]) => top >= l.infoBottom), `${v}: columns start under the family cards`);
-      check(l.cards.every(([, , bottom]) => bottom <= l.bottom), `${v}: every card fully on screen (${JSON.stringify(l)})`);
+      check(l.cards.every(([, , bottom]) => bottom <= l.bottom), `${v}: every kid's chores and tonight's dinner fully on screen (${JSON.stringify(l)})`);
+      check(await p.evaluate(() => { const u = el.shadowRoot.querySelector(".hcols .upcoming").getBoundingClientRect(); return [...el.shadowRoot.querySelectorAll(".hchores")].every((c) => c.getBoundingClientRect().bottom <= u.top + 1); }), `${v}: upcoming dates sit below the chores`);
     }
     // A grown-up's to-do list on Today sits below every kid's chores, whichever column it lands in.
     await p.evaluate(() => { D.members[0].today = "list"; D.members[0].today_list = "groceries"; D.lists[0].items = [...Array(8)].map((_, i) => ({ id: `g${i}`, text: `Item ${i}`, done: false })); push(); });

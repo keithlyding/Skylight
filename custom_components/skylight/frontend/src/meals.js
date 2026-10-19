@@ -1,7 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.57.6";
-import { keepAwake } from "./wake.js?v=1.57.6";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.57.7";
+import { keepAwake } from "./wake.js?v=1.57.7";
 
 export class MealsView {
   async _loadMealie() {

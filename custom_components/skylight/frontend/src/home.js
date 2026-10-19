@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.6";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.7";
 
 export class HomeView {
 
@@ -82,10 +82,11 @@ export class HomeView {
     }).join("");
     if (this.settings.weather_hints !== false && this._wxSourceOk()) this._loadWeatherFull();
     // Up to 5 days the side column is wide: the family cards span it; under them the kids' chores (and tonight's
-    // dinner, filling the space beside them) flow in columns, and grown-ups' lists in their own block below, so a
-    // long list never sits above a kid's chores. 7 days keeps a narrow single column.
+    // dinner, filling the space beside them) flow in columns; upcoming dates and grown-ups' lists in their own
+    // block below, so a long list never sits above a kid's chores. 7 days keeps a narrow single column.
     const wideSide = agenda || n <= 5;
     const tonight = this.renderTonight();
+    const upcoming = this.renderUpcoming();
     return `<div class="toolbar hometool">${picker}${this.renderMlbButton()}<button class="primary fab" data-action="new-event">+ Event</button></div>
       <div class="home ${agenda ? "agenda" : `d${n}`}">
       <section class="hcal">${cal}</section>
@@ -97,11 +98,11 @@ export class HomeView {
         ${this.renderMlbNote()}
         ${wideSide ? "" : tonight}
         ${this.renderVerseNote()}
-        ${this.renderUpcoming()}
+        ${wideSide ? "" : upcoming}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
         </div>
         ${chores || (wideSide && tonight) ? `<div class="hcols">${chores}${wideSide ? tonight : ""}</div>` : ""}
-        ${listCards ? `<div class="hcols">${listCards}</div>` : ""}
+        ${listCards || (wideSide && upcoming) ? `<div class="hcols">${wideSide ? upcoming : ""}${listCards}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
       </div></aside></div>`;
   }

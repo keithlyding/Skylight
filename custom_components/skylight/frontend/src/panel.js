@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.6";
-import { STYLES } from "./styles.js?v=1.57.6";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.6";
-import { CalendarView } from "./calendar.js?v=1.57.6";
-import { WeatherView } from "./weather.js?v=1.57.6";
-import { HomeView } from "./home.js?v=1.57.6";
-import { ChoresView } from "./chores.js?v=1.57.6";
-import { MealsView } from "./meals.js?v=1.57.6";
-import { ListsView } from "./lists.js?v=1.57.6";
-import { PhotosView } from "./photos.js?v=1.57.6";
-import { SettingsView } from "./settings.js?v=1.57.6";
-import { PickersView } from "./pickers.js?v=1.57.6";
-import { keepAwake } from "./wake.js?v=1.57.6";
-import { MlbView } from "./mlb.js?v=1.57.6";
-import { TravelView } from "./travel.js?v=1.57.6";
-import { NotesView } from "./notes.js?v=1.57.6";
-import { VerseView } from "./verses.js?v=1.57.6";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.57.7";
+import { STYLES } from "./styles.js?v=1.57.7";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.57.7";
+import { CalendarView } from "./calendar.js?v=1.57.7";
+import { WeatherView } from "./weather.js?v=1.57.7";
+import { HomeView } from "./home.js?v=1.57.7";
+import { ChoresView } from "./chores.js?v=1.57.7";
+import { MealsView } from "./meals.js?v=1.57.7";
+import { ListsView } from "./lists.js?v=1.57.7";
+import { PhotosView } from "./photos.js?v=1.57.7";
+import { SettingsView } from "./settings.js?v=1.57.7";
+import { PickersView } from "./pickers.js?v=1.57.7";
+import { keepAwake } from "./wake.js?v=1.57.7";
+import { MlbView } from "./mlb.js?v=1.57.7";
+import { TravelView } from "./travel.js?v=1.57.7";
+import { NotesView } from "./notes.js?v=1.57.7";
+import { VerseView } from "./verses.js?v=1.57.7";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -659,6 +659,9 @@ export class SkylightPanel extends HTMLElement {
       case "screen-scheme":
         try { if (el.value) localStorage.setItem("skylight.screenScheme", el.value); else localStorage.removeItem("skylight.screenScheme"); } catch (e) { /* private mode */ }
         this._applyLook(); this.render(); break;
+      case "screen-dim":
+        try { localStorage.setItem("skylight.nightDim", el.value); } catch (e) { /* private mode */ }
+        this._applyLook(); this.render(); break;
       case "reminder-dismiss": this.ui.reminderPop = (this.ui.reminderPop || []).slice(1); this.render(); break;
       case "reminder-screen": {
         const cfg = this._screenReminders();
@@ -1149,6 +1152,12 @@ export class SkylightPanel extends HTMLElement {
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
   get screenAwake() { try { return localStorage.getItem("skylight.awake") === "1"; } catch (e) { return false; } }
+  // Night dimming is for wall displays. Phones and tablets (the Home Assistant app, iPhone, iPad, Android) keep
+  // their own brightness unless this screen is switched on in Setup; saved on the device.
+  get screenDims() {
+    try { const v = localStorage.getItem("skylight.nightDim"); if (v) return v === "1"; } catch (e) { /* private mode */ }
+    return !/Home Assistant|iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+  }
   _screenScheme() {
     try { return localStorage.getItem("skylight.screenScheme") || ""; } catch (e) { return ""; }
   }
@@ -1175,7 +1184,7 @@ export class SkylightPanel extends HTMLElement {
     const darken = nightLevels(s).overlay;
     this._idleState = s.idle_entity ? this._hass.states[s.idle_entity]?.state : undefined;
     const empty = !!s.idle_entity && this._idleState === "off"; // nobody around
-    const overlay = s.night_dim && (night || empty) && darken > 0;
+    const overlay = s.night_dim && this.screenDims && (night || empty) && darken > 0;
     const level = darken / 100;
     if (this.$dim) {
       this.$dim.classList.toggle("on", !!overlay);

@@ -350,7 +350,7 @@ label.check input { width:22px; height:22px; }
 .hbody, .hinfo { display:flex; flex-direction:column; gap:8px; min-width:0; }
 /* Cards flow into as many ~250px columns as fit (1 on a tablet, 2+ on wide screens). */
 .hcols { column-width:225px; column-gap:8px; }
-.hcols .tonight { break-inside:avoid; margin-bottom:8px; padding:8px 10px; } .hcols .tonight img, .hcols .tnoimg { width:64px; height:64px; }
+.hcols .tonight, .hcols .upcoming { break-inside:avoid; margin-bottom:8px; padding:8px 10px; } .hcols .tonight img, .hcols .tnoimg { width:64px; height:64px; }
 .board { background:var(--card); border-radius:16px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
 .board .uhead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .board .uhead .hint { margin-right:auto; font-weight:500; text-transform:none; letter-spacing:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
