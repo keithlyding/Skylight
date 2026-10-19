@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.5";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.57.6";
 
 export class HomeView {
 
@@ -62,11 +62,10 @@ export class HomeView {
     const members = this.ui.filter ? this.members.filter((m) => m.id === this.ui.filter) : this.members;
     const free = [];
     const lists = this.allLists();
-    // Chores first so they're never pushed out of view; to-do lists after them.
-    const ordered = [...members.filter((m) => m.today !== "list"), ...members.filter((m) => m.today === "list")];
-    const chores = ordered.map((m) => {
-      if (m.today === "none") return "";
-      if (m.today === "list") return this.renderHomeList(m, lists.find((l) => l.id === m.today_list));
+    // Chores first so they're never pushed out of view; to-do lists in their own block after them.
+    const listCards = members.filter((m) => m.today === "list").map((m) => this.renderHomeList(m, lists.find((l) => l.id === m.today_list))).join("");
+    const chores = members.map((m) => {
+      if (m.today === "none" || m.today === "list") return "";
       if (m.role !== "kid" && m.role !== "home") return ""; // chores are for kids and household profiles
       const list = this._choresOn(m.id, today);
       const done = list.filter((x) => x.st.done).length;
@@ -82,8 +81,9 @@ export class HomeView {
       </div>`;
     }).join("");
     if (this.settings.weather_hints !== false && this._wxSourceOk()) this._loadWeatherFull();
-    // Up to 5 days the side column is wide: the family cards span it, and chores, lists and tonight's dinner
-    // flow side by side in columns under them. 7 days keeps a narrow single column.
+    // Up to 5 days the side column is wide: the family cards span it; under them the kids' chores (and tonight's
+    // dinner, filling the space beside them) flow in columns, and grown-ups' lists in their own block below, so a
+    // long list never sits above a kid's chores. 7 days keeps a narrow single column.
     const wideSide = agenda || n <= 5;
     const tonight = this.renderTonight();
     return `<div class="toolbar hometool">${picker}${this.renderMlbButton()}<button class="primary fab" data-action="new-event">+ Event</button></div>
@@ -101,6 +101,7 @@ export class HomeView {
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
         </div>
         ${chores || (wideSide && tonight) ? `<div class="hcols">${chores}${wideSide ? tonight : ""}</div>` : ""}
+        ${listCards ? `<div class="hcols">${listCards}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
       </div></aside></div>`;
   }

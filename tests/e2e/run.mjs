@@ -1279,6 +1279,14 @@ const SCENARIOS = {
       check(l.cards.every(([, top]) => top >= l.infoBottom), `${v}: columns start under the family cards`);
       check(l.cards.every(([, , bottom]) => bottom <= l.bottom), `${v}: every card fully on screen (${JSON.stringify(l)})`);
     }
+    // A grown-up's to-do list on Today sits below every kid's chores, whichever column it lands in.
+    await p.evaluate(() => { D.members[0].today = "list"; D.members[0].today_list = "groceries"; D.lists[0].items = [...Array(8)].map((_, i) => ({ id: `g${i}`, text: `Item ${i}`, done: false })); push(); });
+    await p.evaluate(() => { el.homeAgenda = false; el.homeDays = 5; el.render(); }); await p.waitForTimeout(400);
+    const order = await p.evaluate(() => ({ chores: [...el.shadowRoot.querySelectorAll(".hchores:not(.hlist)")].map((c) => Math.round(c.getBoundingClientRect().bottom)),
+      lists: [...el.shadowRoot.querySelectorAll(".hchores.hlist")].map((c) => Math.round(c.getBoundingClientRect().top)) }));
+    eq(order.lists.length, 1, "the list card is shown");
+    check(Math.max(...order.chores) <= Math.min(...order.lists), `chores above the list (${JSON.stringify(order)})`);
+    await p.evaluate(() => { D.members[0].today = undefined; push(); });
     await p.evaluate(() => { el.homeAgenda = false; el.homeDays = 7; el.render(); }); await p.waitForTimeout(300);
     const l7 = await layout();
     eq(new Set(l7.cards.map(([left]) => left)).size, 1, "7 days: one narrow column");
