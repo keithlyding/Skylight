@@ -33,6 +33,7 @@ const eq = (got, want, msg) => check(JSON.stringify(got) === JSON.stringify(want
 // Open the panel. `at` fixes the clock; `setup` runs in the page before the first render settles.
 async function open(browser, base, { width = 1300, height = 912, at = null, setup = null, ctx = {} } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, acceptDownloads: true, ...ctx });
+  await context.addInitScript(() => { try { if (!localStorage.getItem("skylight.setupTab")) localStorage.setItem("skylight.setupTab", "all"); } catch (e) { /* storage off */ } }); // scenarios see every Setup card
   const page = await context.newPage();
   page.errors = [];
   page._clockInstalled = !!at;
@@ -399,7 +400,7 @@ const SCENARIOS = {
     await p.goto(base); await p.waitForTimeout(1200);
     await p.evaluate(() => { el.ui.alertPop = null; el.render(); });
     eq(await p.evaluate(() => el.dataset.scheme), "dark", "default: follows this device (in Dark Mode)");
-    await p.evaluate(() => { el.ui.tab = "settings"; el.render(); }); await p.waitForTimeout(300);
+    await p.evaluate(() => { el.ui.tab = "settings"; el.ui.setupTab = "screens"; el.render(); }); await p.waitForTimeout(300);
     check((await p.locator("skylight-panel").locator('select[data-key="dark_mode"]').count()) === 0, "no family-wide dark mode any more");
     await p.locator("skylight-panel").locator('select[data-change="screen-scheme"]').selectOption("light"); await p.waitForTimeout(300);
     eq(await p.evaluate(() => el.dataset.scheme), "light", "this screen: always light");
@@ -1385,6 +1386,51 @@ const SCENARIOS = {
       eq(p.errors, [], "page errors");
       await p.context().close();
     }
+  },
+
+  async setup_tabs_week_keyboard(browser, base) {
+    // Setup tabs: the family tab by default, each tab shows its own cards, the choice sticks on this device.
+    const p = await open(browser, base);
+    await p.evaluate(() => { localStorage.removeItem("skylight.setupTab"); el.ui.setupTab = null; el.render(); }); await p.waitForTimeout(300);
+    await p.tab("settings");
+    eq(await p.evaluate(() => el.setupTab), "family", "family tab by default");
+    const shown = () => p.evaluate(() => [...el.shadowRoot.querySelectorAll(".sgroup:not([hidden])")].map((g) => g.dataset.group));
+    eq(await shown(), ["family"], "only the family group is shown");
+    eq(await p.S("#newcal").count(), 1, "calendars card is in the family group");
+    await p.S('[data-action="setup-tab"][data-tab="screens"]').click(); await p.waitForTimeout(300);
+    eq(await shown(), ["screens"], "screens tab");
+    eq(await p.S('select[data-key="week_start"]').count(), 1, "display card is in the screens group");
+    await p.S('[data-action="setup-tab"][data-tab="all"]').click(); await p.waitForTimeout(300);
+    eq((await shown()).length, 5, "Everything shows all groups");
+    await p.S('[data-action="setup-tab"][data-tab="today"]').click(); await p.waitForTimeout(300);
+    await p.tab("home"); await p.tab("settings");
+    eq(await shown(), ["today"], "the chosen tab is remembered");
+
+    // 7-day Today view: Sunday to Saturday of this week, not today + 6
+    await p.tab("home");
+    await p.evaluate(() => { el.homeAgenda = false; el.homeDays = 7; el.render(); }); await p.waitForTimeout(400);
+    eq(await p.evaluate(() => el.weekStart(new Date()).getDay()), 0, "week starts on Sunday by default");
+    eq(await p.evaluate(() => el.shadowRoot.querySelectorAll(".home .tg-col").length), 7, "seven columns");
+    const heads = await text(p.S(".home .tg-head > div:not(.tg-gutter)"));
+    const sunday = await p.evaluate(() => String(el.weekStart(new Date()).getDate()));
+    check(heads[0].includes(sunday), `first column is Sunday the ${sunday}: ${heads[0]}`);
+    check(heads.some((h) => /today/i.test(h)), "today is one of the seven columns");
+    await p.evaluate(() => { el.homeDays = 3; el.render(); }); await p.waitForTimeout(300);
+    check(/today/i.test((await text(p.S(".home .tg-head > div:not(.tg-gutter)")))[0] || ""), "3 days still starts today");
+
+    // Kiosk keyboard: pick the switch, the button turns it on; typing in a box turns it on and leaving turns it off
+    await p.evaluate(() => { window.hass.states["switch.touchkio_kitchen_keyboard"] = { state: "off", attributes: { friendly_name: "Kitchen Keyboard" } }; el.hass = { ...window.hass }; });
+    await p.tab("settings"); await p.S('[data-action="setup-tab"][data-tab="screens"]').click(); await p.waitForTimeout(300);
+    await p.S('select[data-change="kb-entity"]').selectOption("switch.touchkio_kitchen_keyboard"); await p.waitForTimeout(300);
+    await p.S('[data-action="kb-show"]').click(); await p.waitForTimeout(200);
+    const kb = () => p.evaluate(() => calls.filter((c) => c.svc === "switch.turn_on" || c.svc === "switch.turn_off").map((c) => c.svc));
+    eq(await kb(), ["switch.turn_on"], "Show keyboard turns the switch on");
+    await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
+    await p.S("#ev-title").focus(); await p.waitForTimeout(100);
+    await p.S("#ev-title").blur(); await p.waitForTimeout(600);
+    eq(await kb(), ["switch.turn_on", "switch.turn_on", "switch.turn_off"], "typing shows it, leaving the box hides it");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
   },
 
   async rrule_until_forms(browser, base) {

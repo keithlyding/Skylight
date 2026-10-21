@@ -320,6 +320,8 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 }
 /* settings */
 .settings { display:flex; flex-direction:column; gap:16px; max-width:900px; }
+.sgroup { display:contents; } .sgroup[hidden] { display:none; }
+.setuptabs { position:sticky; top:0; z-index:5; } .setuptabs button { padding:8px 12px; }
 .card { background:var(--card); border-radius:var(--radius); padding:16px 20px; }
 .card h2 { margin:0 0 10px; }
 .mrow2 { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); }

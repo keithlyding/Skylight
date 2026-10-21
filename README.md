@@ -37,7 +37,7 @@ Every screen showing the panel (tablet, phones, PC) stays in sync live.
 Copy `custom_components/skylight` into your Home Assistant `config/custom_components/` folder and restart.
 
 ### Then
-**Settings → Devices & Services → Add Integration → "Lyding Strike"**. A **Lyding Strike** item appears in the sidebar. Open it, go to **Setup**, and add your family.
+**Settings → Devices & Services → Add Integration → "Lyding Strike"**. A **Lyding Strike** item appears in the sidebar. Open it, go to **Setup**, and add your family. Setup is split into tabs (Family & calendars, Today screen, Meals & photos, Screens & look, Advanced, or Everything on one page); each screen remembers the tab it was on.
 
 Requires Home Assistant **2024.7 or newer**. The automated tests run against 2026.2.
 
@@ -116,6 +116,10 @@ For a Pi 5 driving an HDMI touch monitor, [TouchKio](https://github.com/leukipp/
 9. The desktop's taskbar shows under the on-screen keyboard. A kiosk doesn't need it, and it's started through a respawner, so killing it doesn't stick: comment it out with `sudo sed -i 's|^\([^#].*wf-panel-pi.*\)$|# \1|' /etc/xdg/labwc/autostart` and reboot. (An OS update may restore the line.)
 10. On the Argon ONE V3 the Pi can't see the power supply's 5 A rating; Argon's script (`argon1.sh`) sets `PSU_MAX_CURRENT=5000` in the bootloader, or add `usb_max_current_enable=1` to `config.txt`.
 
+### On-screen keyboard
+
+TouchKio exposes its on-screen keyboard as a Home Assistant switch (`switch.<name>_keyboard`). On the kitchen screen, open Setup → Screens & look → **On-screen keyboard (kiosk)** and pick that switch (saved on that device). From then on the keyboard appears whenever a text box is tapped and goes away when typing ends, and **⌨ Show keyboard** brings it back if it ever goes missing.
+
 ### Monitor brightness from Home Assistant (DDC/CI)
 
 HDMI monitors don't expose a backlight to the OS, but most accept brightness commands over DDC/CI. Check from the Pi: `sudo apt install -y ddcutil && sudo ddcutil detect && sudo ddcutil getvcp 10`. If that prints a current value, `tools/pi/ddc_brightness.py` turns it into a Home Assistant brightness slider over MQTT (the same Mosquitto broker TouchKio uses):
@@ -182,6 +186,8 @@ Setup → **Look & night mode**:
 - Adding or changing them needs the setup PIN, like other setup.
 
 ## Today screen layout
+
+In the **7 days** view the Today screen shows the whole current week, Sunday to Saturday (or Monday to Sunday if *Week starts on* is Monday). Agenda, 1, 3 and 5 days start at today.
 
 The Today screen is the calendar on the left and the family's side column on the right. On big screens the view picker (Agenda, 1, 3, 5, 7 days), the ⚾ button and + Event sit in the header under the family chips, so the calendar and the side column start higher. With up to 5 calendar days (Agenda, 1, 3 or 5 days) the side column is wide: the weather tips (two to a row), messages and verse span it, upcoming dates take one column, and below them the kids' chores (with tonight's dinner beside them) flow side by side in columns, then grown-ups' lists in their own block underneath, so every kid's chores are on screen without scrolling and a long list never sits above them (sized for a 1080p screen at TouchKio's 1.25 zoom). 7 days keeps the calendar wide and stacks everything in one narrow column.
 

@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.58.2";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.58.2";
-import { MLB_TEAMS } from "./mlb.js?v=1.58.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.59.0";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.59.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.59.0";
 
 export class SettingsView {
 
@@ -109,6 +109,7 @@ export class SettingsView {
     const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
     const presence = Object.keys(this._hass.states).filter((e) => /^(binary_sensor|input_boolean|switch)\./.test(e)).sort((a, b) => (/occup|presence|motion|people|kitchen/i.test(b + this.entityName(b)) - /occup|presence|motion|people|kitchen/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const displays = Object.keys(this._hass.states).filter((e) => /^(light|switch)\./.test(e)).sort((a, b) => (/display|screen|monitor|kiosk/i.test(b + this.entityName(b)) - /display|screen|monitor|kiosk/i.test(a + this.entityName(a))) || a.localeCompare(b));
+    const kbs = Object.keys(this._hass.states).filter((e) => e.startsWith("switch.")).sort((a, b) => (/keyboard/i.test(b + this.entityName(b)) - /keyboard/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const showTimes = s.night_by !== "sun";
     return `<section class="card">
       <h2>Look &amp; night mode</h2>
@@ -117,6 +118,9 @@ export class SettingsView {
       <p class="hint">Changes the accent color and adds a small emoji by the clock for spring, summer, July 4th, fall, Halloween, Thanksgiving week, Christmas and winter.</p>
       <label class="inline">This screen <select data-change="screen-scheme">${[["follow", "Follow this device's light/dark"], ["light", "Always light"], ["dark", "Always dark"], ["night", "Dark at night"]].map(([v, l]) => `<option value="${v}" ${mine === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       ${s.night_dim ? `<label class="inline">Dim this screen at night <select data-change="screen-dim"><option value="1" ${this.screenDims ? "selected" : ""}>Yes (wall display)</option><option value="0" ${this.screenDims ? "" : "selected"}>No (keep this device's own brightness)</option></select></label>` : ""}
+      <label class="inline">On-screen keyboard (kiosk) <select data-change="kb-entity"><option value="">None</option>${kbs.map((e) => `<option value="${e}" ${e === this.kbEntity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select>
+        <button type="button" data-action="kb-show" ${this.kbEntity ? "" : "disabled"}>⌨ Show keyboard</button></label>
+      <p class="hint">For a kiosk app that exposes its keyboard as a switch (TouchKio: "Keyboard"). With one picked, this screen shows the keyboard whenever a text box is tapped and hides it afterwards; the button brings it back if it ever goes missing. Saved on this device.</p>
       <label class="inline">Keep this screen on <select data-change="screen-awake"><option value="" ${this.screenAwake ? "" : "selected"}>No (the device's own sleep setting)</option><option value="1" ${this.screenAwake ? "selected" : ""}>Yes, while ${esc(this.appName)} is open</option></select></label>
       <p class="hint">Light or dark is chosen on each screen and saved on that device, so every phone and the wall display can differ. "Follow this device" uses the phone's or tablet's own Dark Mode.${s.night_dim ? " Night dimming is also per screen: phones and tablets keep their own brightness unless switched on here." : ""}</p>
       <label class="inline">Night is <select data-change="setting" data-key="night_by">${[["schedule", "Between set times"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${(s.night_by || "schedule") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
@@ -317,16 +321,25 @@ export class SettingsView {
     </section>`;
   }
 
+  // Setup is split into tabs (saved on this device); "Everything" is the old single page.
+  get setupTab() {
+    if (!this.ui.setupTab) { try { this.ui.setupTab = localStorage.getItem("skylight.setupTab") || "family"; } catch (e) { this.ui.setupTab = "family"; } }
+    return this.ui.setupTab;
+  }
   renderSettings() {
     const s = this.settings;
     const cals = this.allCalendars();
     const weathers = Object.keys(this._hass.states).filter((e) => e.startsWith("weather.")).sort();
     const fam = new Set(this.data.family_calendars || []);
+    const cur = this.setupTab;
+    const tabs = [["family", "👨\u200d👩\u200d👧 Family & calendars"], ["today", "🏠 Today screen"], ["meals", "🍽️ Meals & photos"], ["screens", "🖥️ Screens & look"], ["system", "🔧 Advanced"]];
+    const group = (key, html) => `<div class="sgroup" data-group="${key}" ${cur === "all" || cur === key ? "" : "hidden"}>${html}</div>`;
     return `<div class="settings">
+      <div class="seg wrap setuptabs">${[...tabs, ["all", "Everything"]].map(([k, l]) => `<button class="${cur === k ? "on" : ""}" data-action="setup-tab" data-tab="${k}">${l}</button>`).join("")}</div>
       ${this.pinSet ? "" : `<div class="pinbanner">🔒 <b>Set a setup PIN</b> so kids can use the display without changing its setup. <button class="primary" data-action="pin-setup">Set PIN</button></div>`}
       ${this.settings.roles_review ? `<div class="pinbanner">🧒 <b>Check each person's Adult/Kid setting.</b> People with chores were set to Kid, everyone else to Adult. <button class="primary" data-action="roles-reviewed">Looks right</button></div>` : ""}
-      ${this.renderPinCard()}
-      <section class="card">
+      ${group("family", `
+<section class="card">
         <div class="toolbar"><h2>Family members</h2><button class="primary" data-action="new-member">+ Add member</button></div>
         ${this.members.map((m, i) => `<div class="mrow2">
           <span class="av big" style="background:${m.color}">${m.avatar}</span>
@@ -336,18 +349,7 @@ export class SettingsView {
           <button data-action="edit-member" data-member="${m.id}">Edit</button></div>`).join("") || `<p class="hint">Add everyone in your household. Each person gets a color used across the calendar and chores.</p>`}
       </section>
 
-      ${this.renderOccasionsCard()}
-
-      ${this.renderVerseSettings()}
-      <section class="card">
-        <h2>Backup</h2>
-        <p class="hint">Saves family members, chores and their history, lists, meals, birthdays and settings to a file. API keys and the setup PIN aren't included. Restoring replaces what's here now; the current data is kept on the Home Assistant server first (<code>.storage/skylight.data.before_import</code>).</p>
-        <div class="row"><button data-action="backup-export">⬇ Download backup</button>
-          <input type="file" id="backup-file" accept=".json,application/json" hidden data-change="backup-import">
-          <button data-action="backup-pick">⬆ Restore from file…</button></div>
-      </section>
-
-      <section class="card">
+<section class="card">
         <h2>Calendars</h2>
         <p class="hint">Create a new calendar stored in Home Assistant:</p>
         <div class="additem"><input id="newcal" data-fresh="1" placeholder="e.g. Soccer, School, Family" data-enter="create-calendar"><button class="primary" data-action="create-calendar">Create calendar</button></div>
@@ -362,7 +364,7 @@ export class SettingsView {
         <label class="inline">Family color <input type="color" value="${s.family_color}" data-change="setting" data-key="family_color"></label>
       </section>
 
-      <section class="card">
+<section class="card">
         <h2>Info calendars</h2>
         <p class="hint">Birthdays, holidays and other "good to know" calendars. They show with their own icon in a light outline style, don't belong to anyone, and stay visible when you filter by a person.</p>
         <div class="checklist">${cals.map((e) => {
@@ -376,8 +378,18 @@ export class SettingsView {
         }).join("") || `<p class="hint">No calendars yet.</p>`}</div>
         <label class="inline">Show info calendars on the Today screen <input type="checkbox" ${s.info_on_today !== false ? "checked" : ""} data-change="setting" data-key="info_on_today"></label>
       </section>
+      `)}
 
-      <section class="card">
+      ${group("today", `
+${this.renderOccasionsCard()}
+
+${this.renderVerseSettings()}
+
+${this.renderRemindersCard()}
+      `)}
+
+      ${group("meals", `
+<section class="card">
         <h2>Meal plan sync</h2>
         <p class="hint">Meals from these calendars fill the Meals tab, sorted into breakfast / lunch / dinner / snack by the calendar name, the meal name, or the time of day.
           <b>Plan to Eat:</b> copy your planner's iCal link from Plan to Eat's planner settings and subscribe to it in Calendars above.
@@ -385,29 +397,17 @@ export class SettingsView {
         <div class="checklist">${cals.map((e) => `<label class="check"><input type="checkbox" data-change="meal-cal" data-entity="${e}" ${(this.data.meal_calendars || []).includes(e) ? "checked" : ""}> ${esc(this.calName(e))}</label>`).join("") || `<p class="hint">No calendars yet.</p>`}</div>
       </section>
 
-      ${this.renderMealieSettings()}
+${this.renderMealieSettings()}
 
-      <section class="card photosec">${this.renderPhotos()}</section>
+<section class="card photosec">${this.renderPhotos()}</section>
 
-      ${this.renderImmichSettings()}
+${this.renderImmichSettings()}
+      `)}
 
-      <section class="card">
-        <h2>Address lookup</h2>
-        <p class="hint">${this.data.places?.has_google_key
-          ? "✅ Using <b>Google Places</b> to find addresses when you type a location."
-          : "Using the free <b>OpenStreetMap</b> lookup. For better results with local businesses, add a Google Places API key (Google Cloud Console → enable “Places API (New)” → create an API key; Google bills per search beyond its free allowance)."}</p>
-        <div class="additem"><input id="places-key" type="password" autocomplete="off" data-fresh="1" placeholder="${this.data.places?.has_google_key ? "•••••• saved" : "Google Places API key (optional)"}">
-          <button class="primary" data-action="places-save">Save key</button>
-          ${this.data.places?.has_google_key ? `<button data-action="places-clear">Remove</button>` : ""}</div>
-      </section>
+      ${group("screens", `
+${this.renderLookCard()}
 
-      ${this.renderRemindersCard()}
-
-      ${this.renderDiagCard()}
-
-      ${this.renderLookCard()}
-
-      <section class="card">
+<section class="card">
         <h2>Display</h2>
         <label class="inline">Name <input type="text" maxlength="40" value="${this.appName}" placeholder="${DEFAULT_APP_NAME}" data-change="setting" data-key="app_name"></label>
         <p class="hint">Shown in the Home Assistant sidebar and on the to-do lists in Home Assistant. Leave empty for "${DEFAULT_APP_NAME}".</p>
@@ -439,6 +439,32 @@ export class SettingsView {
         <label class="inline">Show date &amp; place on photos <input type="checkbox" ${s.photo_captions !== false ? "checked" : ""} data-change="setting" data-key="photo_captions"></label>
         <label class="inline">Show who's in the photo (Immich) <input type="checkbox" ${s.photo_people !== false ? "checked" : ""} data-change="setting" data-key="photo_people"></label>
       </section>
+      `)}
+
+      ${group("system", `
+${this.renderPinCard()}
+
+<section class="card">
+        <h2>Address lookup</h2>
+        <p class="hint">${this.data.places?.has_google_key
+          ? "✅ Using <b>Google Places</b> to find addresses when you type a location."
+          : "Using the free <b>OpenStreetMap</b> lookup. For better results with local businesses, add a Google Places API key (Google Cloud Console → enable “Places API (New)” → create an API key; Google bills per search beyond its free allowance)."}</p>
+        <div class="additem"><input id="places-key" type="password" autocomplete="off" data-fresh="1" placeholder="${this.data.places?.has_google_key ? "•••••• saved" : "Google Places API key (optional)"}">
+          <button class="primary" data-action="places-save">Save key</button>
+          ${this.data.places?.has_google_key ? `<button data-action="places-clear">Remove</button>` : ""}</div>
+      </section>
+
+<section class="card">
+        <h2>Backup</h2>
+        <p class="hint">Saves family members, chores and their history, lists, meals, birthdays and settings to a file. API keys and the setup PIN aren't included. Restoring replaces what's here now; the current data is kept on the Home Assistant server first (<code>.storage/skylight.data.before_import</code>).</p>
+        <div class="row"><button data-action="backup-export">⬇ Download backup</button>
+          <input type="file" id="backup-file" accept=".json,application/json" hidden data-change="backup-import">
+          <button data-action="backup-pick">⬆ Restore from file…</button></div>
+      </section>
+
+${this.renderDiagCard()}
+      `)}
+
       <p class="hint center">${this.appName} v${PANEL_VERSION}</p>
     </div>`;
   }

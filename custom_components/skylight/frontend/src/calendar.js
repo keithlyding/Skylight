@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.58.2";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.59.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -68,7 +68,11 @@ export class CalendarView {
 
   // ---------- calendar data ----------
   _range() {
-    if (this.ui.tab === "home") { const t = startOfDay(new Date()); return [t, addDays(t, this.homeAgenda ? 14 : this.homeDays)]; }
+    if (this.ui.tab === "home") {
+      const t = startOfDay(new Date());
+      if (!this.homeAgenda && this.homeDays === 7) { const w = this.weekStart(t); return [w, addDays(w, 7)]; }
+      return [t, addDays(t, this.homeAgenda ? 14 : this.homeDays)];
+    }
     const a = this.ui.anchor;
     switch (this.calView) {
       case "month": {

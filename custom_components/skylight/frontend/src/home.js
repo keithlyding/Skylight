@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.58.2";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.59.0";
 
 export class HomeView {
 
@@ -59,7 +59,9 @@ export class HomeView {
   renderHome() {
     const today = startOfDay(new Date());
     const n = this.homeDays;
-    const days = [...Array(n)].map((_, i) => addDays(today, i));
+    // 7 days shows the whole week (Sunday to Saturday, per "Week starts on"); fewer days start at today.
+    const first = !this.homeAgenda && n === 7 ? this.weekStart(today) : today;
+    const days = [...Array(n)].map((_, i) => addDays(first, i));
     const noCals = !this.shownCalendars().length;
     const label = (d) => this.dayLabel(d, n);
     const agenda = this.homeAgenda;

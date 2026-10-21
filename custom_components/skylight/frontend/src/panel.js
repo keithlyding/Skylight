@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.58.2";
-import { STYLES } from "./styles.js?v=1.58.2";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.58.2";
-import { CalendarView } from "./calendar.js?v=1.58.2";
-import { WeatherView } from "./weather.js?v=1.58.2";
-import { HomeView } from "./home.js?v=1.58.2";
-import { ChoresView } from "./chores.js?v=1.58.2";
-import { MealsView } from "./meals.js?v=1.58.2";
-import { ListsView } from "./lists.js?v=1.58.2";
-import { PhotosView } from "./photos.js?v=1.58.2";
-import { SettingsView } from "./settings.js?v=1.58.2";
-import { PickersView } from "./pickers.js?v=1.58.2";
-import { keepAwake } from "./wake.js?v=1.58.2";
-import { MlbView } from "./mlb.js?v=1.58.2";
-import { TravelView } from "./travel.js?v=1.58.2";
-import { NotesView } from "./notes.js?v=1.58.2";
-import { VerseView } from "./verses.js?v=1.58.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.59.0";
+import { STYLES } from "./styles.js?v=1.59.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.59.0";
+import { CalendarView } from "./calendar.js?v=1.59.0";
+import { WeatherView } from "./weather.js?v=1.59.0";
+import { HomeView } from "./home.js?v=1.59.0";
+import { ChoresView } from "./chores.js?v=1.59.0";
+import { MealsView } from "./meals.js?v=1.59.0";
+import { ListsView } from "./lists.js?v=1.59.0";
+import { PhotosView } from "./photos.js?v=1.59.0";
+import { SettingsView } from "./settings.js?v=1.59.0";
+import { PickersView } from "./pickers.js?v=1.59.0";
+import { keepAwake } from "./wake.js?v=1.59.0";
+import { MlbView } from "./mlb.js?v=1.59.0";
+import { TravelView } from "./travel.js?v=1.59.0";
+import { NotesView } from "./notes.js?v=1.59.0";
+import { VerseView } from "./verses.js?v=1.59.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -295,6 +295,13 @@ export class SkylightPanel extends HTMLElement {
     this.$cook = this.shadowRoot.getElementById("cook");
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("focusout", () => this._settlePage()); // keyboard closing
+    // Kiosk keyboard: show it while a text box has focus (see kbEntity).
+    this.shadowRoot.addEventListener("focusin", (e) => { if (this.kbEntity && this._kbTypingTarget(e.target)) { clearTimeout(this._kbTimer); this._kbShow(true); } });
+    this.shadowRoot.addEventListener("focusout", (e) => {
+      if (!this.kbEntity || !this._kbTypingTarget(e.target)) return;
+      clearTimeout(this._kbTimer);
+      this._kbTimer = setTimeout(() => { if (!this._kbTypingTarget(this.shadowRoot.activeElement)) this._kbShow(false); }, 400);
+    });
     window.visualViewport?.addEventListener("resize", () => this._settlePage());
     this.shadowRoot.addEventListener("focusin", (e) => { if (e.target.classList?.contains("tinput")) { this._closeTimeLists(); this._openTimeList(e.target); e.target.select(); } });
     this.shadowRoot.addEventListener("pointerdown", (e) => {
@@ -660,6 +667,14 @@ export class SkylightPanel extends HTMLElement {
       case "screen-scheme":
         try { if (el.value) localStorage.setItem("skylight.screenScheme", el.value); else localStorage.removeItem("skylight.screenScheme"); } catch (e) { /* private mode */ }
         this._applyLook(); this.render(); break;
+      case "kb-entity":
+        try { if (el.value) localStorage.setItem("skylight.kbEntity", el.value); else localStorage.removeItem("skylight.kbEntity"); } catch (e) { /* private mode */ }
+        this.render(); break;
+      case "kb-show": this._kbShow(true); this._toast(this.kbEntity ? "Asked the kiosk to show its keyboard" : "Pick this screen's keyboard switch first"); break;
+      case "setup-tab":
+        this.ui.setupTab = d.tab;
+        try { localStorage.setItem("skylight.setupTab", d.tab); } catch (e) { /* private mode */ }
+        this._resetScroll = true; this.render(); break;
       case "screen-dim":
         try { localStorage.setItem("skylight.nightDim", el.value); } catch (e) { /* private mode */ }
         this._applyLook(); this.render(); break;
@@ -1153,6 +1168,16 @@ export class SkylightPanel extends HTMLElement {
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
   get screenAwake() { try { return localStorage.getItem("skylight.awake") === "1"; } catch (e) { return false; } }
+  // A kiosk's on-screen keyboard switch (TouchKio: switch.<name>_keyboard), saved on this device. With one set, the
+  // keyboard is shown when a text box is tapped and hidden when typing ends; Setup also has a "Show keyboard" button.
+  get kbEntity() { try { return localStorage.getItem("skylight.kbEntity") || ""; } catch (e) { return ""; } }
+  _kbTypingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !["checkbox", "radio", "range", "color", "file", "date", "time", "number"].includes(t.type) && !t.readOnly)); }
+  _kbShow(on) {
+    const entity = this.kbEntity;
+    if (!entity || !this._hass?.states?.[entity]) return;
+    diag("kb", on ? "on" : "off");
+    this._hass.callService("switch", on ? "turn_on" : "turn_off", { entity_id: entity }).catch((e) => diag("kb-fail", String(e?.message || e)));
+  }
   // Night dimming is for wall displays. Phones and tablets (the Home Assistant app, iPhone, iPad, Android) keep
   // their own brightness unless this screen is switched on in Setup; saved on the device.
   get screenDims() {
