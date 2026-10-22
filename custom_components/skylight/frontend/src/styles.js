@@ -69,6 +69,11 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
   .caltool .seg { grid-area:seg; justify-self:start; max-width:100%; overflow-x:auto; }
 }
 .nav { display:flex; align-items:center; gap:8px; }
+#pick .backdrop { z-index:600; }
+.picklist { max-height:80vh; } .picklist h2 { font-size:18px; }
+.pickopts { display:flex; flex-direction:column; gap:6px; max-height:60vh; overflow-y:auto; }
+.pickopts button { text-align:left; padding:12px 14px; background:var(--bg); box-shadow:none; }
+.pickopts button.on { background:var(--accent); color:#fff; font-weight:700; }
 .jgrid { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin-top:6px; }
 .jhead { text-align:center; font-size:12px; font-weight:700; color:var(--muted); padding:4px 0; }
 .jday { padding:0; min-height:44px; background:var(--bg); box-shadow:none; font-weight:700; border-radius:10px; }

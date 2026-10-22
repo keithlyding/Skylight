@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.2";
-import { STYLES } from "./styles.js?v=1.62.2";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.2";
-import { CalendarView } from "./calendar.js?v=1.62.2";
-import { WeatherView } from "./weather.js?v=1.62.2";
-import { HomeView } from "./home.js?v=1.62.2";
-import { ChoresView } from "./chores.js?v=1.62.2";
-import { MealsView } from "./meals.js?v=1.62.2";
-import { ListsView } from "./lists.js?v=1.62.2";
-import { PhotosView } from "./photos.js?v=1.62.2";
-import { SettingsView } from "./settings.js?v=1.62.2";
-import { PickersView } from "./pickers.js?v=1.62.2";
-import { keepAwake } from "./wake.js?v=1.62.2";
-import { MlbView } from "./mlb.js?v=1.62.2";
-import { TravelView } from "./travel.js?v=1.62.2";
-import { NotesView } from "./notes.js?v=1.62.2";
-import { VerseView } from "./verses.js?v=1.62.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.3";
+import { STYLES } from "./styles.js?v=1.62.3";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.3";
+import { CalendarView } from "./calendar.js?v=1.62.3";
+import { WeatherView } from "./weather.js?v=1.62.3";
+import { HomeView } from "./home.js?v=1.62.3";
+import { ChoresView } from "./chores.js?v=1.62.3";
+import { MealsView } from "./meals.js?v=1.62.3";
+import { ListsView } from "./lists.js?v=1.62.3";
+import { PhotosView } from "./photos.js?v=1.62.3";
+import { SettingsView } from "./settings.js?v=1.62.3";
+import { PickersView } from "./pickers.js?v=1.62.3";
+import { keepAwake } from "./wake.js?v=1.62.3";
+import { MlbView } from "./mlb.js?v=1.62.3";
+import { TravelView } from "./travel.js?v=1.62.3";
+import { NotesView } from "./notes.js?v=1.62.3";
+import { VerseView } from "./verses.js?v=1.62.3";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -296,7 +296,7 @@ export class SkylightPanel extends HTMLElement {
     if (/[?&]reset_screen=1/.test(location.search)) {
       try { for (const k of Object.keys(localStorage)) if (k.startsWith("skylight.")) localStorage.removeItem(k); } catch (e) { /* private mode */ }
     }
-    this.shadowRoot.innerHTML = `<style>${STYLES}\n${THEME_CSS}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="saver"></div><div id="dim" aria-hidden="true"></div>`;
+    this.shadowRoot.innerHTML = `<style>${STYLES}\n${THEME_CSS}</style><div id="app" class="app"><div class="empty">Loading…</div></div><div id="cook"></div><div id="dialog"></div><div id="pick"></div><div id="saver"></div><div id="dim" aria-hidden="true"></div>`;
     this.$dim = this.shadowRoot.getElementById("dim");
     this._safeAreaFallback();
     // "Follow tablet" dark mode: react when the device switches.
@@ -306,6 +306,17 @@ export class SkylightPanel extends HTMLElement {
     this.$dialog = this.shadowRoot.getElementById("dialog");
     this.$saver = this.shadowRoot.getElementById("saver");
     this.$cook = this.shadowRoot.getElementById("cook");
+    this.$pick = this.shadowRoot.getElementById("pick");
+    // Drop-down lists on a touch kiosk or tablet open as a list of our own: the browser's own pop-up doesn't
+    // appear on the kitchen screen's kiosk browser (nor do its date pickers).
+    for (const ev of ["pointerdown", "mousedown", "click"]) {
+      this.shadowRoot.addEventListener(ev, (e) => {
+        const sel = e.target.closest?.("select");
+        if (!sel || sel.disabled || !this.pickInApp) return;
+        e.preventDefault(); e.stopPropagation();
+        if (ev === "pointerdown") this.openPickList(sel);
+      }, true);
+    }
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("focusout", () => this._settlePage()); // keyboard closing
     // Kiosk keyboard: show it while a text box has focus (see kbEntity).
@@ -1194,6 +1205,30 @@ export class SkylightPanel extends HTMLElement {
 
   // Theme, light/dark, seasonal accent and the night dim overlay. Cheap; runs on every render and clock tick.
   get screenAwake() { try { return localStorage.getItem("skylight.awake") === "1"; } catch (e) { return false; } }
+  // Touch screens that aren't phones (the kitchen kiosk, tablets) get the panel's own pick lists for <select>.
+  get pickInApp() { return isTouchScreen() && !this.isPhone; }
+  openPickList(sel) {
+    if (!this.$pick || this.$pick.firstChild) return;
+    const label = sel.closest("label")?.firstChild?.textContent?.trim() || sel.getAttribute("aria-label") || sel.previousElementSibling?.textContent?.trim() || "Choose";
+    const opts = [...sel.options].filter((o) => !o.disabled);
+    this.$pick.innerHTML = `<div class="backdrop pickback" data-pick="close"><div class="dialog small picklist" role="listbox" aria-label="${esc(label)}">
+      <h2>${esc(label.slice(0, 60))}</h2>
+      <div class="pickopts">${opts.map((o) => `<button class="${o.selected ? "on" : ""}" data-pick="${esc(o.value)}" role="option" aria-selected="${o.selected}">${esc(o.textContent.trim())}</button>`).join("") || `<p class="hint">Nothing to choose from.</p>`}</div>
+      <div class="actions"><span class="spacer"></span><button data-pick="close">Cancel</button></div></div></div>`;
+    const done = (value) => {
+      this.$pick.innerHTML = "";
+      if (value === null || value === sel.value) return;
+      sel.value = value;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    this.$pick.querySelector(".pickback").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-pick]");
+      if (!b) return;
+      e.stopPropagation();
+      done(b.dataset.pick === "close" ? null : b.dataset.pick);
+    });
+    this.$pick.querySelector("button.on, .pickopts button")?.focus?.();
+  }
   // A kiosk's on-screen keyboard switch (TouchKio: switch.<name>_keyboard), saved on this device. With one set, the
   // keyboard is shown when a text box is tapped and hidden when typing ends; Setup also has a "Show keyboard" button.
   get kbEntity() { try { return localStorage.getItem("skylight.kbEntity") || ""; } catch (e) { return ""; } }
@@ -1201,8 +1236,10 @@ export class SkylightPanel extends HTMLElement {
   _kbShow(on) {
     const entity = this.kbEntity;
     if (!entity || !this._hass?.states?.[entity]) return;
+    const domain = entity.split(".")[0];
+    if (domain === "button") { if (on) { diag("kb", "press"); this._hass.callService("button", "press", { entity_id: entity }).catch((e) => diag("kb-fail", String(e?.message || e))); } return; }
     diag("kb", on ? "on" : "off");
-    this._hass.callService("switch", on ? "turn_on" : "turn_off", { entity_id: entity }).catch((e) => diag("kb-fail", String(e?.message || e)));
+    this._hass.callService(domain === "input_boolean" ? "input_boolean" : "switch", on ? "turn_on" : "turn_off", { entity_id: entity }).catch((e) => diag("kb-fail", String(e?.message || e)));
   }
   // Night dimming is for wall displays. Phones and tablets (the Home Assistant app, iPhone, iPad, Android) keep
   // their own brightness unless this screen is switched on in Setup; saved on the device.

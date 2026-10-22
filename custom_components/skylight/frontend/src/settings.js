@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.62.2";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.62.2";
-import { MLB_TEAMS } from "./mlb.js?v=1.62.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.62.3";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.62.3";
+import { MLB_TEAMS } from "./mlb.js?v=1.62.3";
 
 export class SettingsView {
 
@@ -109,7 +109,7 @@ export class SettingsView {
     const bright = Object.keys(this._hass.states).filter((e) => /^(number|light|input_number)\./.test(e) && (e.startsWith("light.") || /bright/i.test(e) || /bright/i.test(this.entityName(e)))).sort();
     const presence = Object.keys(this._hass.states).filter((e) => /^(binary_sensor|input_boolean|switch)\./.test(e)).sort((a, b) => (/occup|presence|motion|people|kitchen/i.test(b + this.entityName(b)) - /occup|presence|motion|people|kitchen/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const displays = Object.keys(this._hass.states).filter((e) => /^(light|switch)\./.test(e)).sort((a, b) => (/display|screen|monitor|kiosk/i.test(b + this.entityName(b)) - /display|screen|monitor|kiosk/i.test(a + this.entityName(a))) || a.localeCompare(b));
-    const kbs = Object.keys(this._hass.states).filter((e) => e.startsWith("switch.")).sort((a, b) => (/keyboard/i.test(b + this.entityName(b)) - /keyboard/i.test(a + this.entityName(a))) || a.localeCompare(b));
+    const kbs = Object.keys(this._hass.states).filter((e) => /^(switch|input_boolean|button)\./.test(e) && (/keyboard|osk/i.test(e + this.entityName(e)) || e.startsWith("switch."))).sort((a, b) => (/keyboard/i.test(b + this.entityName(b)) - /keyboard/i.test(a + this.entityName(a))) || a.localeCompare(b));
     const showTimes = s.night_by !== "sun";
     return `<section class="card">
       <h2>Look &amp; night mode</h2>
