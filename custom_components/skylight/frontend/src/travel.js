@@ -4,7 +4,7 @@
    Waze for the drive time from home (travel.py). The Today screen shows a "Leave by 3:25 PM" note for
    the next one (turning into "Leave now" when it's time) and the agenda adds it to each event. */
 
-import { startOfDay, esc } from "./helpers.js?v=1.62.0";
+import { startOfDay, esc } from "./helpers.js?v=1.62.1";
 
 const AHEAD = 4 * 3600000; // look this far ahead
 const EVERY = 5 * 60000; // ask again this often (Home Assistant caches each place 10 min)

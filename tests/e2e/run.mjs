@@ -831,6 +831,18 @@ const SCENARIOS = {
     check((await p.S(".connbar").textContent()).includes("Can't reach Home Assistant"), "banner after 10 s");
     await p.evaluate(() => CONN.dispatchEvent(new Event("ready"))); await wait(p, 300);
     eq(await p.S(".connbar").count(), 0, "banner gone when back");
+    // The device's network blips but the socket survives: no "ready" ever comes. Data arriving, a reply, the
+    // browser's "online" event or the connection saying it's up all clear the banner (it used to stick for good).
+    await p.evaluate(() => window.dispatchEvent(new Event("offline"))); await wait(p, 11000);
+    check((await p.S(".connbar").textContent()).includes("Can't reach Home Assistant"), "banner after the device went offline");
+    await p.evaluate(() => push()); await wait(p, 300);
+    eq(await p.S(".connbar").count(), 0, "data arriving proves the connection: banner gone");
+    await p.evaluate(() => window.dispatchEvent(new Event("offline"))); await wait(p, 11000);
+    await p.evaluate(() => { window.hass.connection.connected = true; }); await wait(p, 26000); // past the 15 s grace and the next 10 s tick
+    eq(await p.S(".connbar").count(), 0, "the connection reporting itself up clears a stale banner");
+    await p.evaluate(() => window.dispatchEvent(new Event("offline"))); await wait(p, 11000);
+    await p.evaluate(() => window.dispatchEvent(new Event("online"))); await wait(p, 300);
+    eq(await p.S(".connbar").count(), 0, "browser back online clears it at once");
     await p.context().close();
   },
 

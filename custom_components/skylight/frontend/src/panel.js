@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.0";
-import { STYLES } from "./styles.js?v=1.62.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.0";
-import { CalendarView } from "./calendar.js?v=1.62.0";
-import { WeatherView } from "./weather.js?v=1.62.0";
-import { HomeView } from "./home.js?v=1.62.0";
-import { ChoresView } from "./chores.js?v=1.62.0";
-import { MealsView } from "./meals.js?v=1.62.0";
-import { ListsView } from "./lists.js?v=1.62.0";
-import { PhotosView } from "./photos.js?v=1.62.0";
-import { SettingsView } from "./settings.js?v=1.62.0";
-import { PickersView } from "./pickers.js?v=1.62.0";
-import { keepAwake } from "./wake.js?v=1.62.0";
-import { MlbView } from "./mlb.js?v=1.62.0";
-import { TravelView } from "./travel.js?v=1.62.0";
-import { NotesView } from "./notes.js?v=1.62.0";
-import { VerseView } from "./verses.js?v=1.62.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.1";
+import { STYLES } from "./styles.js?v=1.62.1";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.1";
+import { CalendarView } from "./calendar.js?v=1.62.1";
+import { WeatherView } from "./weather.js?v=1.62.1";
+import { HomeView } from "./home.js?v=1.62.1";
+import { ChoresView } from "./chores.js?v=1.62.1";
+import { MealsView } from "./meals.js?v=1.62.1";
+import { ListsView } from "./lists.js?v=1.62.1";
+import { PhotosView } from "./photos.js?v=1.62.1";
+import { SettingsView } from "./settings.js?v=1.62.1";
+import { PickersView } from "./pickers.js?v=1.62.1";
+import { keepAwake } from "./wake.js?v=1.62.1";
+import { MlbView } from "./mlb.js?v=1.62.1";
+import { TravelView } from "./travel.js?v=1.62.1";
+import { NotesView } from "./notes.js?v=1.62.1";
+import { VerseView } from "./verses.js?v=1.62.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -80,6 +80,16 @@ export class SkylightPanel extends HTMLElement {
     conn.addEventListener("reconnect-error", this._onConnLost);
     conn.addEventListener("ready", this._onConnBack);
     window.addEventListener("offline", this._onConnLost);
+    // The device's network blipped but the socket survived (no "ready" follows): clear the banner when the
+    // browser says it's back online and the connection is up.
+    this._onOnline = () => { if (this._lostAt && this._hass?.connection?.connected !== false) { diag("conn-online"); this._onConnBack(); } };
+    window.addEventListener("online", this._onOnline);
+  }
+  // Proof of life: data or a reply arrived from Home Assistant while the banner thought it was unreachable.
+  _connProved() {
+    if (!this._lostAt) return;
+    diag("conn-proved");
+    this._onConnBack();
   }
   renderConnBanner() {
     if (!this._lostAt || Date.now() - this._lostAt < 10000) return "";
@@ -94,6 +104,7 @@ export class SkylightPanel extends HTMLElement {
       this._connWatched.removeEventListener?.("reconnect-error", this._onConnLost);
       this._connWatched.removeEventListener?.("ready", this._onConnBack);
       window.removeEventListener("offline", this._onConnLost);
+      window.removeEventListener("online", this._onOnline);
       this._connWatched = null; clearTimeout(this._lostTimer); this._lostAt = null;
     }
     if (this._unsub) { this._unsub.then((u) => u && u()).catch(() => {}); this._unsub = null; }
@@ -226,6 +237,7 @@ export class SkylightPanel extends HTMLElement {
 
   _onData(data) {
     const firstLoad = !this.data;
+    this._connProved();
     if (this._updateAvailable(data)) return;
     // Avatars, icons and colors go straight into the page (not through esc), so keep them plain.
     const token = (v, d = "") => String(v ?? "").replace(/[<>&"'`\\]/g, "").slice(0, 8) || d;
@@ -445,7 +457,7 @@ export class SkylightPanel extends HTMLElement {
 
   async _ws(msg) {
     diag("ws", msg.type);
-    try { return await this._hass.callWS(msg); }
+    try { const r = await this._hass.callWS(msg); this._connProved(); return r; }
     catch (err) {
       if (err?.code === "locked") {
         // The server says this screen is locked: ask for the PIN, then try once more.
@@ -1261,6 +1273,8 @@ export class SkylightPanel extends HTMLElement {
     this._travelMaybe();
     this._verseMaybe();
     this._expireReminders(now);
+    // A banner left over from a network blip the socket survived: the connection reports itself up.
+    if (this._lostAt && this._hass?.connection?.connected === true && Date.now() - this._lostAt > 15000) { diag("conn-stale"); this._onConnBack(); }
     // roll over "today" at midnight (remember the day before redrawing: drawing calls this again)
     const today = ymd(now);
     if (this._lastDay && this._lastDay !== today) { this._lastDay = today; this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this._cvKey = null; this.render(); this._loadEvents(); this._loadForecast(); }
