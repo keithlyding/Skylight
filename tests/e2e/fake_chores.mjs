@@ -104,7 +104,8 @@ const stats = (c, from, to, ws) => {
 // Same shape as the real skylight/chores/view result.
 export function choreView(D, msg) {
   const days = {};
-  for (const c of D.chores || []) {
+  const repeating = (D.lists || []).flatMap((l) => (l.items || []).filter((i) => i.repeat));
+  for (const c of [...(D.chores || []), ...repeating]) {
     const out = (days[c.id] = {});
     for (let d = parseYmd(msg.start); ymd(d) <= msg.end; d = addDays(d, 1)) {
       if (!choreDue(c, d)) continue;

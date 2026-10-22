@@ -91,7 +91,7 @@ def test_chore_picker_shows_kids_and_household():
     assert _node(f"console.log(JSON.stringify(adultsOf({json.dumps(members)}).map((m) => m.id)))") == ["dad"]
     # The editor's Who list comes from kindOwners: kids and Household for chores and homework, adults for tasks.
     assert '<label>Who<select id="c-member">${owners.map(' in JS
-    assert 'kindOwners(kind) { return kind === "task" ? adultsOf(this.members) : choreOwnersOf(this.members); }' in JS
+    assert 'kindOwners(kind) { return choreOwnersOf(this.members); }' in JS
 
 
 async def test_household_role_is_kept(hass, tmp_path, hass_storage, hass_ws_client):

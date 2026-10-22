@@ -121,6 +121,42 @@ async def test_item_commands_are_atomic(hass, entry, hass_ws_client):
     assert (await _cmd(ws1, {"type": "skylight/list/item/update", "list_id": lid, "item_id": "nope", "done": True}))["error"]["code"] == "not_found"
 
 
+async def test_repeating_list_items(hass, entry, hass_ws_client):
+    """A list item can carry a chore-style schedule: checking it records today, it survives Clear completed,
+    and the chores view reports its days."""
+    from homeassistant.util import dt as dt_util
+    ws = await hass_ws_client(hass)
+    store = hass.data[DOMAIN]["store"]
+    lid = store.data["lists"][0]["id"]
+    item = (await _cmd(ws, {"type": "skylight/list/item/add", "list_id": lid, "text": "Take out trash"}))["result"]["id"]
+    r = await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item,
+                        "repeat": {"repeat": "daily", "days": [], "carry": True, "start": "2026-10-01", "every_weeks": 3}})
+    assert r["success"], r
+    it = store.data["lists"][0]["items"][0]
+    assert it["repeat"] == "daily" and it["completions"] == [] and it["every_weeks"] == 3 and it["carry"] is True
+    today = dt_util.now().date().isoformat()
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "done": True})
+    assert it["completions"] == [today] and it["done"] is False and it["done_log"][today]["at"].endswith("Z")
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "done": True})  # already done: no change
+    assert it["completions"] == [today]
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "done": False})
+    assert it["completions"] == []
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "done": True})
+    plain = (await _cmd(ws, {"type": "skylight/list/item/add", "list_id": lid, "text": "Milk"}))["result"]["id"]
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": plain, "done": True})
+    assert (await _cmd(ws, {"type": "skylight/list/item/delete", "list_id": lid, "done": True}))["result"] == 1  # Milk only
+    assert [i["text"] for i in store.data["lists"][0]["items"]] == ["Take out trash"]
+    r = await _cmd(ws, {"type": "skylight/chores/view", "start": today, "end": today})
+    assert r["result"]["days"][item] == {today: [True, None]}
+    # a bad schedule is ignored; None clears it
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "repeat": {"repeat": "days", "days": []}})
+    assert "repeat" not in it and "completions" not in it
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "repeat": {"repeat": "monthly", "month_days": [1, 15, 40, -1]}})
+    assert it["month_days"] == [-1, 1, 15]
+    await _cmd(ws, {"type": "skylight/list/item/update", "list_id": lid, "item_id": item, "repeat": None})
+    assert "repeat" not in it
+
+
 async def test_list_save_and_delete_keep_items(hass, entry, hass_ws_client):
     ws = await hass_ws_client(hass)
     store = hass.data[DOMAIN]["store"]

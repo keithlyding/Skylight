@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.61.1";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.62.0";
 
 export class HomeView {
 
@@ -77,15 +77,14 @@ export class HomeView {
     const lists = this.allLists();
     // Chores first so they're never pushed out of view; to-do lists in their own block after them.
     const listCards = members.filter((m) => m.today === "list").map((m) => this.renderHomeList(m, lists.find((l) => l.id === m.today_list))).join("");
-    // Which kinds show here: kids' chores by default; homework and grown-ups' tasks if Setup says so.
+    // Which kinds show here: kids' chores by default; homework too if Setup says so.
     const kinds = Array.isArray(this.settings.today_kinds) ? this.settings.today_kinds : ["chore"];
     const chores = members.map((m) => {
       if (m.today === "none" || m.today === "list") return "";
-      const kid = m.role === "kid" || m.role === "home";
-      if (!kid && !kinds.includes("task")) return ""; // grown-ups only appear for their tasks
+      if (m.role !== "kid" && m.role !== "home") return ""; // chores are for kids and household profiles
       const list = this._choresOn(m.id, today, kinds);
       const done = list.filter((x) => x.st.done).length;
-      if (!list.length) { if (kid) free.push(m); return ""; } // kids are summarized in one line below
+      if (!list.length) { free.push(m); return ""; } // summarized in one line below
       return `<div class="hchores" style="--c:${m.color}">
         <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
           <span class="hint">${done}/${list.length}</span></div>
@@ -145,15 +144,17 @@ export class HomeView {
   renderHomeList(m, list) {
     if (!list) return `<div class="hchores" style="--c:${m.color}"><div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
       <p class="hint">List not found. Pick one in Setup → Family members.</p></div>`;
-    const ordered = list.linked ? list.items : orderItems(list.items);
-    const open = ordered.filter((i) => !i.done), done = ordered.filter((i) => i.done);
+    const plain = list.items.filter((i) => !i.repeat), reps = list.linked ? [] : list.items.filter((i) => i.repeat && this._itemState(i));
+    const ordered = list.linked ? plain : orderItems(plain);
+    const open = [...reps.filter((i) => !this._itemState(i).done), ...ordered.filter((i) => !i.done)];
+    const done = [...ordered.filter((i) => i.done), ...reps.filter((i) => this._itemState(i).done)];
     const shown = [...open, ...done.slice(-2)]; // keep the two most recent check-offs visible
     return `<div class="hchores hlist" style="--c:${m.color}">
       <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
         <span class="hint">📝 ${esc(list.name)} · ${open.length} left</span></div>
-      ${shown.map((i) => `<div class="chore ${i.done ? "done" : ""}">
+      ${shown.map((i) => { const dn = done.includes(i); return `<div class="chore ${dn ? "done" : ""}">
         <button class="ctoggle" data-action="home-item" data-list="${esc(list.id)}" data-item="${esc(i.id)}">
-          <span class="ct">${esc(i.text)}</span><span class="box">${i.done ? "✓" : ""}</span></button></div>`).join("")
+          <span class="ct">${i.repeat ? "🔁 " : ""}${esc(i.text)}${this._sinceNote(this._itemState(i))}</span><span class="box">${dn ? "✓" : ""}</span></button></div>`; }).join("")
         || `<p class="hint">Nothing on the list 🎉</p>`}
       <input class="hadd" id="hadd-${esc(list.id)}" data-list="${esc(list.id)}" data-enter="home-add" placeholder="＋ Add to ${esc(list.name)}">
     </div>`;

@@ -233,15 +233,10 @@ For today's events that have a location and start within 4 hours, the Today scre
 - Setup → Birthdays & anniversaries: turn it on or off, choose how many minutes early to leave (default 5), and pick the Waze region.
 - Each place is checked at most every 10 minutes. Addresses Waze can't find simply don't get a time.
 
-## Homework and grown-ups' tasks
+## Homework, and repeating things on a list
 
-The Chores tab has three tabs that all work the same way (repeat every day, on certain weekdays, once a week, on certain dates of the month, or just once; "keep showing until done"; check-off history; Progress):
-
-- **Chores:** the kids' (and Household) chores, as before.
-- **Homework:** assignments for the kids, kept apart from chores.
-- **Adults:** grown-ups' own tasks, one-off or repeating ("Pay the water bill" on the 1st, "Change the furnace filter" every 3 months).
-
-The editor's first row picks which of the three something is; + Add on a tab makes that kind. The Today screen shows the kids' chores only, unless Setup → Today screen adds homework and/or grown-ups' tasks. Simple shared lists (groceries, a to-do list synced with Home Assistant) stay on the Lists tab; recurring things belong here.
+- **Homework:** the Chores tab has two tabs, **Chores** and **Homework**. Both work the same way (repeat every day, on certain weekdays, once a week, on certain dates of the month, or just once; "keep showing until done"; check-off history; Progress), kept apart. The editor's first row picks which one something is. The Today screen shows the kids' chores only, unless Setup → Today screen adds homework.
+- **Grown-ups' lists repeat too:** on any of Lyding Strike's own lists, tap ⋯ on an item to give it the same schedule as a chore ("Pay the water bill" on the 1st, "Change the furnace filter" every 12 weeks). A repeating item shows with 🔁 on its days, checking it off records that day (it's never cleared by *Clear completed*), and it comes back on its next day; items not due today wait at the bottom with their next date. Items without a schedule stay plain one-time items. Lists linked from Home Assistant can't repeat (Home Assistant has no schedule for them).
 
 ## Adults, kids and Household
 

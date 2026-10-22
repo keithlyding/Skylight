@@ -155,12 +155,14 @@ async def ws_list_add_item(hass: HomeAssistant, connection, msg: dict[str, Any])
         vol.Required("item_id"): str,
         vol.Optional("text"): str,
         vol.Optional("done"): bool,
+        # A schedule like a chore's ({repeat, days, every_weeks, month_days, every_months, carry, start}); None clears it.
+        vol.Optional("repeat"): vol.Any(None, dict),
     }
 )
 @websocket_api.async_response
 async def ws_list_update_item(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     await _list_call(connection, msg["id"], _store(hass).async_list_update_item(
-        msg["list_id"], msg["item_id"], msg.get("text"), msg.get("done")))
+        msg["list_id"], msg["item_id"], msg.get("text"), msg.get("done"), msg["repeat"] if "repeat" in msg else "unset"))
 
 
 @websocket_api.websocket_command(
@@ -282,6 +284,10 @@ def ws_chore_view(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     today = dt_util.now().date()
     week_start = int(data["settings"].get("week_start") or 0)
     days = {c["id"]: chores.day_states(c, start, end, week_start) for c in data["chores"]}
+    for lst in data.get("lists", []):  # repeating list items follow the same rules
+        for it in lst.get("items", []):
+            if it.get("repeat") and it.get("id"):
+                days[it["id"]] = chores.day_states(it, start, end, week_start)
     totals = []
     kinds = msg.get("kinds")
     for a, b in ranges:

@@ -37,7 +37,7 @@ async function open(browser, base, { width = 1300, height = 912, at = null, setu
   const page = await context.newPage();
   page.errors = [];
   page._clockInstalled = !!at;
-  page.on("pageerror", (e) => page.errors.push(e.message));
+  page.on("pageerror", (e) => { page.errors.push(e.message); if (process.env.E2E_STACKS && page.errors.length === 1) console.log(e.stack); }); // E2E_STACKS=1 prints the first error's stack
   if (at) await page.clock.install({ time: new Date(at) });
   await page.goto(base);
   await (at ? page.clock.runFor(1500) : page.waitForTimeout(1200));
@@ -1450,30 +1450,16 @@ const SCENARIOS = {
   },
 
   async chore_kinds(browser, base) {
-    // Chores tab: Chores | Homework | Adults share the engine; the editor picks the kind; Today shows kids'
-    // chores only unless Setup adds homework or grown-ups' tasks.
+    // Chores tab: Chores | Homework share the engine; the editor picks the kind; Today shows kids' chores
+    // only unless Setup adds homework.
     const p = await open(browser, base);
     await p.evaluate(() => { localStorage.removeItem("skylight.choreKind"); el.ui.choreKind = null; });
     await p.tab("chores");
-    eq(await text(p.S(".kindpick button")), ["✅ Chores", "📚 Homework", "📋 Adults"], "three kinds on the Chores tab");
-    const names = () => text(p.S(".ccol .cname"));
-    check((await names()).includes("Sam") && !(await names()).includes("Alex"), `chores: kids' columns (${await names()})`);
-    // a grown-up's task
-    await p.S('[data-action="chore-kind"][data-kind="task"]').click(); await p.waitForTimeout(300);
-    check((await names()).includes("Alex") && !(await names()).includes("Sam"), `adults: grown-ups' columns (${await names()})`);
-    await p.S('[data-action="new-chore"]').first().click(); await p.waitForTimeout(300);
-    eq(await p.S(".dialog .kindpick button.on").textContent(), "📋 Adults", "editor opens on the tab's kind");
-    check((await text(p.S("#c-member option")))[0].includes("Alex"), "grown-ups first in Who");
-    await p.S("#c-title").fill("Pay water bill");
-    await p.S("#c-repeat").selectOption("once");
-    await p.S('[data-action="save-chore"]').click(); await p.waitForTimeout(500);
-    const task = await p.evaluate(() => D.chores.at(-1));
-    check(task.kind === "task" && task.repeat === "once" && task.title === "Pay water bill", `task saved: ${JSON.stringify(task)}`);
-    check((await text(p.S(".ccol")))[0].includes("Pay water bill"), "task shows in the adult's column");
-    // homework for a kid, from the Homework tab
+    eq(await text(p.S(".kindpick button")), ["✅ Chores", "📚 Homework"], "two kinds on the Chores tab");
     await p.S('[data-action="chore-kind"][data-kind="homework"]').click(); await p.waitForTimeout(300);
     check((await text(p.S(".ccol")))[0].includes("Nothing today"), "homework tab starts empty");
     await p.S('[data-action="new-chore"][data-member="z"]').click(); await p.waitForTimeout(300);
+    eq(await p.S(".dialog .kindpick button.on").textContent(), "📚 Homework", "editor opens on the tab's kind");
     await p.S("#c-title").fill("Math worksheet");
     await p.S('[data-action="save-chore"]').click(); await p.waitForTimeout(500);
     eq(await p.evaluate(() => D.chores.at(-1).kind), "homework", "homework saved as its own kind");
@@ -1483,12 +1469,48 @@ const SCENARIOS = {
     await p.S('[data-action="chores-mode"][data-mode="day"]').click(); await p.waitForTimeout(200);
     await p.S('[data-action="chore-kind"][data-kind="chore"]').click(); await p.waitForTimeout(300);
     check(!(await text(p.S(".ccol"))).join(" ").includes("Math worksheet"), "homework is not mixed into chores");
-    // the Today screen
     await p.tab("home");
     const home = async () => (await text(p.S(".hchores"))).join(" | ");
-    check(!(await home()).includes("Math worksheet") && !(await home()).includes("Pay water bill"), `Today: chores only by default (${await home()})`);
-    await p.evaluate(() => { D.settings.today_kinds = ["chore", "homework", "task"]; push(); }); await p.waitForTimeout(400);
-    check((await home()).includes("Math worksheet") && (await home()).includes("Pay water bill") && (await home()).includes("Alex"), `Today: homework and tasks when Setup says so (${await home()})`);
+    check(!(await home()).includes("Math worksheet"), `Today: chores only by default (${await home()})`);
+    await p.evaluate(() => { D.settings.today_kinds = ["chore", "homework"]; push(); }); await p.waitForTimeout(400);
+    check((await home()).includes("Math worksheet"), `Today: homework when Setup says so (${await home()})`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
+  async list_repeats(browser, base) {
+    // A grown-up's list item can repeat like a chore: the ⋯ editor sets the schedule, it shows with 🔁 on its
+    // days, checking it off records today, Clear completed leaves it, and it comes back on the next day.
+    const p = await open(browser, base, { at: "2026-10-21T10:00:00", setup: () => { // a Wednesday
+      D.lists[0].items = [{ id: "i0", text: "Milk", done: false }]; D.members[0].today = "list"; D.members[0].today_list = "groceries"; push(); } });
+    await p.tab("lists");
+    await p.S("#newitem").fill("Take out trash"); await p.S('[data-action="add-item"]').click(); await wait(p, 300);
+    const id = await p.evaluate(() => D.lists[0].items.find((i) => i.text === "Take out trash").id);
+    await p.S(`[data-action="edit-item"][data-item="${id}"]`).click(); await wait(p, 300);
+    eq(await p.S("#c-repeat").inputValue(), "", "a plain item doesn't repeat");
+    await p.S("#c-repeat").selectOption("days"); await wait(p, 200);
+    for (const d of [0, 1, 2, 3, 4]) { const box = p.S(`#cd-${d}`); if (!(await box.isChecked())) await box.check(); }
+    await p.S('[data-action="save-item"]').click(); await wait(p, 500);
+    const it = await p.evaluate(() => D.lists[0].items.find((i) => i.text === "Take out trash"));
+    check(it.repeat === "days" && it.days.length === 5 && Array.isArray(it.completions), `schedule saved: ${JSON.stringify(it)}`);
+    const row = p.S(`.item[data-key="${id}"]`);
+    check((await row.textContent()).includes("🔁"), "repeating badge");
+    check(!(await row.getAttribute("class")).includes("later"), "due today (a weekday)");
+    await row.locator(".box").click(); await wait(p, 500);
+    eq(await p.evaluate(() => D.lists[0].items.find((i) => i.text === "Take out trash").completions), ["2026-10-21"], "checking records today");
+    eq(await p.evaluate(() => D.lists[0].items.find((i) => i.text === "Take out trash").done), false, "never 'done' for good");
+    check((await p.S(`.item[data-key="${id}"]`).getAttribute("class")).includes("done"), "shown as done today");
+    await p.S('.item[data-key="i0"] .box').click(); await wait(p, 300);
+    await p.S('[data-action="clear-done"]').click(); await wait(p, 400);
+    eq(await p.evaluate(() => D.lists[0].items.map((i) => i.text)), ["Take out trash"], "Clear completed removes Milk, keeps the repeating item");
+    // the Today card for the list's owner shows it among the day's items
+    await p.tab("home");
+    check(((await text(p.S(".hlist")))[0] || "").includes("Take out trash"), "on the Today list card");
+    // Saturday: not due, waits at the bottom
+    await p.clock.setFixedTime(new Date("2026-10-24T10:00:00")); await p.evaluate(() => { el._cvKey = null; el.render(); }); await wait(p, 400);
+    await p.tab("lists");
+    check((await p.S(`.item[data-key="${id}"]`).getAttribute("class")).includes("later"), "Saturday: not due, listed under 'Not due today'");
+    check(((await text(p.S(`.item[data-key="${id}"] .rep`)))[0] || "").includes("next Mon"), "says when it's next due");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

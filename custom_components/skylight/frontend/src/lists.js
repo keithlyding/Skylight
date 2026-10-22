@@ -1,6 +1,6 @@
 /* Skylight panel: lists and linked HA to-do lists (methods mixed into SkylightPanel). */
 
-import { PALETTE, adultsOf, orderItems, groupLists, uid, esc } from "./helpers.js?v=1.61.1";
+import { PALETTE, adultsOf, orderItems, groupLists, uid, esc, ymd, parseYmd, startOfDay } from "./helpers.js?v=1.62.0";
 
 export class ListsView {
 
@@ -121,6 +121,49 @@ export class ListsView {
     });
   }
   allLists() { return [...(this.data.lists || []), ...this.linkedLists()]; }
+  // ---------- repeating list items: the same schedule as chores (grown-ups' recurring things) ----------
+  // {done, since} for a repeating item today, or null when it isn't due today.
+  _itemState(i, day = startOfDay(new Date())) { return i.repeat ? this._choreState(i, day) : null; }
+  _itemNext(i) {
+    const days = Object.keys(this._cv?.days?.[i.id] || {}).sort();
+    const t = ymd(new Date());
+    return days.find((d) => d > t) || null;
+  }
+  openItemDialog(list, item) {
+    const dlg = {
+      type: "listitem", list, item, chore: item.repeat ? item : null, repeat: item.repeat || "",
+      html: () => `
+        <h2>Edit item</h2>
+        <label>Item<input id="li-text" value="${esc(item.text)}" data-autofocus></label>
+        ${this.renderRepeatFields(dlg, item.repeat ? item : null, { optional: true })}
+        <p class="hint">A repeating item comes back on its days, like a chore: checking it off records today, and it's never cleared by "Clear completed".</p>
+        <div class="actions">
+          <button class="danger" data-action="delete-item-dlg">Delete</button>
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-item">Save</button>
+        </div>`,
+    };
+    this._openDialog(dlg);
+    this._syncChoreDialog();
+  }
+  async saveItem() {
+    const dlg = this.ui.dialog;
+    const text = this.shadowRoot.getElementById("li-text").value.trim();
+    if (!text) { this._toast("Write something first"); return; }
+    const sched = this.readRepeatFields();
+    if (sched?.error) { this._toast(sched.error); return; }
+    await this._ws({ type: "skylight/list/item/update", list_id: dlg.list.id, item_id: dlg.item.id, text, repeat: sched });
+    this._cvKey = null; // the schedule changed: ask the engine again
+    this.closeDialog();
+  }
+  _repeatBadge(i) {
+    const st = this._itemState(i);
+    if (st) return st.since ? `<small class="rep since">🔁 since ${st.since.toLocaleDateString([], { month: "short", day: "numeric" })}</small>` : `<small class="rep">🔁 ${esc(this._repeatText(i))}</small>`;
+    const next = this._itemNext(i);
+    return `<small class="rep">🔁 ${esc(this._repeatText(i))}${next ? ` · next ${parseYmd(next).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}` : ""}</small>`;
+  }
+
   async _listToggle(listId, itemId) {
     if (listId.startsWith("todo:")) {
       const entity_id = listId.slice(5);
@@ -129,7 +172,10 @@ export class ListsView {
       catch (e) { this._toast(e?.message || String(e)); }
     } else {
       const it = (this.data.lists.find((l) => l.id === listId)?.items || []).find((i) => i.id === itemId);
-      if (it) await this._ws({ type: "skylight/list/item/update", list_id: listId, item_id: itemId, done: !it.done });
+      if (!it) return;
+      const done = it.repeat ? !!this._itemState(it)?.done : !!it.done;
+      await this._ws({ type: "skylight/list/item/update", list_id: listId, item_id: itemId, done: !done });
+      if (it.repeat) this._cvKey = null;
     }
   }
   async _listAdd(listId, text) {
@@ -237,14 +283,25 @@ export class ListsView {
             : `<button data-action="edit-list" data-list="${cur.id}">Edit</button>`}</div></div>
         <div class="additem"><input id="newitem" data-fresh="1" placeholder="Add an item…" data-enter="add-item"><button class="primary" data-action="add-item">Add</button></div>
         <div class="items">${(() => {
-          const ordered = orderItems(cur.items), open = ordered.filter((i) => !i.done);
+          // Repeating items: due today sit with the open items (done ones with the done); the rest wait at the bottom.
+          const plain = cur.items.filter((i) => !i.repeat), reps = cur.linked ? [] : cur.items.filter((i) => i.repeat);
+          const dueToday = reps.filter((i) => this._itemState(i)), later = reps.filter((i) => !this._itemState(i));
+          const ordered = orderItems(plain), open = ordered.filter((i) => !i.done);
           const movable = (!cur.linked || cur.canMove) && open.length > 1;
-          return ordered.map((i) => `
-          <div class="item ${i.done ? "done" : ""}" style="--c:${cur.color}" data-key="${esc(i.id)}">
-            ${!i.done && movable ? `<span class="dragh" data-drag="${esc(i.id)}" role="button" aria-label="Drag to move ${esc(i.text)}" title="Drag to move">≡</span>` : movable ? `<span class="dragh off"></span>` : ""}
-            <button class="box" data-action="toggle-item" data-item="${esc(i.id)}">${i.done ? "✓" : ""}</button>
-            <span data-action="toggle-item" data-item="${esc(i.id)}">${esc(i.text)}</span>
-            <button class="x" data-action="delete-item" data-item="${esc(i.id)}">✕</button></div>`).join("") || `<p class="hint">Empty list</p>`;
+          const row = (i, done, extra = "") => `
+          <div class="item ${done ? "done" : ""} ${i.repeat ? "repeating" : ""} ${extra}" style="--c:${cur.color}" data-key="${esc(i.id)}">
+            ${!i.repeat && !done && movable ? `<span class="dragh" data-drag="${esc(i.id)}" role="button" aria-label="Drag to move ${esc(i.text)}" title="Drag to move">≡</span>` : movable ? `<span class="dragh off"></span>` : ""}
+            <button class="box" data-action="toggle-item" data-item="${esc(i.id)}" ${extra ? "disabled" : ""}>${done ? "✓" : ""}</button>
+            <span data-action="${extra ? "edit-item" : "toggle-item"}" data-item="${esc(i.id)}">${esc(i.text)}${i.repeat ? this._repeatBadge(i) : ""}</span>
+            ${cur.linked ? "" : `<button class="x more" data-action="edit-item" data-item="${esc(i.id)}" aria-label="Edit">⋯</button>`}
+            <button class="x" data-action="delete-item" data-item="${esc(i.id)}">✕</button></div>`;
+          return [
+            ...dueToday.filter((i) => !this._itemState(i).done).map((i) => row(i, false)),
+            ...open.map((i) => row(i, false)),
+            ...dueToday.filter((i) => this._itemState(i).done).map((i) => row(i, true)),
+            ...ordered.filter((i) => i.done).map((i) => row(i, true)),
+            ...(later.length ? [`<p class="hint repl">🔁 Not due today</p>`, ...later.map((i) => row(i, false, "later"))] : []),
+          ].join("") || `<p class="hint">Empty list</p>`;
         })()}
         </div>` : lists.length ? `<div class="empty"><h2>Pick a list</h2><p class="hint">Choose one on the left.</p></div>` : `<div class="empty"><h2>No lists</h2></div>`}</section></div>`;
   }

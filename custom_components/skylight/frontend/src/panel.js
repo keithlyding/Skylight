@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.61.1";
-import { STYLES } from "./styles.js?v=1.61.1";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.61.1";
-import { CalendarView } from "./calendar.js?v=1.61.1";
-import { WeatherView } from "./weather.js?v=1.61.1";
-import { HomeView } from "./home.js?v=1.61.1";
-import { ChoresView } from "./chores.js?v=1.61.1";
-import { MealsView } from "./meals.js?v=1.61.1";
-import { ListsView } from "./lists.js?v=1.61.1";
-import { PhotosView } from "./photos.js?v=1.61.1";
-import { SettingsView } from "./settings.js?v=1.61.1";
-import { PickersView } from "./pickers.js?v=1.61.1";
-import { keepAwake } from "./wake.js?v=1.61.1";
-import { MlbView } from "./mlb.js?v=1.61.1";
-import { TravelView } from "./travel.js?v=1.61.1";
-import { NotesView } from "./notes.js?v=1.61.1";
-import { VerseView } from "./verses.js?v=1.61.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.0";
+import { STYLES } from "./styles.js?v=1.62.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.0";
+import { CalendarView } from "./calendar.js?v=1.62.0";
+import { WeatherView } from "./weather.js?v=1.62.0";
+import { HomeView } from "./home.js?v=1.62.0";
+import { ChoresView } from "./chores.js?v=1.62.0";
+import { MealsView } from "./meals.js?v=1.62.0";
+import { ListsView } from "./lists.js?v=1.62.0";
+import { PhotosView } from "./photos.js?v=1.62.0";
+import { SettingsView } from "./settings.js?v=1.62.0";
+import { PickersView } from "./pickers.js?v=1.62.0";
+import { keepAwake } from "./wake.js?v=1.62.0";
+import { MlbView } from "./mlb.js?v=1.62.0";
+import { TravelView } from "./travel.js?v=1.62.0";
+import { NotesView } from "./notes.js?v=1.62.0";
+import { VerseView } from "./verses.js?v=1.62.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -943,6 +943,9 @@ export class SkylightPanel extends HTMLElement {
         break;
       }
       case "toggle-item": if (this._isTodo()) { await this._todoAction("toggle", d.item); break; } await this._listToggle(this.ui.list, d.item); break;
+      case "edit-item": { const l = D.lists.find((x) => x.id === this.ui.list), it = l?.items.find((i) => i.id === d.item); if (it) this.openItemDialog(l, it); break; }
+      case "save-item": await this.saveItem(); break;
+      case "delete-item-dlg": { const g = this.ui.dialog; if (!confirm(`Delete "${g.item.text}"?`)) return; await this._ws({ type: "skylight/list/item/delete", list_id: g.list.id, item_ids: [g.item.id] }); this.closeDialog(); break; }
       case "delete-item": if (this._isTodo()) { await this._todoAction("delete", d.item); break; } await this._ws({ type: "skylight/list/item/delete", list_id: this.ui.list, item_ids: [d.item] }); break;
       case "clear-done": if (this._isTodo()) { await this._todoAction("clear"); break; } await this._ws({ type: "skylight/list/item/delete", list_id: this.ui.list, done: true }); break;
       case "new-list": this.openListDialog(); break;
@@ -1258,9 +1261,10 @@ export class SkylightPanel extends HTMLElement {
     this._travelMaybe();
     this._verseMaybe();
     this._expireReminders(now);
-    // roll over "today" at midnight
-    if (this._lastDay && this._lastDay !== ymd(now)) { this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this.render(); this._loadEvents(); this._loadForecast(); }
-    this._lastDay = ymd(now);
+    // roll over "today" at midnight (remember the day before redrawing: drawing calls this again)
+    const today = ymd(now);
+    if (this._lastDay && this._lastDay !== today) { this._lastDay = today; this.ui.choreDay = startOfDay(now); this._eventsKey = ""; this._cvKey = null; this.render(); this._loadEvents(); this._loadForecast(); }
+    this._lastDay = today;
   }
 
   // ---------- rendering ----------

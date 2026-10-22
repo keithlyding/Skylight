@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.61.1";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.61.1";
-import { MLB_TEAMS } from "./mlb.js?v=1.61.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.62.0";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.62.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.62.0";
 
 export class SettingsView {
 
@@ -184,7 +184,7 @@ export class SettingsView {
         <label class="inline"><input type="checkbox" data-change="setting" data-key="message_board" ${this.settings.message_board !== false ? "checked" : ""}> 📌 Message board on Today (anyone can post or remove notes)</label></div>
       <div class="row">
         <span class="label" style="margin:0">Also on Today, with the kids' chores:</span>
-        ${[["homework", "📚 Homework"], ["task", "📋 Grown-ups' tasks"]].map(([k, l]) => `<label class="inline"><input type="checkbox" data-change="today-kind" data-kind="${k}" ${(Array.isArray(this.settings.today_kinds) ? this.settings.today_kinds : ["chore"]).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>
+        ${[["homework", "📚 Homework"]].map(([k, l]) => `<label class="inline"><input type="checkbox" data-change="today-kind" data-kind="${k}" ${(Array.isArray(this.settings.today_kinds) ? this.settings.today_kinds : ["chore"]).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>
       <div class="row">
         <label class="inline"><input type="checkbox" data-change="setting" data-key="leave_by" ${this.settings.leave_by !== false ? "checked" : ""}> 🚗 "Leave by" times from Waze</label>
         <label class="inline">leave <input type="number" min="0" max="60" value="${Number(this.settings.leave_buffer ?? 5)}" data-change="setting" data-key="leave_buffer" data-num="1"> min early</label>

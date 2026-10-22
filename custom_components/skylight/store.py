@@ -357,8 +357,13 @@ class SkylightStore:
             return item
 
     async def async_list_update_item(self, list_id: str, item_id: str, text: str | None = None,
-                                     done: bool | None = None) -> dict[str, Any]:
-        """Rename and/or check/uncheck one item. Checking records when (done items show in that order)."""
+                                     done: bool | None = None, repeat: Any = "unset") -> dict[str, Any]:
+        """Rename, check/uncheck, and/or set a schedule on one item.
+
+        A repeating item (repeat fields like a chore's) is never "done" for good: checking it records
+        today's completion, like a chore, and it comes back on its next day. Checking a plain item
+        records when (done items show in that order).
+        """
         async with self._lock:
             lst = self._list(list_id)
             item = next((i for i in lst["items"] if i.get("id") == item_id), None)
@@ -366,7 +371,21 @@ class SkylightStore:
                 raise KeyError(f"item {item_id}")
             if text is not None and text.strip():
                 item["text"] = text.strip()[:500]
-            if done is not None and bool(done) != bool(item.get("done")):
+            if repeat != "unset":
+                spec = chores.clean_repeat(repeat)
+                for k in (*chores.REPEAT_FIELDS, "completions", "done_log"):
+                    item.pop(k, None)
+                if spec:
+                    item.update(spec)
+                    item["completions"] = []
+                    item["done"] = False
+                    item.pop("done_at", None)
+            if done is not None and item.get("repeat"):
+                today = dt_util.now().date()
+                if bool(done) != chores.is_done(item, today, int(self.data["settings"].get("week_start") or 0)):
+                    chores.toggle(item, today, week_start=int(self.data["settings"].get("week_start") or 0),
+                                  at=dt_util.utcnow().isoformat(timespec="seconds").replace("+00:00", "Z"))
+            elif done is not None and bool(done) != bool(item.get("done")):
                 item["done"] = bool(done)
                 if done:
                     item["done_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -383,7 +402,7 @@ class SkylightStore:
         async with self._lock:
             lst = self._list(list_id)
             ids = set(item_ids or [])
-            keep = [i for i in lst["items"] if not (i.get("id") in ids or (done and i.get("done")))]
+            keep = [i for i in lst["items"] if not (i.get("id") in ids or (done and i.get("done") and not i.get("repeat")))]
             removed = len(lst["items"]) - len(keep)
             if removed:
                 lst["items"] = keep

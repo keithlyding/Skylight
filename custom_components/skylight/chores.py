@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from datetime import date, timedelta
 
 
@@ -12,9 +13,38 @@ def _week_start(d: date, week_start: int) -> date:
 
 
 CARRY_REPEATS = ("days", "monthly")  # repeats that can "keep showing until done"
-# What a "chore" record is for: kids' chores, homework, or a grown-up's own recurring/dated task.
-# All three use the same schedule, check-off and history; they're shown on different tabs.
-KINDS = ("chore", "homework", "task")
+# What a "chore" record is for: kids' chores or homework. Both use the same schedule, check-off and
+# history; they're shown on different tabs. Grown-ups' repeating things live on their lists (see
+# clean_repeat: a list item can carry the same schedule fields).
+KINDS = ("chore", "homework")
+REPEATS = ("daily", "days", "weekly", "monthly", "once")
+REPEAT_FIELDS = ("repeat", "days", "every_weeks", "month_days", "every_months", "carry", "start")
+
+
+def clean_repeat(spec: Any) -> dict | None:
+    """A schedule for a list item, tidied, or None if it isn't one."""
+    if not isinstance(spec, dict) or spec.get("repeat") not in REPEATS:
+        return None
+    out: dict = {"repeat": spec["repeat"]}
+    out["days"] = sorted({int(d) for d in spec.get("days") or [] if isinstance(d, (int, float)) and 0 <= int(d) <= 6})
+    out["month_days"] = sorted({int(d) for d in spec.get("month_days") or [] if isinstance(d, (int, float)) and (int(d) == -1 or 1 <= int(d) <= 31)})
+    try:
+        out["every_weeks"] = max(1, min(52, int(spec.get("every_weeks") or 1)))
+        out["every_months"] = max(1, min(12, int(spec.get("every_months") or 1)))
+    except (TypeError, ValueError):
+        out["every_weeks"], out["every_months"] = 1, 1
+    out["carry"] = bool(spec.get("carry"))
+    start = str(spec.get("start") or "")
+    try:
+        date.fromisoformat(start)
+        out["start"] = start
+    except ValueError:
+        pass
+    if out["repeat"] == "days" and not out["days"]:
+        return None
+    if out["repeat"] == "monthly" and not out["month_days"]:
+        return None
+    return out
 
 
 def kind_of(chore: dict) -> str:

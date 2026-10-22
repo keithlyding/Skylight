@@ -216,6 +216,8 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .evprog i { display:block; height:100%; background:var(--c); border-radius:6px; }
 /* chores */
 .chores { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; align-items:start; }
+.item .rep { display:block; font-size:12px; color:var(--muted); font-weight:500; } .item .rep.since { color:#c62828; }
+.item.later { opacity:.6; } .item .more { font-size:18px; } .repl { margin:10px 0 2px; }
 .kindpick button { padding:8px 12px; white-space:nowrap; }
 .dialog .kindpick { margin-bottom:10px; }
 @media (max-width: 600px) { .kindpick { width:100%; } .kindpick button { flex:1; padding:8px 4px; font-size:14px; } } /* phones: its own row */

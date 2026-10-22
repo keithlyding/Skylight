@@ -1,15 +1,15 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, adultsOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.61.1";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.62.0";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
 const EVERY_MONTHS = [1, 2, 3, 4, 6, 12];
-// Kinds of "chore": kids' chores, homework, and grown-ups' own tasks. Same schedule/check-off engine,
-// separate tabs on the Chores screen. (chores.py has the same list.)
-export const CHORE_KINDS = [["chore", "Chores", "✅", "Make bed"], ["homework", "Homework", "📚", "Math worksheet"], ["task", "Adults", "📋", "Pay the water bill"]];
+// Kinds of "chore": kids' chores and homework. Same schedule/check-off engine, separate tabs on the
+// Chores screen. (chores.py has the same list.) Grown-ups' repeating things live on their lists.
+export const CHORE_KINDS = [["chore", "Chores", "✅", "Make bed"], ["homework", "Homework", "📚", "Math worksheet"]];
 export const kindOf = (c) => (CHORE_KINDS.some(([k]) => k === c?.kind) ? c.kind : "chore");
-const KIND_WORD = { chore: "chore", homework: "assignment", task: "task" };
+const KIND_WORD = { chore: "chore", homework: "assignment" };
 
 export class ChoresView {
   // Which kind the Chores tab is showing (saved on this device).
@@ -18,8 +18,8 @@ export class ChoresView {
     return CHORE_KINDS.some(([k]) => k === this.ui.choreKind) ? this.ui.choreKind : "chore";
   }
   set choreKind(k) { this.ui.choreKind = k; try { localStorage.setItem("skylight.choreKind", k); } catch (e) { /* private mode */ } }
-  // Who can own a kind: chores and homework are for kids (and Household); tasks are for the grown-ups.
-  kindOwners(kind) { return kind === "task" ? adultsOf(this.members) : choreOwnersOf(this.members); }
+  // Who can own a kind: chores and homework are for kids (and Household).
+  kindOwners(kind) { return choreOwnersOf(this.members); }
 
   openChoreDialog(c, memberId, kind) {
     const dlg = {
@@ -36,7 +36,24 @@ export class ChoresView {
           <label>${dlg.kind === "homework" ? "Assignment" : dlg.kind === "task" ? "Task" : "Chore"}<input id="c-title" value="${esc(c?.title)}" data-autofocus placeholder="${spec[3]}"></label>
         </div>
         <label>Who<select id="c-member">${owners.map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        ${this.renderRepeatFields(dlg, c)}
+        <div class="actions">
+          ${c ? `<button class="danger" data-action="delete-chore">Delete</button>` : ""}
+          <span class="spacer"></span>
+          <button data-action="close">Cancel</button>
+          <button class="primary" data-action="save-chore" ${this.members.length ? "" : "disabled"}>Save</button>
+        </div>`;
+      },
+    };
+    this._openDialog(dlg);
+  }
+
+  // The schedule part of an editor: shared by chores, homework and repeating list items. `optional` adds
+  // "Doesn't repeat" (a plain list item). The ids are the same in every dialog (only one is open at a time).
+  renderRepeatFields(dlg, c, { optional = false } = {}) {
+    return `
         <label>Repeats<select id="c-repeat" data-change="chore-repeat">
+          ${optional ? `<option value="" ${!dlg.repeat ? "selected" : ""}>Doesn't repeat</option>` : ""}
           <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
           <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days of the week</option>
           <option value="weekly" ${dlg.repeat === "weekly" ? "selected" : ""}>Once a week (any day)</option>
@@ -56,16 +73,25 @@ export class ChoresView {
           <label>Starting<input type="date" id="c-start" value="${c?.start || ymd(new Date())}"></label>
           <label class="check"><input type="checkbox" id="c-carry" ${(c ? c.carry : false) ? "checked" : ""}> Keep showing until done</label>
           <p class="hint">If it's missed, it stays on the list each day (marked "since …") until someone checks it off. Good for filters and maintenance.</p>
-        </div>
-        <div class="actions">
-          ${c ? `<button class="danger" data-action="delete-chore">Delete</button>` : ""}
-          <span class="spacer"></span>
-          <button data-action="close">Cancel</button>
-          <button class="primary" data-action="save-chore" ${this.members.length ? "" : "disabled"}>Save</button>
         </div>`;
-      },
+  }
+  // The schedule the editor shows, or {error} when a choice is missing. null = doesn't repeat.
+  readRepeatFields() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const repeat = $("c-repeat")?.value || "";
+    if (!repeat) return null;
+    const rec = {
+      repeat,
+      days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
+      every_weeks: Number($("c-every")?.value) || 1,
+      month_days: [...this.shadowRoot.querySelectorAll(".c-mday:checked")].map((i) => Number(i.value)),
+      every_months: Number($("c-every-months")?.value) || 1,
+      carry: !!$("c-carry")?.checked,
+      start: $("c-start")?.value || ymd(new Date()),
     };
-    this._openDialog(dlg);
+    if (rec.repeat === "days" && !rec.days.length) return { error: "Pick at least one day" };
+    if (rec.repeat === "monthly" && !rec.month_days.length) return { error: "Pick at least one date" };
+    return rec;
   }
   _syncChoreDialog() {
     const q = (sel) => this.shadowRoot.querySelector(sel);
@@ -82,19 +108,13 @@ export class ChoresView {
     const c = this.ui.dialog.chore;
     const title = $("c-title").value.trim();
     if (!title) { this._toast(`Please name the ${KIND_WORD[this.ui.dialog.kind] || "chore"}`); return; }
+    const sched = this.readRepeatFields();
+    if (sched?.error) { this._toast(sched.error); return; }
     const rec = {
       ...(c || { id: uid(), completions: [], created: ymd(new Date()) }),
       title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value, kind: this.ui.dialog.kind || "chore",
-      repeat: $("c-repeat").value,
-      days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
-      every_weeks: Number($("c-every").value) || 1,
-      month_days: [...this.shadowRoot.querySelectorAll(".c-mday:checked")].map((i) => Number(i.value)),
-      every_months: Number($("c-every-months").value) || 1,
-      carry: $("c-carry").checked,
-      start: $("c-start").value || ymd(new Date()),
+      ...(sched || { repeat: "daily" }),
     };
-    if (rec.repeat === "days" && !rec.days.length) { this._toast("Pick at least one day"); return; }
-    if (rec.repeat === "monthly" && !rec.month_days.length) { this._toast("Pick at least one date"); return; }
     const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
     await this._set("chores", chores); this.closeDialog();
     if (this.ui.tab === "chores" && rec.kind !== this.choreKind) { this.choreKind = rec.kind; this.render(); } // show where it went
@@ -117,8 +137,10 @@ export class ChoresView {
     return { start: ymd(start), end: ymd(end), ranges, kinds: [this.choreKind] }; // totals for the kind on show
   }
   // Fetch again whenever chores change, the day changes or another range is needed; redraw when it arrives.
+  // List items with a schedule (grown-ups' repeating things): the chore engine decides their days too.
+  _repeatingItems() { return (this.data?.lists || []).flatMap((l) => (l.items || []).filter((i) => i.repeat)); }
   _ensureChoreView() {
-    if (!this.data || !(this.data.chores || []).length) { this._cv = { days: {}, stats: {} }; return; }
+    if (!this.data || (!(this.data.chores || []).length && !this._repeatingItems().length)) { this._cv = { days: {}, stats: {} }; return; }
     const req = this._choreRequest();
     const key = `${this._dataRev || 0}|${JSON.stringify(req)}`;
     if (key === this._cvKey) return;
@@ -160,7 +182,7 @@ export class ChoresView {
   renderProgress() {
     const kind = this.choreKind, [, kindLabel] = CHORE_KINDS.find(([k]) => k === kind);
     const has = (m) => (this.data.chores || []).some((c) => c.member_id === m.id && kindOf(c) === kind);
-    const people = (kind === "task" ? adultsOf(this.members) : kidsOf(this.members)).filter(has);
+    const people = kidsOf(this.members).filter(has);
     const homes = kind === "chore" ? (this.members || []).filter((m) => m.role === "home" && has(m)) : [];
     const back = `<button data-action="chores-mode" data-mode="day">‹ ${kindLabel}</button>`;
     if (!people.length && !homes.length) return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div></div><div class="empty"><h2>Nothing here yet</h2><p>Add some on the ${kindLabel} tab to see weekly progress here.</p></div>`;
@@ -229,7 +251,7 @@ export class ChoresView {
     const kind = this.choreKind, [, kindLabel, , example] = CHORE_KINDS.find(([k]) => k === kind);
     const kindBar = `<div class="seg kindpick">${CHORE_KINDS.map(([k, l, ic]) => `<button class="${kind === k ? "on" : ""}" data-action="chore-kind" data-kind="${k}">${ic} ${l}</button>`).join("")}</div>`;
     const kids = this.kindOwners(kind);
-    if (!kids.length) return `${kindBar}<div class="empty"><h2>No ${kind === "task" ? "grown-ups" : "kids"} set up yet</h2><p>${kind === "task" ? "Tasks are for adults (and anyone else)." : `${kindLabel} are for kids (and Household profiles like “Maintenance”).`} Set someone's type in Setup → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
+    if (!kids.length) return `${kindBar}<div class="empty"><h2>No kids set up yet</h2><p>${kindLabel} are for kids (and Household profiles like “Maintenance”). Set someone's type in Setup → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     const cols = kids.map((m) => {
       const chores = this._choresOn(m.id, day, [kind]);
       const done = chores.filter((x) => x.st.done).length;
