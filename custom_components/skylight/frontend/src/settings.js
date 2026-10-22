@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.62.3";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.62.3";
-import { MLB_TEAMS } from "./mlb.js?v=1.62.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.62.4";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.62.4";
+import { MLB_TEAMS } from "./mlb.js?v=1.62.4";
 
 export class SettingsView {
 
@@ -121,6 +121,8 @@ export class SettingsView {
       <label class="inline">On-screen keyboard (kiosk) <select data-change="kb-entity"><option value="">None</option>${kbs.map((e) => `<option value="${e}" ${e === this.kbEntity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select>
         <button type="button" data-action="kb-show" ${this.kbEntity ? "" : "disabled"}>⌨ Show keyboard</button></label>
       <p class="hint">For a kiosk app that exposes its keyboard as a switch (TouchKio: "Keyboard"). With one picked, this screen shows the keyboard whenever a text box is tapped and hides it afterwards; the button brings it back if it ever goes missing. Saved on this device.</p>
+      <label class="inline">Fresh start every morning <select data-change="daily-reload"><option value="1" ${this.dailyReload ? "selected" : ""}>Yes (reload when the screen comes back on)</option><option value="0" ${this.dailyReload ? "" : "selected"}>No</option></select></label>
+      <p class="hint">Wall screens reload themselves once a day, when the screen turns back on in the morning (or at 4:30 AM without a screen-off window). A kiosk browser's on-screen keyboard hook-up can die overnight, and a reload is what fixes it. Saved on this device.</p>
       <label class="inline">Keep this screen on <select data-change="screen-awake"><option value="" ${this.screenAwake ? "" : "selected"}>No (the device's own sleep setting)</option><option value="1" ${this.screenAwake ? "selected" : ""}>Yes, while ${esc(this.appName)} is open</option></select></label>
       <p class="hint">Light or dark is chosen on each screen and saved on that device, so every phone and the wall display can differ. "Follow this device" uses the phone's or tablet's own Dark Mode.${s.night_dim ? " Night dimming is also per screen: phones and tablets keep their own brightness unless switched on here." : ""}</p>
       <label class="inline">Night is <select data-change="setting" data-key="night_by">${[["schedule", "Between set times"], ["sun", "Sunset to sunrise"]].map(([v, l]) => `<option value="${v}" ${(s.night_by || "schedule") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>

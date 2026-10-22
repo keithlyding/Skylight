@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.3";
-import { STYLES } from "./styles.js?v=1.62.3";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.3";
-import { CalendarView } from "./calendar.js?v=1.62.3";
-import { WeatherView } from "./weather.js?v=1.62.3";
-import { HomeView } from "./home.js?v=1.62.3";
-import { ChoresView } from "./chores.js?v=1.62.3";
-import { MealsView } from "./meals.js?v=1.62.3";
-import { ListsView } from "./lists.js?v=1.62.3";
-import { PhotosView } from "./photos.js?v=1.62.3";
-import { SettingsView } from "./settings.js?v=1.62.3";
-import { PickersView } from "./pickers.js?v=1.62.3";
-import { keepAwake } from "./wake.js?v=1.62.3";
-import { MlbView } from "./mlb.js?v=1.62.3";
-import { TravelView } from "./travel.js?v=1.62.3";
-import { NotesView } from "./notes.js?v=1.62.3";
-import { VerseView } from "./verses.js?v=1.62.3";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.4";
+import { STYLES } from "./styles.js?v=1.62.4";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.4";
+import { CalendarView } from "./calendar.js?v=1.62.4";
+import { WeatherView } from "./weather.js?v=1.62.4";
+import { HomeView } from "./home.js?v=1.62.4";
+import { ChoresView } from "./chores.js?v=1.62.4";
+import { MealsView } from "./meals.js?v=1.62.4";
+import { ListsView } from "./lists.js?v=1.62.4";
+import { PhotosView } from "./photos.js?v=1.62.4";
+import { SettingsView } from "./settings.js?v=1.62.4";
+import { PickersView } from "./pickers.js?v=1.62.4";
+import { keepAwake } from "./wake.js?v=1.62.4";
+import { MlbView } from "./mlb.js?v=1.62.4";
+import { TravelView } from "./travel.js?v=1.62.4";
+import { NotesView } from "./notes.js?v=1.62.4";
+import { VerseView } from "./verses.js?v=1.62.4";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -699,6 +699,9 @@ export class SkylightPanel extends HTMLElement {
       case "screen-scheme":
         try { if (el.value) localStorage.setItem("skylight.screenScheme", el.value); else localStorage.removeItem("skylight.screenScheme"); } catch (e) { /* private mode */ }
         this._applyLook(); this.render(); break;
+      case "daily-reload":
+        try { localStorage.setItem("skylight.dailyReload", el.value); } catch (e) { /* private mode */ }
+        this.render(); break;
       case "kb-entity":
         try { if (el.value) localStorage.setItem("skylight.kbEntity", el.value); else localStorage.removeItem("skylight.kbEntity"); } catch (e) { /* private mode */ }
         this.render(); break;
@@ -1207,6 +1210,24 @@ export class SkylightPanel extends HTMLElement {
   get screenAwake() { try { return localStorage.getItem("skylight.awake") === "1"; } catch (e) { return false; } }
   // Touch screens that aren't phones (the kitchen kiosk, tablets) get the panel's own pick lists for <select>.
   get pickInApp() { return isTouchScreen() && !this.isPhone; }
+  // A fresh start every morning for a wall screen: the kiosk browser's on-screen keyboard hook-up (and other
+  // long-session state) has been seen to die overnight, and a page reload is what brings it back.
+  get dailyReload() { try { const v = localStorage.getItem("skylight.dailyReload"); if (v) return v === "1"; } catch (e) { /* private mode */ } return this.pickInApp; }
+  get screenOffEntity() { return `binary_sensor.${this.appName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}_screen_off`; }
+  _freshStartMaybe(now) {
+    if (!this.dailyReload || this.cook || this.ui.dialog) return;
+    const st = this._hass?.states?.[this.screenOffEntity]?.state;
+    const day = ymd(now);
+    let done = "";
+    try { done = sessionStorage.getItem("skylight.freshDay") || ""; } catch (e) { /* no storage */ }
+    // When the screen comes back on in the morning (screen-off sensor on -> off), or at 04:30 without one.
+    const wake = (this._screenOffState === "on" && st === "off") || (!st && now.getHours() === 4 && now.getMinutes() >= 30);
+    this._screenOffState = st;
+    if (!wake || done === day) return;
+    try { sessionStorage.setItem("skylight.freshDay", day); } catch (e) { /* no storage */ }
+    diag("fresh-start");
+    setTimeout(() => this._reloadPage(), 2000);
+  }
   openPickList(sel) {
     if (!this.$pick || this.$pick.firstChild) return;
     const label = sel.closest("label")?.firstChild?.textContent?.trim() || sel.getAttribute("aria-label") || sel.previousElementSibling?.textContent?.trim() || "Choose";
@@ -1306,6 +1327,7 @@ export class SkylightPanel extends HTMLElement {
     this._travelMaybe();
     this._verseMaybe();
     this._expireReminders(now);
+    this._freshStartMaybe(now);
     // A banner left over from a network blip the socket survived: the connection reports itself up.
     if (this._lostAt && this._hass?.connection?.connected === true && Date.now() - this._lostAt > 15000) { diag("conn-stale"); this._onConnBack(); }
     // roll over "today" at midnight (remember the day before redrawing: drawing calls this again)

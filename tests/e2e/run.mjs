@@ -1409,6 +1409,28 @@ const SCENARIOS = {
     }
   },
 
+  async fresh_start(browser, base) {
+    // A wall screen reloads once a day when its screen-off sensor turns off (the screen came back on).
+    const p = await open(browser, base, { width: 1536, height: 864, ctx: { hasTouch: true }, at: "2026-10-22T06:00:00" });
+    await p.evaluate(() => { window.RELOADS = 0; el._reloadPage = () => { window.RELOADS++; }; sessionStorage.removeItem("skylight.freshDay"); });
+    eq(await p.evaluate(() => el.dailyReload), true, "on by default for a touch screen that isn't a phone");
+    const sens = await p.evaluate(() => el.screenOffEntity);
+    check(sens.endsWith("_screen_off"), `sensor name from the app name: ${sens}`);
+    await p.evaluate((s) => { window.hass.states[s] = { state: "on" }; el.hass = { ...window.hass }; el._tickClock(); }, sens);
+    await p.evaluate((s) => { window.hass.states[s] = { state: "off" }; el.hass = { ...window.hass }; el._tickClock(); }, sens);
+    await wait(p, 2500);
+    eq(await p.evaluate(() => window.RELOADS), 1, "reloaded when the screen came back on");
+    await p.evaluate((s) => { window.hass.states[s] = { state: "on" }; el.hass = { ...window.hass }; el._tickClock(); window.hass.states[s] = { state: "off" }; el.hass = { ...window.hass }; el._tickClock(); }, sens);
+    await wait(p, 2500);
+    eq(await p.evaluate(() => window.RELOADS), 1, "only once a day");
+    await p.evaluate(() => { localStorage.setItem("skylight.dailyReload", "0"); sessionStorage.removeItem("skylight.freshDay"); });
+    await p.evaluate((s) => { window.hass.states[s] = { state: "on" }; el.hass = { ...window.hass }; el._tickClock(); window.hass.states[s] = { state: "off" }; el.hass = { ...window.hass }; el._tickClock(); }, sens);
+    await wait(p, 2500);
+    eq(await p.evaluate(() => window.RELOADS), 1, "not when switched off in Setup");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async kiosk_pick_lists(browser, base) {
     // On a touch screen that isn't a phone (the kitchen kiosk), drop-down lists open as the panel's own list,
     // inside and outside dialogs; choosing fires the same change as the native list would.
