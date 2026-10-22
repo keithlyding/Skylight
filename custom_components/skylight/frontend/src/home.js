@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.61.0";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.61.1";
 
 export class HomeView {
 
@@ -50,6 +50,8 @@ export class HomeView {
   // The view picker, ⚾ and + Event. On big screens they sit in the header under the family chips (otherwise
   // empty space); on phones they're a toolbar above the calendar.
   get toolInHeader() { return this.ui.tab === "home" && !this.isPhone; }
+  // A phone held upright shows the family cards only; the calendar comes back when it's turned sideways.
+  get portraitPhone() { return this.isPhone && !!window.matchMedia?.("(orientation: portrait)").matches; }
   renderHomeTool() {
     const n = this.homeDays, agenda = this.homeAgenda;
     const picker = `<div class="seg daypick"><button class="${agenda ? "on" : ""}" data-action="home-days" data-days="agenda">Agenda</button>${(this.isPhone ? [1, 3] : [1, 3, 5, 7]).map((k) => `<button class="${!agenda && k === n ? "on" : ""}" data-action="home-days" data-days="${k}">${k} day${k > 1 ? "s" : ""}</button>`).join("")}</div>`;
@@ -102,6 +104,23 @@ export class HomeView {
     const wideSide = agenda || n <= 5;
     const tonight = this.renderTonight();
     const upcoming = this.renderUpcoming();
+    if (this.portraitPhone) {
+      return `<div class="home portrait"><p class="hint turnhint">↻ Turn your phone sideways for the calendar</p>
+      <aside class="hside"><div class="hbody"><div class="hinfo">
+        ${this.settings.weather_hints !== false ? this.renderHints(4) : ""}
+        ${this.renderLeaveNote()}
+        ${this.settings.message_board !== false ? this.renderBoard() : ""}
+        ${this.renderMlbNote()}
+        ${tonight}
+        ${this.renderVerseNote()}
+        ${upcoming}
+        ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
+        </div>
+        ${chores ? `<div class="hcols">${chores}</div>` : ""}
+        ${listCards ? `<div class="hcols">${listCards}</div>` : ""}
+        ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
+      </div></aside></div>`;
+    }
     return `${this.toolInHeader ? "" : this.renderHomeTool()}
       <div class="home ${agenda ? "agenda" : `d${n}`}">
       <section class="hcal">${cal}</section>

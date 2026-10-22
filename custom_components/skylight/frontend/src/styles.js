@@ -789,6 +789,7 @@ button.busy { opacity:.55; cursor:progress; }
   .content { padding:4px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) 12px; }
   .toolbar h1 { font-size:18px; }
   .home, .home.wide { grid-template-columns:1fr; }
+  .turnhint { margin:0 0 2px; text-align:center; font-size:13px; }
   .dialog { max-height:96vh; padding:14px 16px; }
 }
 

@@ -1433,6 +1433,22 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async phone_portrait_today(browser, base) {
+    // A phone held upright shows the family cards only on Today; sideways brings the calendar back.
+    const p = await open(browser, base, { width: 390, height: 844, ctx: { isMobile: true, hasTouch: true } });
+    eq(await p.S(".hcal").count(), 0, "portrait: no calendar on Today");
+    eq(await p.S(".hometool").count(), 0, "portrait: no view picker either");
+    check((await p.S(".turnhint").count()) === 1, "a hint says to turn the phone");
+    check((await p.S(".hside .hchores").count()) >= 1, "chores still there");
+    await p.setViewportSize({ width: 844, height: 390 }); await p.waitForTimeout(600);
+    eq(await p.S(".hcal").count(), 1, "landscape: calendar is back");
+    eq(await p.S(".turnhint").count(), 0, "no hint sideways");
+    await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(600);
+    eq(await p.S(".hcal").count(), 0, "upright again: calendar gone again");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async chore_kinds(browser, base) {
     // Chores tab: Chores | Homework | Adults share the engine; the editor picks the kind; Today shows kids'
     // chores only unless Setup adds homework or grown-ups' tasks.
