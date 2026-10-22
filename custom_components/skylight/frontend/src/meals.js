@@ -1,7 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.62.1";
-import { keepAwake } from "./wake.js?v=1.62.1";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.62.2";
+import { keepAwake } from "./wake.js?v=1.62.2";
 
 export class MealsView {
   async _loadMealie() {
@@ -384,8 +384,11 @@ export class MealsView {
   }
   mealTitle(ev) { return ev.summary.replace(/^\s*(breakfast|lunch|dinner|supper|snacks?)\s*[:\-–]\s*/i, ""); }
 
+  // Mealie's own calendar entities (calendar.mealie_*) mirror the plan the panel already shows live; with
+  // Mealie connected they'd draw every meal twice, and lag behind a move until Home Assistant polls them.
+  _isMealieCal(e) { return this._hass.entities?.[e]?.platform === "mealie" || /^calendar\.mealie/i.test(e); }
   async _loadMealEvents() {
-    const cals = (this.data.meal_calendars || []).filter((e) => this._hass.states[e]);
+    const cals = (this.data.meal_calendars || []).filter((e) => this._hass.states[e] && !(this.mealieOn && this._isMealieCal(e)));
     const s = this.weekStart(this.ui.anchor), e = addDays(s, 7);
     const key = `${ymd(s)}|${cals.join(",")}`;
     if (key === this._mealKey) return;
@@ -412,7 +415,7 @@ export class MealsView {
     const [s] = [this.weekStart(this.ui.anchor)];
     const days = [...Array(7)].map((_, i) => addDays(s, i));
     if (this.isPhone) return this.renderMealsPhone(days, toggle);
-    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button><span class="jump"><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button><input type="date" id="jump-date" class="jumpdate" data-change="jump-date" value="${ymd(this.ui.anchor)}" tabindex="-1" aria-hidden="true"></span>
+    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button>
       <h1>Meals · ${s.toLocaleDateString([], { month: "short", day: "numeric", ...(s.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) })}</h1></div>
       ${toggle}</div>
       ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
@@ -438,7 +441,7 @@ export class MealsView {
   // Phone: one card per day with its meals listed, instead of the 7-column grid.
   renderMealsPhone(days, toggle) {
     const s = days[0];
-    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button><span class="jump"><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button><input type="date" id="jump-date" class="jumpdate" data-change="jump-date" value="${ymd(this.ui.anchor)}" tabindex="-1" aria-hidden="true"></span>
+    return `<div class="toolbar"><div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">This week</button><button class="icon" data-action="next">›</button><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button>
       <h1>${s.toLocaleDateString([], { month: "short", day: "numeric", ...(s.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) })}</h1></div>${toggle}</div>
       ${this.ui.mealieError ? `<p class="hint">⚠️ Mealie: ${esc(this.ui.mealieError)}</p>` : ""}
       <div class="pmeals">${days.map((d) => `<section class="pmday ${sameDay(d, new Date()) ? "today" : ""}">

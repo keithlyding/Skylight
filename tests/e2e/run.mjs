@@ -1375,14 +1375,24 @@ const SCENARIOS = {
   },
 
   async jump_to_date(browser, base) {
-    // Meals and calendar: 📅 opens a date picker; picking a far-off date goes straight to that week.
+    // Meals and calendar: 📅 opens the panel's own month picker; picking a far-off date goes straight to that week.
     for (const [w, h] of [[1300, 912], [390, 844]]) {
       const p = await open(browser, base, { width: w, height: h, ctx: w < 1000 ? { isMobile: true, hasTouch: true } : {} });
       await p.tab("meals"); await p.waitForTimeout(300);
       eq(await p.S('[data-action="jump"]').count(), 1, `${w}: jump button on meals`);
       const year = new Date().getFullYear() + 1;
-      await p.S("#jump-date").evaluate((i, y) => { i.value = `${y}-12-25`; i.dispatchEvent(new Event("change", { bubbles: true })); }, year);
-      await p.waitForTimeout(600);
+      const goTo = async (date) => {
+        await p.S('[data-action="jump"]').click(); await p.waitForTimeout(300);
+        eq(await p.S(".jgrid .jday").count(), 42, "month grid shown");
+        const [y, mo] = date.split("-").map(Number);
+        const now = new Date();
+        const steps = (y - now.getFullYear()) * 12 + (mo - 1 - now.getMonth());
+        for (let i = 0; i < Math.abs(steps); i++) await p.S(`[data-action="jump-month"][data-dir="${steps > 0 ? 1 : -1}"]`).click();
+        await p.waitForTimeout(200);
+        await p.S(`.jday[data-date="${date}"]:not(.other)`).click(); await p.waitForTimeout(600);
+      };
+      await goTo(`${year}-12-25`);
+      eq(await p.S(".dialog").count(), 0, "picker closes after a pick");
       const head = (await text(p.S(".nav h1")))[0] || "";
       check(head.includes("Dec") && head.includes(String(year)), `${w}: meals header shows the week of Christmas: ${head}`);
       const wk = await p.evaluate(() => calls.filter((c) => c.type === "skylight/mealie/week").at(-1));
@@ -1391,8 +1401,7 @@ const SCENARIOS = {
       check(!((await text(p.S(".nav h1")))[0] || "").includes(String(year)), `${w}: back to this week`);
       if (w >= 1000) {
         await p.tab("calendar"); await p.waitForTimeout(300);
-        await p.S("#jump-date").evaluate((i, y) => { i.value = `${y}-07-04`; i.dispatchEvent(new Event("change", { bubbles: true })); }, year);
-        await p.waitForTimeout(600);
+        await goTo(`${year}-07-04`);
         eq(await p.evaluate(() => el.ui.anchor.getMonth()), 6, "calendar moved to July");
       }
       eq(p.errors, [], "page errors");
@@ -1523,6 +1532,23 @@ const SCENARIOS = {
     await p.tab("lists");
     check((await p.S(`.item[data-key="${id}"]`).getAttribute("class")).includes("later"), "Saturday: not due, listed under 'Not due today'");
     check(((await text(p.S(`.item[data-key="${id}"] .rep`)))[0] || "").includes("next Mon"), "says when it's next due");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
+  async mealie_calendar_not_twice(browser, base) {
+    // With Mealie connected, its own calendar entity (the same plan) isn't drawn beside the live entries.
+    const p = await open(browser, base, { setup: () => {
+      window.hass.entities = { "calendar.mealie_dinner": { platform: "mealie" } };
+      window.hass.states["calendar.mealie_dinner"] = { attributes: { friendly_name: "Mealie Dinner" } };
+      D.meal_calendars = ["calendar.mealie_dinner", "calendar.plan_to_eat"]; push();
+    } });
+    await p.tab("meals"); await p.waitForTimeout(500);
+    const asked = await p.evaluate(() => window.APICALLS ? window.APICALLS.filter((u) => u.includes("calendar.mealie_dinner")).length : null);
+    const names = (await text(p.S(".meal .synced"))).join("|");
+    check(!names.includes("Mealie"), `no synced chips from Mealie's own calendar (${names})`);
+    await p.tab("settings"); await p.S('[data-action="setup-tab"][data-tab="meals"]').click(); await p.waitForTimeout(300);
+    check((await text(p.S(".settings")))[0].includes("left out while Mealie is connected"), "Setup explains it");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },

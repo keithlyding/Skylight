@@ -69,8 +69,10 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
   .caltool .seg { grid-area:seg; justify-self:start; max-width:100%; overflow-x:auto; }
 }
 .nav { display:flex; align-items:center; gap:8px; }
-.jump { position:relative; display:inline-flex; }
-.jumpdate { position:absolute; left:0; top:100%; width:1px; height:1px; opacity:0; border:0; padding:0; margin:0; pointer-events:none; }
+.jgrid { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin-top:6px; }
+.jhead { text-align:center; font-size:12px; font-weight:700; color:var(--muted); padding:4px 0; }
+.jday { padding:0; min-height:44px; background:var(--bg); box-shadow:none; font-weight:700; border-radius:10px; }
+.jday.other { opacity:.4; } .jday.today { outline:2px solid var(--accent); } .jday.on { background:var(--accent); color:#fff; }
 .seg { display:flex; background:var(--card); border-radius:14px; padding:4px; gap:2px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
 .seg button { box-shadow:none; background:none; }
 .seg button.on { background:var(--accent); color:#fff; font-weight:700; }

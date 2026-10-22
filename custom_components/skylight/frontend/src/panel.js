@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.1";
-import { STYLES } from "./styles.js?v=1.62.1";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.1";
-import { CalendarView } from "./calendar.js?v=1.62.1";
-import { WeatherView } from "./weather.js?v=1.62.1";
-import { HomeView } from "./home.js?v=1.62.1";
-import { ChoresView } from "./chores.js?v=1.62.1";
-import { MealsView } from "./meals.js?v=1.62.1";
-import { ListsView } from "./lists.js?v=1.62.1";
-import { PhotosView } from "./photos.js?v=1.62.1";
-import { SettingsView } from "./settings.js?v=1.62.1";
-import { PickersView } from "./pickers.js?v=1.62.1";
-import { keepAwake } from "./wake.js?v=1.62.1";
-import { MlbView } from "./mlb.js?v=1.62.1";
-import { TravelView } from "./travel.js?v=1.62.1";
-import { NotesView } from "./notes.js?v=1.62.1";
-import { VerseView } from "./verses.js?v=1.62.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.2";
+import { STYLES } from "./styles.js?v=1.62.2";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.2";
+import { CalendarView } from "./calendar.js?v=1.62.2";
+import { WeatherView } from "./weather.js?v=1.62.2";
+import { HomeView } from "./home.js?v=1.62.2";
+import { ChoresView } from "./chores.js?v=1.62.2";
+import { MealsView } from "./meals.js?v=1.62.2";
+import { ListsView } from "./lists.js?v=1.62.2";
+import { PhotosView } from "./photos.js?v=1.62.2";
+import { SettingsView } from "./settings.js?v=1.62.2";
+import { PickersView } from "./pickers.js?v=1.62.2";
+import { keepAwake } from "./wake.js?v=1.62.2";
+import { MlbView } from "./mlb.js?v=1.62.2";
+import { TravelView } from "./travel.js?v=1.62.2";
+import { NotesView } from "./notes.js?v=1.62.2";
+import { VerseView } from "./verses.js?v=1.62.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -567,16 +567,12 @@ export class SkylightPanel extends HTMLElement {
           : addDays(a, dir * (this.calView === "agenda" ? 14 : viewDays(this.calView) || 7));
         this.render(); this._loadEvents(); break;
       }
-      case "jump": { // the native date picker, so far-off weeks (Christmas dinner) are one tap away
-        const inp = this.shadowRoot.getElementById("jump-date");
-        if (!inp) break;
-        try { inp.showPicker(); } catch (e) { inp.focus(); inp.click(); }
-        break;
-      }
-      case "jump-date": {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(el.value)) break;
-        this.ui.anchor = parseYmd(el.value);
-        this.render(); if (this.ui.tab !== "meals") this._loadEvents();
+      case "jump": this.openJumpDialog(); break; // a month grid, so far-off weeks (Christmas dinner) are one tap away
+      case "jump-month": { const g = this.ui.dialog; if (g?.type === "jump") { g.month = new Date(g.month.getFullYear(), g.month.getMonth() + Number(d.dir), 1); this.renderDialog(); } break; }
+      case "jump-pick": {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) break;
+        this.ui.anchor = parseYmd(d.date);
+        this.closeDialog(); this.render(); if (this.ui.tab !== "meals") this._loadEvents();
         break;
       }
       case "goto-day": this.ui.anchor = parseYmd(d.date); this.ui.view = "day"; this.ui.tab = "calendar"; this.render(); this._loadEvents(); break;

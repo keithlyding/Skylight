@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.62.1";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.62.2";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -290,6 +290,29 @@ export class CalendarView {
     this._openDialog(dlg);
     dlg.prevStart = this._formTimes().start;
   }
+  // 📅 Go to a date: a month grid of our own (native date pickers don't open on the kiosk's browser).
+  openJumpDialog() {
+    const a = this.ui.anchor;
+    const dlg = {
+      type: "jump", month: new Date(a.getFullYear(), a.getMonth(), 1),
+      html: () => {
+        const m = dlg.month, first = this.weekStart(m), today = startOfDay(new Date());
+        const ws = Number(this.settings.week_start) || 0;
+        const names = [...Array(7)].map((_, i) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][(ws + i) % 7]);
+        const cells = [...Array(42)].map((_, i) => addDays(first, i));
+        return `
+        <div class="toolbar"><div class="nav"><button class="icon" data-action="jump-month" data-dir="-1" aria-label="Previous month">‹</button>
+          <h2>${m.toLocaleDateString([], { month: "long", year: "numeric" })}</h2>
+          <button class="icon" data-action="jump-month" data-dir="1" aria-label="Next month">›</button></div>
+          <button data-action="jump-pick" data-date="${ymd(today)}">Today</button></div>
+        <div class="jgrid">${names.map((n) => `<div class="jhead">${n}</div>`).join("")}
+          ${cells.map((d) => `<button class="jday ${d.getMonth() !== m.getMonth() ? "other" : ""} ${sameDay(d, today) ? "today" : ""} ${sameDay(d, a) ? "on" : ""}" data-action="jump-pick" data-date="${ymd(d)}">${d.getDate()}</button>`).join("")}</div>
+        <div class="actions"><span class="spacer"></span><button data-action="close">Cancel</button></div>`;
+      },
+    };
+    this._openDialog(dlg);
+  }
+
   // Plain-English description of an RRULE, e.g. "every 2 weeks on Tue, Thu, until Dec 18".
   _rruleText(rr) {
     const get = (k) => new RegExp(`${k}=([^;]+)`).exec(rr || "")?.[1];
@@ -601,7 +624,7 @@ export class CalendarView {
     }
     const noCals = !this.shownCalendars().length;
     const toolbar = `<div class="toolbar caltool">
-      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button><span class="jump"><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button><input type="date" id="jump-date" class="jumpdate" data-change="jump-date" value="${ymd(this.ui.anchor)}" tabindex="-1" aria-hidden="true"></span></div>
+      <div class="nav"><button class="icon" data-action="prev">‹</button><button data-action="today">Today</button><button class="icon" data-action="next">›</button><button class="icon" data-action="jump" title="Go to a date" aria-label="Go to a date">📅</button></div>
       <h1>${title}</h1>
       <div class="seg">${CAL_VIEWS.filter(([x]) => !this.isPhone || (x !== "5day" && x !== "7day")).map(([x, label]) => `<button class="${v === x ? "on" : ""}" data-action="view" data-view="${x}">${label}</button>`).join("")}</div>
       <button class="icon searchbtn" data-action="search-open" title="Search events">🔍</button>
