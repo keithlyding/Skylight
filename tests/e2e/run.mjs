@@ -33,7 +33,7 @@ const eq = (got, want, msg) => check(JSON.stringify(got) === JSON.stringify(want
 // Open the panel. `at` fixes the clock; `setup` runs in the page before the first render settles.
 async function open(browser, base, { width = 1300, height = 912, at = null, setup = null, ctx = {} } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, acceptDownloads: true, ...ctx });
-  await context.addInitScript(() => { try { if (!localStorage.getItem("skylight.setupTab")) localStorage.setItem("skylight.setupTab", "all"); } catch (e) { /* storage off */ } }); // scenarios see every Setup card
+  await context.addInitScript(() => { try { if (!localStorage.getItem("skylight.setupTab")) localStorage.setItem("skylight.setupTab", "all"); if (!localStorage.getItem("skylight.dailyReload")) localStorage.setItem("skylight.dailyReload", "0"); } catch (e) { /* storage off */ } }); // scenarios see every Setup card; no 4:30 AM reload mid-test
   const page = await context.newPage();
   page.errors = [];
   page._clockInstalled = !!at;
@@ -1412,7 +1412,7 @@ const SCENARIOS = {
   async fresh_start(browser, base) {
     // A wall screen reloads once a day when its screen-off sensor turns off (the screen came back on).
     const p = await open(browser, base, { width: 1536, height: 864, ctx: { hasTouch: true }, at: "2026-10-22T06:00:00" });
-    await p.evaluate(() => { window.RELOADS = 0; el._reloadPage = () => { window.RELOADS++; }; sessionStorage.removeItem("skylight.freshDay"); });
+    await p.evaluate(() => { window.RELOADS = 0; el._reloadPage = () => { window.RELOADS++; }; sessionStorage.removeItem("skylight.freshDay"); localStorage.removeItem("skylight.dailyReload"); });
     eq(await p.evaluate(() => el.dailyReload), true, "on by default for a touch screen that isn't a phone");
     const sens = await p.evaluate(() => el.screenOffEntity);
     check(sens.endsWith("_screen_off"), `sensor name from the app name: ${sens}`);
@@ -1437,16 +1437,19 @@ const SCENARIOS = {
     const p = await open(browser, base, { width: 1536, height: 864, ctx: { hasTouch: true } });
     await p.tab("settings"); await p.S('[data-action="setup-tab"][data-tab="screens"]').click(); await p.waitForTimeout(300);
     eq(await p.evaluate(() => el.pickInApp), true, "touch, not a phone: in-app pick lists");
-    await p.S('select[data-change="screen-scheme"]').dispatchEvent("pointerdown"); await p.waitForTimeout(200);
-    eq(await p.S("#pick .picklist").count(), 1, "pick list opened");
+    await p.S('select[data-change="screen-scheme"]').tap(); await p.waitForTimeout(400); // a real tap: down, up, click
+    eq(await p.S("#pick .picklist").count(), 1, "pick list opened by a quick tap, and stays open");
     check((await text(p.S("#pick h2")))[0].includes("This screen"), "titled after its label");
-    await p.S('#pick [data-pick="dark"]').click(); await p.waitForTimeout(300);
+    await p.S('#pick [data-pick="dark"]').tap(); await p.waitForTimeout(300);
     eq(await p.S("#pick .picklist").count(), 0, "closed after a pick");
+    await p.S('select[data-change="screen-scheme"]').click(); await p.waitForTimeout(300); // a mouse click works too
+    eq(await p.S("#pick .picklist").count(), 1, "opened by a mouse click");
+    await p.S('#pick button[data-pick="close"]').click(); await p.waitForTimeout(200);
     eq(await p.evaluate(() => el.dataset.scheme), "dark", "the choice took effect (change fired)");
     // the keyboard switch list, with a button-type entity too
     await p.evaluate(() => { window.hass.states["switch.touchkio_kitchen_keyboard"] = { state: "off", attributes: { friendly_name: "Kitchen Keyboard" } }; window.hass.states["button.osk_show"] = { state: "unknown", attributes: { friendly_name: "OSK show" } }; el.hass = { ...window.hass }; el.render(); });
     await p.waitForTimeout(300);
-    await p.S('select[data-change="kb-entity"]').dispatchEvent("pointerdown"); await p.waitForTimeout(200);
+    await p.S('select[data-change="kb-entity"]').tap(); await p.waitForTimeout(400);
     const opts = await text(p.S("#pick .pickopts button"));
     check(opts[0] === "None" && opts[1].includes("Kitchen Keyboard") && opts.some((o) => o.includes("OSK show")), `keyboard choices: ${opts}`);
     await p.S('#pick [data-pick="button.osk_show"]').click(); await p.waitForTimeout(300);
@@ -1454,7 +1457,7 @@ const SCENARIOS = {
     eq(await p.evaluate(() => calls.filter((c) => c.svc === "button.press").length), 1, "a button entity is pressed to show the keyboard");
     // inside a dialog too (the event editor's calendar list), without losing the dialog
     await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
-    await p.S("#ev-cal").dispatchEvent("pointerdown"); await p.waitForTimeout(200);
+    await p.S("#ev-cal").tap(); await p.waitForTimeout(400);
     eq(await p.S("#pick .picklist").count(), 1, "pick list over the dialog");
     await p.S('#pick button[data-pick="close"]').click(); await p.waitForTimeout(200);
     eq(await p.S(".dialog #ev-title").count(), 1, "the dialog is still there");

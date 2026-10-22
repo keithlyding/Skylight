@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.4";
-import { STYLES } from "./styles.js?v=1.62.4";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.4";
-import { CalendarView } from "./calendar.js?v=1.62.4";
-import { WeatherView } from "./weather.js?v=1.62.4";
-import { HomeView } from "./home.js?v=1.62.4";
-import { ChoresView } from "./chores.js?v=1.62.4";
-import { MealsView } from "./meals.js?v=1.62.4";
-import { ListsView } from "./lists.js?v=1.62.4";
-import { PhotosView } from "./photos.js?v=1.62.4";
-import { SettingsView } from "./settings.js?v=1.62.4";
-import { PickersView } from "./pickers.js?v=1.62.4";
-import { keepAwake } from "./wake.js?v=1.62.4";
-import { MlbView } from "./mlb.js?v=1.62.4";
-import { TravelView } from "./travel.js?v=1.62.4";
-import { NotesView } from "./notes.js?v=1.62.4";
-import { VerseView } from "./verses.js?v=1.62.4";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.5";
+import { STYLES } from "./styles.js?v=1.62.5";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.5";
+import { CalendarView } from "./calendar.js?v=1.62.5";
+import { WeatherView } from "./weather.js?v=1.62.5";
+import { HomeView } from "./home.js?v=1.62.5";
+import { ChoresView } from "./chores.js?v=1.62.5";
+import { MealsView } from "./meals.js?v=1.62.5";
+import { ListsView } from "./lists.js?v=1.62.5";
+import { PhotosView } from "./photos.js?v=1.62.5";
+import { SettingsView } from "./settings.js?v=1.62.5";
+import { PickersView } from "./pickers.js?v=1.62.5";
+import { keepAwake } from "./wake.js?v=1.62.5";
+import { MlbView } from "./mlb.js?v=1.62.5";
+import { TravelView } from "./travel.js?v=1.62.5";
+import { NotesView } from "./notes.js?v=1.62.5";
+import { VerseView } from "./verses.js?v=1.62.5";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -309,14 +309,21 @@ export class SkylightPanel extends HTMLElement {
     this.$pick = this.shadowRoot.getElementById("pick");
     // Drop-down lists on a touch kiosk or tablet open as a list of our own: the browser's own pop-up doesn't
     // appear on the kitchen screen's kiosk browser (nor do its date pickers).
-    for (const ev of ["pointerdown", "mousedown", "click"]) {
+    // (Opened on click, after the tap's whole event sequence: opening on pointerdown put the list under the
+    // finger, and the tap's own click then landed on its backdrop and closed it again.)
+    // The native list opens on mousedown (a tap's synthesized one too): cancel that, then open ours on the click.
+    for (const ev of ["mousedown", "click"]) {
       this.shadowRoot.addEventListener(ev, (e) => {
         const sel = e.target.closest?.("select");
         if (!sel || sel.disabled || !this.pickInApp) return;
         e.preventDefault(); e.stopPropagation();
-        if (ev === "pointerdown") this.openPickList(sel);
+        if (ev === "click") this.openPickList(sel);
       }, true);
     }
+    this.shadowRoot.addEventListener("keydown", (e) => {
+      const sel = e.target.closest?.("select");
+      if (sel && !sel.disabled && this.pickInApp && [" ", "Enter", "ArrowDown", "ArrowUp"].includes(e.key)) { e.preventDefault(); this.openPickList(sel); }
+    }, true);
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("focusout", () => this._settlePage()); // keyboard closing
     // Kiosk keyboard: show it while a text box has focus (see kbEntity).
@@ -1236,7 +1243,9 @@ export class SkylightPanel extends HTMLElement {
       <h2>${esc(label.slice(0, 60))}</h2>
       <div class="pickopts">${opts.map((o) => `<button class="${o.selected ? "on" : ""}" data-pick="${esc(o.value)}" role="option" aria-selected="${o.selected}">${esc(o.textContent.trim())}</button>`).join("") || `<p class="hint">Nothing to choose from.</p>`}</div>
       <div class="actions"><span class="spacer"></span><button data-pick="close">Cancel</button></div></div></div>`;
+    const opened = Date.now();
     const done = (value) => {
+      if (Date.now() - opened < 250 && value === null) return; // the opening tap's own stray events
       this.$pick.innerHTML = "";
       if (value === null || value === sel.value) return;
       sel.value = value;
