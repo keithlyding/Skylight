@@ -1433,6 +1433,57 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async mealie_dialog_and_drag(browser, base) {
+    // The meal editor: nothing listed until you type, results as you type (stale replies dropped), a planned
+    // recipe is unmistakable, adding keeps the dialog open for a second recipe; drag a cell to another day.
+    const p = await open(browser, base);
+    await p.tab("meals");
+    const calls = () => p.evaluate(() => window.calls.filter((c) => c.type === "skylight/mealie/recipes").map((c) => c.query));
+    const tomorrow = await p.evaluate(() => { const d = new Date(Date.now() + 864e5); return d.toISOString().slice(0, 10); });
+    const today = await p.evaluate(() => new Date().toISOString().slice(0, 10));
+    await p.S(`.meal[data-date="${tomorrow}"][data-slot="dinner"]`).click(); await p.waitForTimeout(300);
+    eq(await calls(), [], "no search until something is typed");
+    eq(await p.S("#mealie-results .rcardmini").count(), 0, "no recipe list without a search");
+    check((await text(p.S(".dialog")))[0].includes("Nothing planned yet"), "empty state explained");
+    // a slow reply for "pan" must not overwrite the later "taco" results
+    await p.evaluate(() => { window.SLOWSEARCH = "pan"; });
+    await p.S("#mealie-q").fill("pan"); await p.waitForTimeout(400);
+    await p.S("#mealie-q").fill("taco"); await p.waitForTimeout(500);
+    eq(await text(p.S("#mealie-results .rcardmini span")), ["Chicken Tacos"], "results for what was typed last");
+    await p.waitForTimeout(800); // the slow "pan" reply arrives now
+    eq(await text(p.S("#mealie-results .rcardmini span")), ["Chicken Tacos"], "a stale reply is dropped");
+    eq(await p.S("#mealie-q").inputValue(), "taco", "typing survived the result redraws");
+    await p.S('#mealie-results [data-action="mealie-add"]').first().click(); await p.waitForTimeout(600);
+    eq(await p.S(".dialog").count(), 1, "dialog stays open after adding");
+    const planned = await text(p.S(".mplan.planned b"));
+    check(planned.length === 1 && planned[0].includes("✓") && planned[0].includes("Chicken Tacos"), `planned recipe shown clearly: ${planned}`);
+    eq(await p.S("#mealie-results .rcardmini").count(), 0, "search cleared for the next one");
+    await p.S("#mealie-q").fill("pancake"); await p.waitForTimeout(600);
+    await p.S('#mealie-results [data-action="mealie-add"]').first().click(); await p.waitForTimeout(600);
+    eq((await text(p.S(".mplan.planned b"))).length, 2, "two recipes on one meal");
+    await p.S('.dialog [data-action="close"]').click(); await p.waitForTimeout(300);
+    const cellText = (await text(p.S(`.meal[data-date="${tomorrow}"][data-slot="dinner"]`)))[0] || "";
+    check(cellText.includes("Chicken Tacos") && cellText.includes("Pancakes"), `both show in the cell: ${cellText}`);
+
+    // drag tomorrow's dinner onto today's lunch
+    const from = await p.S(`.meal[data-date="${tomorrow}"][data-slot="dinner"]`).boundingBox();
+    const to = await p.S(`.meal[data-date="${today}"][data-slot="lunch"]`).boundingBox();
+    await p.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await p.mouse.down();
+    await p.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 4, { steps: 3 });
+    await p.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+    eq(await p.evaluate(() => !!el.shadowRoot.querySelector(".meal.dropover")), true, "target cell highlighted while dragging");
+    await p.mouse.up(); await p.waitForTimeout(700);
+    const moves = await p.evaluate(() => window.MOVES || []);
+    eq(moves.length, 2, "both entries moved");
+    check(moves.every((m) => m.date === today && m.slot === "lunch"), `moved to today's lunch: ${JSON.stringify(moves)}`);
+    const lunch = (await text(p.S(`.meal[data-date="${today}"][data-slot="lunch"]`)))[0] || "";
+    check(lunch.includes("Chicken Tacos") && lunch.includes("Pancakes"), `today's lunch now holds them: ${lunch}`);
+    eq(await p.S(".dialog").count(), 0, "a drag doesn't open the editor");
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async rrule_until_forms(browser, base) {
     // "Repeats until a date": Google wants UNTIL as the end of that day in UTC, Local Calendar the local form,
     // all-day events a plain date; the plain-English text shows the right local day for the UTC form.

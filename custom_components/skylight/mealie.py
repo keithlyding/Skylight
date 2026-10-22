@@ -98,7 +98,7 @@ async def _mealie_http(hass: HomeAssistant, method: str, path: str) -> aiohttp.C
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_import, ws_browse, ws_organizers, ws_cook, ws_delete_recipe):
+    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_move, ws_import, ws_browse, ws_organizers, ws_cook, ws_delete_recipe):
         websocket_api.async_register_command(hass, cmd)
     hass.http.register_view(MealieImageView())
 
@@ -315,6 +315,42 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         raise MealieError(f"Cannot reach Mealie: {err}") from err
     if resp.status >= 400:
         raise MealieError(f"Mealie refused to remove the meal (HTTP {resp.status})")
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "skylight/mealie/move",
+    vol.Required("mealplan_id"): int,
+    vol.Required("date"): str,
+    vol.Required("slot"): vol.In(list(SLOT_TYPES)),
+})
+@websocket_api.async_response
+@_wrap
+async def ws_move(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Move a planned meal to another day and/or row (drag and drop). Keeps its entry type when the
+    row allows it (a "side" stays a side within the snack row), else uses the row's first type."""
+    try:
+        date.fromisoformat(msg["date"])
+    except ValueError:
+        connection.send_error(msg["id"], "invalid", "Bad date")
+        return
+    path = f"api/households/mealplans/{msg['mealplan_id']}"
+    current = await _mealie_json(hass, path)
+    if not isinstance(current, dict):
+        raise MealieError("Mealie didn't return that meal")
+    types = SLOT_TYPES[msg["slot"]]
+    entry_type = current.get("entryType") if current.get("entryType") in types else types[0]
+    body = {**current, "date": msg["date"], "entryType": entry_type}
+    body.pop("recipe", None)  # the API wants recipeId; the nested recipe is read-only
+    entry = _entry(hass)
+    session = async_get_clientsession(hass, verify_ssl=entry.data.get("verify_ssl", True))
+    try:
+        async with session.put(f"{entry.data['host'].rstrip('/')}/{path}", json=body, timeout=TIMEOUT,
+                               headers={"Authorization": f"Bearer {entry.data['api_token']}"}) as resp:
+            if resp.status >= 400:
+                raise MealieError(f"Mealie refused to move the meal (HTTP {resp.status})")
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise MealieError(f"Cannot reach Mealie: {err}") from err
     connection.send_result(msg["id"])
 
 

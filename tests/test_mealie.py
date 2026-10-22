@@ -223,6 +223,31 @@ def test_rank_recipes():
     assert names("ipe") == []  # words match at word starts only (no "recipe" inside other words)
 
 
+async def test_move(hass, setup, hass_ws_client, aioclient_mock):
+    """Drag and drop: the entry is read, then written back with the new date and entry type."""
+    aioclient_mock.get(f"{MEALIE_URL}/api/households/mealplans/7", json={
+        "id": 7, "date": "2026-09-27", "entryType": "dinner", "title": "", "text": "", "recipeId": RID, "groupId": "g", "userId": "u",
+        "recipe": {"id": RID, "name": "Chicken Tacos"}})
+    aioclient_mock.put(f"{MEALIE_URL}/api/households/mealplans/7", json={})
+    ws = await hass_ws_client(hass)
+    assert (await _cmd(ws, {"type": "skylight/mealie/move", "mealplan_id": 7, "date": "2026-09-29", "slot": "lunch"}))["success"]
+    put = [c for c in aioclient_mock.mock_calls if c[0] == "PUT"][-1]
+    body = put[2]
+    assert body["date"] == "2026-09-29" and body["entryType"] == "lunch" and body["recipeId"] == RID and "recipe" not in body
+    # the snack row keeps a "side" as a side
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{MEALIE_URL}/api/households/mealplans/8", json={"id": 8, "date": "2026-09-27", "entryType": "side", "title": "Chips"})
+    aioclient_mock.put(f"{MEALIE_URL}/api/households/mealplans/8", json={})
+    assert (await _cmd(ws, {"type": "skylight/mealie/move", "mealplan_id": 8, "date": "2026-09-28", "slot": "snack"}))["success"]
+    assert [c for c in aioclient_mock.mock_calls if c[0] == "PUT"][-1][2]["entryType"] == "side"
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{MEALIE_URL}/api/households/mealplans/9", json={"id": 9, "date": "2026-09-27", "entryType": "dinner"})
+    aioclient_mock.put(f"{MEALIE_URL}/api/households/mealplans/9", status=403)
+    res = await _cmd(ws, {"type": "skylight/mealie/move", "mealplan_id": 9, "date": "2026-09-28", "slot": "dinner"})
+    assert not res["success"] and "403" in res["error"]["message"]
+    assert not (await _cmd(ws, {"type": "skylight/mealie/move", "mealplan_id": 9, "date": "nope", "slot": "dinner"}))["success"]
+
+
 async def test_search_ranks_titles_first(hass, setup, hass_ws_client, aioclient_mock):
     aioclient_mock.get(f"{MEALIE_URL}/api/recipes", params={"search": "taco", "perPage": 40, "page": 1}, json={"items": [{"id": "a"}]})
     aioclient_mock.get(f"{MEALIE_URL}/api/recipes", json={"items": [

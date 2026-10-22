@@ -673,7 +673,14 @@ header, .rail { touch-action:pan-x; overscroll-behavior:contain; }
 .meal.withimg { color:#fff; justify-content:flex-end; text-shadow:0 1px 4px rgba(0,0,0,.6); }
 .mname { font-weight:800; }
 .mplan { display:flex; align-items:center; gap:12px; background:var(--bg); border-radius:14px; padding:8px; margin:6px 0; }
-.mplan img, .mplan .noimg { width:56px; height:56px; border-radius:10px; object-fit:cover; display:grid; place-items:center; font-size:26px; }
+.mplan.planned { border-left:6px solid #2e9e5b; background:color-mix(in srgb, #2e9e5b 10%, var(--bg)); }
+.mplan.planned b { font-size:1.15em; }
+.mplan img, .mplan .noimg { width:72px; height:72px; border-radius:10px; object-fit:cover; display:grid; place-items:center; font-size:26px; }
+/* Dragging a planned meal: the cell fades, a copy follows the finger, the cell under it lights up. */
+.meal.dragging { opacity:.4; }
+.meal.dropover { outline:3px dashed var(--accent); outline-offset:-3px; background:color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.mealghost { position:fixed; left:0; top:0; z-index:950; pointer-events:none; opacity:.9; box-shadow:0 12px 30px rgba(0,0,0,.3); transform:translate(-9999px,-9999px); }
+.meal { touch-action:pan-y; }
 .mplan .grow { cursor:pointer; }
 .rgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; max-height:300px; overflow-y:auto; margin:8px 0; }
 .rcardmini { display:flex; flex-direction:column; padding:0; overflow:hidden; text-align:left; background:var(--bg); }

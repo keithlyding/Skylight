@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.59.0";
-import { STYLES } from "./styles.js?v=1.59.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.59.0";
-import { CalendarView } from "./calendar.js?v=1.59.0";
-import { WeatherView } from "./weather.js?v=1.59.0";
-import { HomeView } from "./home.js?v=1.59.0";
-import { ChoresView } from "./chores.js?v=1.59.0";
-import { MealsView } from "./meals.js?v=1.59.0";
-import { ListsView } from "./lists.js?v=1.59.0";
-import { PhotosView } from "./photos.js?v=1.59.0";
-import { SettingsView } from "./settings.js?v=1.59.0";
-import { PickersView } from "./pickers.js?v=1.59.0";
-import { keepAwake } from "./wake.js?v=1.59.0";
-import { MlbView } from "./mlb.js?v=1.59.0";
-import { TravelView } from "./travel.js?v=1.59.0";
-import { NotesView } from "./notes.js?v=1.59.0";
-import { VerseView } from "./verses.js?v=1.59.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.60.0";
+import { STYLES } from "./styles.js?v=1.60.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.60.0";
+import { CalendarView } from "./calendar.js?v=1.60.0";
+import { WeatherView } from "./weather.js?v=1.60.0";
+import { HomeView } from "./home.js?v=1.60.0";
+import { ChoresView } from "./chores.js?v=1.60.0";
+import { MealsView } from "./meals.js?v=1.60.0";
+import { ListsView } from "./lists.js?v=1.60.0";
+import { PhotosView } from "./photos.js?v=1.60.0";
+import { SettingsView } from "./settings.js?v=1.60.0";
+import { PickersView } from "./pickers.js?v=1.60.0";
+import { keepAwake } from "./wake.js?v=1.60.0";
+import { MlbView } from "./mlb.js?v=1.60.0";
+import { TravelView } from "./travel.js?v=1.60.0";
+import { NotesView } from "./notes.js?v=1.60.0";
+import { VerseView } from "./verses.js?v=1.60.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -329,6 +329,12 @@ export class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("pointermove", (e) => this._dragMove(e));
     this.shadowRoot.addEventListener("pointerup", (e) => this._dragEnd(e));
     this.shadowRoot.addEventListener("pointercancel", (e) => this._dragEnd(e));
+    // Meals grid: drag a planned meal to another day or row.
+    this.shadowRoot.addEventListener("pointerdown", (e) => this._mealDragStart(e));
+    this.shadowRoot.addEventListener("pointermove", (e) => this._mealDragMove(e));
+    this.shadowRoot.addEventListener("pointerup", (e) => this._mealDragEnd(e));
+    this.shadowRoot.addEventListener("pointercancel", (e) => this._mealDragEnd(e));
+    this.shadowRoot.addEventListener("input", (e) => { if (e.target.dataset?.input === "mealie-type") this._mealieTyped(e.target.value); });
     this.shadowRoot.addEventListener("pointermove", (e) => this._holdMove(e), { passive: true });
     for (const ev of ["pointerup", "pointercancel"]) {
       this.shadowRoot.addEventListener(ev, () => {

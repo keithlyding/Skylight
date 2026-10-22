@@ -1,7 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.59.0";
-import { keepAwake } from "./wake.js?v=1.59.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.60.0";
+import { keepAwake } from "./wake.js?v=1.60.0";
 
 export class MealsView {
   async _loadMealie() {
@@ -23,50 +23,142 @@ export class MealsView {
   openMealieDialog(date, slot) {
     const label = MEAL_SLOTS.find((x) => x[0] === slot);
     const dlg = {
-      type: "mealie", date, slot, results: null, loading: false,
+      type: "mealie", date, slot, results: null, loading: false, query: "",
       html: () => {
         const current = this.mealieFor(date, slot);
         const synced = this.syncedMeals(parseYmd(date), slot);
         return `
         <h2>${label[2]} ${label[1]} · ${parseYmd(date).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h2>
-        ${current.map((m) => `<div class="mplan">
+        <div class="label">Planned${current.length > 1 ? ` (${current.length})` : ""}</div>
+        ${current.length || synced.length ? "" : `<p class="hint">Nothing planned yet. Search below, or tap 🎲 for a random recipe.</p>`}
+        ${current.map((m) => `<div class="mplan planned">
             ${m.recipe?.image ? `<img src="${m.recipe.image}" alt="">` : `<span class="noimg">📝</span>`}
-            <div class="grow" ${m.recipe ? `data-action="view-recipe" data-recipe="${esc(m.recipe.id)}"` : ""}><b>${esc(this.mealieName(m))}</b>${m.recipe ? `<small>View recipe ›</small>` : m.text ? `<small>${esc(m.text)}</small>` : ""}</div>
-            <button class="x" data-action="mealie-remove" data-meal="${m.id}">✕</button></div>`).join("")}
+            <div class="grow" ${m.recipe ? `data-action="view-recipe" data-recipe="${esc(m.recipe.id)}"` : ""}><b>✓ ${esc(this.mealieName(m))}</b>${m.recipe ? `<small>View recipe ›</small>` : m.text ? `<small>${esc(m.text)}</small>` : ""}</div>
+            <button class="x" data-action="mealie-remove" data-meal="${m.id}" aria-label="Remove">✕</button></div>`).join("")}
         ${synced.map((e) => `<div class="syncedrow">📅 <b>${esc(this.mealTitle(e))}</b> <small>from ${esc(this.entityName(e.entity))}</small></div>`).join("")}
-        <div class="additem" style="margin-top:12px"><input id="mealie-q" placeholder="Search recipes…" data-enter="mealie-search" data-autofocus><button data-action="mealie-search">Search</button><button data-action="mealie-random" title="Random recipe">🎲</button></div>
-        <div class="rgrid">${dlg.loading ? `<p class="hint">Searching…</p>` : (dlg.results || []).map((r) => `
-          <button class="rcardmini" data-action="mealie-add" data-recipe="${esc(r.id)}">
-            ${r.image ? `<img src="${r.image}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}<span>${esc(r.name)}</span></button>`).join("") || (dlg.results ? `<p class="hint">No recipes found.</p>` : "")}</div>
+        <div class="label" style="margin-top:14px">${current.length ? "Add another recipe" : "Add a recipe"}</div>
+        <div class="additem"><input id="mealie-q" type="search" placeholder="Type to search your recipes…" value="${esc(dlg.query)}" data-input="mealie-type" data-enter="mealie-search" data-autofocus><button data-action="mealie-search">Search</button><button data-action="mealie-random" title="Random recipe">🎲</button></div>
+        <div class="rgrid" id="mealie-results">${this._mealieResultsHtml(dlg)}</div>
         <details><summary>More options</summary>
           <div class="additem"><input id="mealie-note" placeholder="Just a note, e.g. Leftovers / Eat out" data-enter="mealie-note"><button data-action="mealie-note">Add note</button></div>
           <div class="additem"><input id="mealie-url" placeholder="Import recipe from a website URL"><button data-action="mealie-import">Import &amp; add</button></div>
         </details>
-        <div class="actions"><span class="spacer"></span><button data-action="close">Done</button></div>`;
+        <div class="actions"><span class="spacer"></span><button class="primary" data-action="close">Done</button></div>`;
       },
     };
     this._openDialog(dlg);
-    this._mealieSearch();
   }
 
+  // The results grid alone: redrawn as you type, so the box you're typing in is never replaced.
+  _mealieResultsHtml(dlg) {
+    if (dlg.loading) return `<p class="hint">Searching…</p>`;
+    if (!dlg.results) return "";
+    return (dlg.results || []).map((r) => `
+          <button class="rcardmini" data-action="mealie-add" data-recipe="${esc(r.id)}">
+            ${r.image ? `<img src="${r.image}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}<span>${esc(r.name)}</span></button>`).join("")
+      || `<p class="hint">No recipes match "${esc(dlg.query)}".</p>`;
+  }
+  _mealieResultsRedraw(dlg) {
+    const box = this.shadowRoot.getElementById("mealie-results");
+    if (box && this.ui.dialog === dlg) box.innerHTML = this._mealieResultsHtml(dlg);
+  }
+
+  // Live search as you type (a short pause), with stale replies dropped so an older, slower answer never
+  // overwrites a newer one.
+  _mealieTyped(value) {
+    const dlg = this.ui.dialog;
+    if (dlg?.type !== "mealie") return;
+    dlg.query = value;
+    clearTimeout(this._mealieTimer);
+    if (!value.trim()) { dlg.results = null; dlg.loading = false; this._mealieResultsRedraw(dlg); return; }
+    this._mealieTimer = setTimeout(() => this._mealieSearch(), 350);
+  }
   async _mealieSearch() {
     const dlg = this.ui.dialog;
     if (dlg?.type !== "mealie") return;
-    const q = this.shadowRoot.getElementById("mealie-q")?.value || "";
-    dlg.loading = true; this.renderDialog();
-    try { dlg.results = await this._ws({ type: "skylight/mealie/recipes", query: q }); }
-    catch (e) { dlg.results = []; }
-    dlg.loading = false;
-    if (this.ui.dialog === dlg) this.renderDialog();
+    clearTimeout(this._mealieTimer);
+    const q = (this.shadowRoot.getElementById("mealie-q")?.value ?? dlg.query).trim();
+    dlg.query = q;
+    if (!q) { dlg.results = null; dlg.loading = false; this._mealieResultsRedraw(dlg); return; }
+    const req = (dlg.req = (dlg.req || 0) + 1);
+    dlg.loading = true; this._mealieResultsRedraw(dlg);
+    let results;
+    try { results = await this._ws({ type: "skylight/mealie/recipes", query: q }); }
+    catch (e) { results = []; }
+    if (req !== dlg.req || this.ui.dialog !== dlg) return; // a newer search is on its way
+    dlg.results = results; dlg.loading = false;
+    this._mealieResultsRedraw(dlg);
   }
 
+  // Add to the plan; the dialog stays open so another recipe can be added to the same meal.
   async _mealieSet(extra) {
     const dlg = this.ui.dialog;
     await this._ws({ type: "skylight/mealie/set", date: dlg.date, slot: dlg.slot, ...extra });
     await this._reloadMealie();
-    this.closeDialog();
+    if (this.ui.dialog === dlg) { dlg.query = ""; dlg.results = null; this.renderDialog(); }
+    this._toast(extra.random ? "Random recipe added" : "Added to the plan");
   }
 
+  // ---------- drag a planned meal to another day or row ----------
+  _mealDragStart(e) {
+    const cell = e.target.closest?.(".meal:not(.emptymeal)[data-date]");
+    if (!cell || this._mdrag || this.ui.dialog || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const ids = this.mealieFor(cell.dataset.date, cell.dataset.slot).map((m) => m.id).filter((id) => id !== undefined && id !== null);
+    if (!ids.length) return; // synced (calendar) meals and plain notes can't be moved
+    const g = { cell, ids, from: { date: cell.dataset.date, slot: cell.dataset.slot }, x0: e.clientX, y0: e.clientY, pid: e.pointerId, active: false, over: null };
+    this._mdrag = g;
+    // Touch: hold a moment first (a quick tap still opens the editor). Mouse: moving a little starts it.
+    if (e.pointerType !== "mouse") g.timer = setTimeout(() => this._mealDragActivate(e), 280);
+  }
+  _mealDragActivate(e) {
+    const g = this._mdrag;
+    if (!g || g.active) return;
+    g.active = true;
+    try { g.cell.setPointerCapture(g.pid); } catch (err) { /* old WebView */ }
+    g.cell.classList.add("dragging");
+    const ghost = g.cell.cloneNode(true);
+    ghost.classList.add("mealghost"); ghost.classList.remove("dragging");
+    ghost.style.width = `${g.cell.getBoundingClientRect().width}px`;
+    this.$app.appendChild(ghost);
+    g.ghost = ghost;
+    // Where every cell is (measured once; no hit-testing through shadow roots, see test_frontend_static).
+    g.cells = [...this.$app.querySelectorAll(".meal[data-date]")].map((c) => [c, c.getBoundingClientRect()]);
+    this._mealDragMove(e);
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (err) { /* not supported */ }
+  }
+  _mealDragMove(e) {
+    const g = this._mdrag;
+    if (!g || e.pointerId !== g.pid) return;
+    if (!g.active) {
+      if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) > (e.pointerType === "mouse" ? 6 : 14)) {
+        if (e.pointerType === "mouse") this._mealDragActivate(e);
+        else { clearTimeout(g.timer); this._mdrag = null; } // a touch scroll, not a drag
+      }
+      return;
+    }
+    e.preventDefault();
+    g.ghost.style.transform = `translate(${e.clientX - g.ghost.offsetWidth / 2}px, ${e.clientY - 30}px)`;
+    const hit = g.cells.find(([, r]) => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom);
+    const under = hit?.[0];
+    const target = under && (under.dataset.date !== g.from.date || under.dataset.slot !== g.from.slot) ? under : null;
+    if (target !== g.over) { g.over?.classList.remove("dropover"); target?.classList.add("dropover"); g.over = target; }
+  }
+  async _mealDragEnd(e) {
+    const g = this._mdrag;
+    if (!g || (e && e.pointerId !== g.pid)) return;
+    clearTimeout(g.timer);
+    this._mdrag = null;
+    if (!g.active) return;
+    this._suppressClickUntil = Date.now() + 300;
+    g.cell.classList.remove("dragging"); g.ghost?.remove(); g.over?.classList.remove("dropover");
+    const to = g.over && e?.type !== "pointercancel" ? { date: g.over.dataset.date, slot: g.over.dataset.slot } : null;
+    if (!to) return;
+    try {
+      for (const id of g.ids) await this._ws({ type: "skylight/mealie/move", mealplan_id: Number(id), ...to });
+      await this._reloadMealie();
+      this._toast(`Moved to ${MEAL_SLOTS.find((x) => x[0] === to.slot)?.[1].toLowerCase() || to.slot} on ${parseYmd(to.date).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}`);
+    } catch (err) { await this._reloadMealie(); }
+  }
 
   // ---------- Mealie: recipe browser ----------
   async _loadOrganizers() {
