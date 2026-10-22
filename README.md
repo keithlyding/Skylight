@@ -233,6 +233,16 @@ For today's events that have a location and start within 4 hours, the Today scre
 - Setup → Birthdays & anniversaries: turn it on or off, choose how many minutes early to leave (default 5), and pick the Waze region.
 - Each place is checked at most every 10 minutes. Addresses Waze can't find simply don't get a time.
 
+## Homework and grown-ups' tasks
+
+The Chores tab has three tabs that all work the same way (repeat every day, on certain weekdays, once a week, on certain dates of the month, or just once; "keep showing until done"; check-off history; Progress):
+
+- **Chores:** the kids' (and Household) chores, as before.
+- **Homework:** assignments for the kids, kept apart from chores.
+- **Adults:** grown-ups' own tasks, one-off or repeating ("Pay the water bill" on the 1st, "Change the furnace filter" every 3 months).
+
+The editor's first row picks which of the three something is; + Add on a tab makes that kind. The Today screen shows the kids' chores only, unless Setup → Today screen adds homework and/or grown-ups' tasks. Simple shared lists (groceries, a to-do list synced with Home Assistant) stay on the Lists tab; recurring things belong here.
+
 ## Adults, kids and Household
 
 Every family member is an **Adult**, a **Kid** or **Household** (Setup → family member → *This person is*).

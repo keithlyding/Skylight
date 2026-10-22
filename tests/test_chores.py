@@ -187,6 +187,40 @@ async def test_chore_view_command(hass, tmp_path, hass_storage, hass_ws_client):
     assert not (await ws.receive_json())["success"]  # range too long
 
 
+async def test_chore_view_kinds(hass, tmp_path, hass_storage, hass_ws_client):
+    """Homework and grown-ups' tasks share the engine; the totals can be limited to one kind."""
+    from homeassistant.setup import async_setup_component
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from homeassistant.util import dt as dt_util
+    from custom_components.skylight import chores as ch
+    from custom_components.skylight.store import clean_chores
+    hass.config.config_dir = str(tmp_path)
+    t = dt_util.now().date().isoformat()
+    hass_storage["skylight.data"] = {"version": 1, "key": "skylight.data", "data": {
+        "members": [{"id": "k", "name": "Kid", "role": "kid", "color": "#123456", "avatar": "x", "calendars": []},
+                    {"id": "a", "name": "Mom", "role": "adult", "color": "#123456", "avatar": "y", "calendars": []}],
+        "chores": [{"id": "c1", "member_id": "k", "title": "Bed", "repeat": "daily", "created": t, "completions": [t]},
+                   {"id": "h1", "member_id": "k", "title": "Math", "kind": "homework", "repeat": "daily", "created": t, "completions": []},
+                   {"id": "t1", "member_id": "a", "title": "Bills", "kind": "task", "repeat": "once", "start": t, "created": t, "completions": []}]}}
+    assert await async_setup_component(hass, "http", {})
+    e = MockConfigEntry(domain="skylight", data={})
+    e.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(e.entry_id)
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "skylight/chores/view", "start": t, "end": t, "ranges": [[t, t]], "kinds": ["chore"]})
+    r = (await ws.receive_json())["result"]
+    assert set(r["days"]) == {"c1", "h1", "t1"}  # every kind has its days
+    assert r["stats"] == [{"k": [1, 1]}]  # only the chore counted
+    await ws.send_json({"id": 2, "type": "skylight/chores/view", "start": t, "end": t, "ranges": [[t, t]], "kinds": ["homework", "task"]})
+    assert (await ws.receive_json())["result"]["stats"] == [{"k": [1, 0], "a": [1, 0]}]
+    await ws.send_json({"id": 3, "type": "skylight/chores/view", "start": t, "end": t, "ranges": [[t, t]]})
+    assert (await ws.receive_json())["result"]["stats"] == [{"k": [2, 1], "a": [1, 0]}]
+    await ws.send_json({"id": 4, "type": "skylight/chores/view", "start": t, "end": t, "kinds": ["laundry"]})
+    assert not (await ws.receive_json())["success"]
+    assert ch.kind_of({}) == "chore" and ch.kind_of({"kind": "task"}) == "task" and ch.kind_of({"kind": "x"}) == "chore"
+    assert clean_chores([{"id": "1", "kind": "nope"}, {"id": "2", "kind": "homework"}]) == [{"id": "1"}, {"id": "2", "kind": "homework"}]
+
+
 def test_weekly_follows_week_start_setting():
     """A "once a week" chore done on Wednesday Oct 7 covers that week, Sunday- or Monday-based."""
     c = {"repeat": "weekly", "completions": ["2026-10-07"]}

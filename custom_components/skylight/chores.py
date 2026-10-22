@@ -12,6 +12,14 @@ def _week_start(d: date, week_start: int) -> date:
 
 
 CARRY_REPEATS = ("days", "monthly")  # repeats that can "keep showing until done"
+# What a "chore" record is for: kids' chores, homework, or a grown-up's own recurring/dated task.
+# All three use the same schedule, check-off and history; they're shown on different tabs.
+KINDS = ("chore", "homework", "task")
+
+
+def kind_of(chore: dict) -> str:
+    k = chore.get("kind")
+    return k if k in KINDS else "chore"
 LOOKBACK_DAYS = 400  # how far back to look for a missed occurrence
 
 

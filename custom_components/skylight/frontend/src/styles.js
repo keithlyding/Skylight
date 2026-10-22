@@ -216,6 +216,9 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .evprog i { display:block; height:100%; background:var(--c); border-radius:6px; }
 /* chores */
 .chores { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; align-items:start; }
+.kindpick button { padding:8px 12px; white-space:nowrap; }
+.dialog .kindpick { margin-bottom:10px; }
+@media (max-width: 600px) { .kindpick { width:100%; } .kindpick button { flex:1; padding:8px 4px; font-size:14px; } } /* phones: its own row */
 .ccol { background:var(--card); border-radius:var(--radius); padding:14px; border-top:6px solid var(--c); display:flex; flex-direction:column; gap:10px; }
 .chead { display:flex; align-items:center; gap:12px; }
 .ring { width:60px; height:60px; border-radius:50%; display:grid; place-items:center; background:conic-gradient(var(--c) var(--p), var(--line) 0); }

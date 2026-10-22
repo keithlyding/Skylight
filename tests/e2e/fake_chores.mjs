@@ -116,6 +116,7 @@ export function choreView(D, msg) {
   const statsOut = (msg.ranges || []).map(([a, b]) => {
     const per = {};
     for (const c of D.chores || []) {
+      if (msg.kinds && !msg.kinds.includes(c.kind || "chore")) continue;
       const [due, done] = stats(c, parseYmd(a), parseYmd(b), ws);
       const t = (per[c.member_id || ""] ||= [0, 0]); t[0] += due; t[1] += done;
     }

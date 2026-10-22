@@ -1433,6 +1433,50 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  async chore_kinds(browser, base) {
+    // Chores tab: Chores | Homework | Adults share the engine; the editor picks the kind; Today shows kids'
+    // chores only unless Setup adds homework or grown-ups' tasks.
+    const p = await open(browser, base);
+    await p.evaluate(() => { localStorage.removeItem("skylight.choreKind"); el.ui.choreKind = null; });
+    await p.tab("chores");
+    eq(await text(p.S(".kindpick button")), ["✅ Chores", "📚 Homework", "📋 Adults"], "three kinds on the Chores tab");
+    const names = () => text(p.S(".ccol .cname"));
+    check((await names()).includes("Sam") && !(await names()).includes("Alex"), `chores: kids' columns (${await names()})`);
+    // a grown-up's task
+    await p.S('[data-action="chore-kind"][data-kind="task"]').click(); await p.waitForTimeout(300);
+    check((await names()).includes("Alex") && !(await names()).includes("Sam"), `adults: grown-ups' columns (${await names()})`);
+    await p.S('[data-action="new-chore"]').first().click(); await p.waitForTimeout(300);
+    eq(await p.S(".dialog .kindpick button.on").textContent(), "📋 Adults", "editor opens on the tab's kind");
+    check((await text(p.S("#c-member option")))[0].includes("Alex"), "grown-ups first in Who");
+    await p.S("#c-title").fill("Pay water bill");
+    await p.S("#c-repeat").selectOption("once");
+    await p.S('[data-action="save-chore"]').click(); await p.waitForTimeout(500);
+    const task = await p.evaluate(() => D.chores.at(-1));
+    check(task.kind === "task" && task.repeat === "once" && task.title === "Pay water bill", `task saved: ${JSON.stringify(task)}`);
+    check((await text(p.S(".ccol")))[0].includes("Pay water bill"), "task shows in the adult's column");
+    // homework for a kid, from the Homework tab
+    await p.S('[data-action="chore-kind"][data-kind="homework"]').click(); await p.waitForTimeout(300);
+    check((await text(p.S(".ccol")))[0].includes("Nothing today"), "homework tab starts empty");
+    await p.S('[data-action="new-chore"][data-member="z"]').click(); await p.waitForTimeout(300);
+    await p.S("#c-title").fill("Math worksheet");
+    await p.S('[data-action="save-chore"]').click(); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => D.chores.at(-1).kind), "homework", "homework saved as its own kind");
+    check((await text(p.S(".ccol")))[0].includes("Math worksheet"), "homework shows on the Homework tab");
+    await p.S('[data-action="chores-mode"][data-mode="progress"]').click(); await p.waitForTimeout(300);
+    check((await text(p.S("h1")))[0].includes("Progress · Homework"), "progress is per kind");
+    await p.S('[data-action="chores-mode"][data-mode="day"]').click(); await p.waitForTimeout(200);
+    await p.S('[data-action="chore-kind"][data-kind="chore"]').click(); await p.waitForTimeout(300);
+    check(!(await text(p.S(".ccol"))).join(" ").includes("Math worksheet"), "homework is not mixed into chores");
+    // the Today screen
+    await p.tab("home");
+    const home = async () => (await text(p.S(".hchores"))).join(" | ");
+    check(!(await home()).includes("Math worksheet") && !(await home()).includes("Pay water bill"), `Today: chores only by default (${await home()})`);
+    await p.evaluate(() => { D.settings.today_kinds = ["chore", "homework", "task"]; push(); }); await p.waitForTimeout(400);
+    check((await home()).includes("Math worksheet") && (await home()).includes("Pay water bill") && (await home()).includes("Alex"), `Today: homework and tasks when Setup says so (${await home()})`);
+    eq(p.errors, [], "page errors");
+    await p.context().close();
+  },
+
   async mealie_dialog_and_drag(browser, base) {
     // The meal editor: nothing listed until you type, results as you type (stale replies dropped), a planned
     // recipe is unmistakable, adding keeps the dialog open for a second recipe; drag a cell to another day.

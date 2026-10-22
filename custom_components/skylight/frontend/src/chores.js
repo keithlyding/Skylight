@@ -1,24 +1,41 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.60.0";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, adultsOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.61.0";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
 const EVERY_MONTHS = [1, 2, 3, 4, 6, 12];
+// Kinds of "chore": kids' chores, homework, and grown-ups' own tasks. Same schedule/check-off engine,
+// separate tabs on the Chores screen. (chores.py has the same list.)
+export const CHORE_KINDS = [["chore", "Chores", "✅", "Make bed"], ["homework", "Homework", "📚", "Math worksheet"], ["task", "Adults", "📋", "Pay the water bill"]];
+export const kindOf = (c) => (CHORE_KINDS.some(([k]) => k === c?.kind) ? c.kind : "chore");
+const KIND_WORD = { chore: "chore", homework: "assignment", task: "task" };
 
 export class ChoresView {
+  // Which kind the Chores tab is showing (saved on this device).
+  get choreKind() {
+    if (!this.ui.choreKind) { try { this.ui.choreKind = localStorage.getItem("skylight.choreKind") || "chore"; } catch (e) { this.ui.choreKind = "chore"; } }
+    return CHORE_KINDS.some(([k]) => k === this.ui.choreKind) ? this.ui.choreKind : "chore";
+  }
+  set choreKind(k) { this.ui.choreKind = k; try { localStorage.setItem("skylight.choreKind", k); } catch (e) { /* private mode */ } }
+  // Who can own a kind: chores and homework are for kids (and Household); tasks are for the grown-ups.
+  kindOwners(kind) { return kind === "task" ? adultsOf(this.members) : choreOwnersOf(this.members); }
 
-  openChoreDialog(c, memberId) {
+  openChoreDialog(c, memberId, kind) {
     const dlg = {
-      type: "chore", chore: c, repeat: c?.repeat || "daily", icon: c?.icon || "✅", iconOpen: false,
-      html: () => `
-        <h2>${c ? "Edit" : "New"} chore</h2>
+      type: "chore", chore: c, kind: c ? kindOf(c) : (kind || this.choreKind), repeat: c?.repeat || "daily", icon: c?.icon || "✅", iconOpen: false,
+      html: () => {
+        const spec = CHORE_KINDS.find(([k]) => k === dlg.kind) || CHORE_KINDS[0];
+        const owners = this.kindOwners(dlg.kind);
+        return `
+        <h2>${c ? "Edit" : "New"} ${KIND_WORD[dlg.kind]}</h2>
         ${!this.members.length ? `<p class="hint">Add family members in Setup first.</p>` : ""}
+        <div class="seg kindpick">${CHORE_KINDS.map(([k, l, ic]) => `<button class="${dlg.kind === k ? "on" : ""}" data-action="chore-type" data-kind="${k}">${ic} ${l}</button>`).join("")}</div>
         <div class="row">
           <label style="flex:0 0 auto">Icon${this.iconPicker(dlg, CHORE_ICONS)}</label>
-          <label>Chore<input id="c-title" value="${esc(c?.title)}" data-autofocus placeholder="Make bed"></label>
+          <label>${dlg.kind === "homework" ? "Assignment" : dlg.kind === "task" ? "Task" : "Chore"}<input id="c-title" value="${esc(c?.title)}" data-autofocus placeholder="${spec[3]}"></label>
         </div>
-        <label>Who<select id="c-member">${choreOwnersOf(this.members).map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Who<select id="c-member">${owners.map((m) => `<option value="${m.id}" ${m.id === (c?.member_id || memberId) ? "selected" : ""}>${m.avatar} ${esc(m.name)}</option>`).join("")}</select></label>
         <label>Repeats<select id="c-repeat" data-change="chore-repeat">
           <option value="daily" ${dlg.repeat === "daily" ? "selected" : ""}>Every day</option>
           <option value="days" ${dlg.repeat === "days" ? "selected" : ""}>On certain days of the week</option>
@@ -45,7 +62,8 @@ export class ChoresView {
           <span class="spacer"></span>
           <button data-action="close">Cancel</button>
           <button class="primary" data-action="save-chore" ${this.members.length ? "" : "disabled"}>Save</button>
-        </div>`,
+        </div>`;
+      },
     };
     this._openDialog(dlg);
   }
@@ -63,10 +81,10 @@ export class ChoresView {
     const $ = (id) => this.shadowRoot.getElementById(id);
     const c = this.ui.dialog.chore;
     const title = $("c-title").value.trim();
-    if (!title) { this._toast("Please name the chore"); return; }
+    if (!title) { this._toast(`Please name the ${KIND_WORD[this.ui.dialog.kind] || "chore"}`); return; }
     const rec = {
       ...(c || { id: uid(), completions: [], created: ymd(new Date()) }),
-      title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value,
+      title, icon: this.ui.dialog.icon || "✅", member_id: $("c-member").value, kind: this.ui.dialog.kind || "chore",
       repeat: $("c-repeat").value,
       days: [...this.shadowRoot.querySelectorAll(".c-day:checked")].map((i) => Number(i.value)),
       every_weeks: Number($("c-every").value) || 1,
@@ -79,6 +97,7 @@ export class ChoresView {
     if (rec.repeat === "monthly" && !rec.month_days.length) { this._toast("Pick at least one date"); return; }
     const chores = c ? this.data.chores.map((x) => (x.id === c.id ? rec : x)) : [...this.data.chores, rec];
     await this._set("chores", chores); this.closeDialog();
+    if (this.ui.tab === "chores" && rec.kind !== this.choreKind) { this.choreKind = rec.kind; this.render(); } // show where it went
   }
 
   // ---------- Mealie ----------
@@ -95,7 +114,7 @@ export class ChoresView {
     const thisWeek = this.weekStart(today);
     const ranges = [3, 2, 1, 0].map((k) => { const w = addDays(thisWeek, -7 * k); return [ymd(w), ymd(addDays(w, 6))]; });
     ranges.push([ymd(this.weekStart(day)), ymd(day)]);
-    return { start: ymd(start), end: ymd(end), ranges };
+    return { start: ymd(start), end: ymd(end), ranges, kinds: [this.choreKind] }; // totals for the kind on show
   }
   // Fetch again whenever chores change, the day changes or another range is needed; redraw when it arrives.
   _ensureChoreView() {
@@ -122,9 +141,9 @@ export class ChoresView {
     const s = this._cv?.days?.[c.id]?.[ymd(day)];
     return s ? { done: !!s[0], since: s[1] ? parseYmd(s[1]) : null } : null;
   }
-  // A person's chores that show on a day, each with its state.
-  _choresOn(memberId, day) {
-    return (this.data.chores || []).filter((c) => c.member_id === memberId)
+  // A person's chores (of the given kinds; all if none given) that show on a day, each with its state.
+  _choresOn(memberId, day, kinds = null) {
+    return (this.data.chores || []).filter((c) => c.member_id === memberId && (!kinds || kinds.includes(kindOf(c))))
       .map((c) => ({ c, st: this._choreState(c, day) })).filter((x) => x.st);
   }
   // "since Oct 1" on a chore that was missed and is kept on the list until done.
@@ -137,16 +156,18 @@ export class ChoresView {
     return t ? { due: t[0], done: t[1] } : { due: 0, done: 0 };
   }
 
-  // Progress: last 4 weeks of chore completion per person with chores (read-only).
+  // Progress: last 4 weeks of completion per person, for the kind the Chores tab is showing (read-only).
   renderProgress() {
-    const people = kidsOf(this.members).filter((m) => (this.data.chores || []).some((c) => c.member_id === m.id));
-    const homes = (this.members || []).filter((m) => m.role === "home" && (this.data.chores || []).some((c) => c.member_id === m.id));
-    const back = `<button data-action="chores-mode" data-mode="day">‹ Chores</button>`;
-    if (!people.length && !homes.length) return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div></div><div class="empty"><h2>No chores yet</h2><p>Add chores in the Chores tab to see weekly progress here.</p></div>`;
+    const kind = this.choreKind, [, kindLabel] = CHORE_KINDS.find(([k]) => k === kind);
+    const has = (m) => (this.data.chores || []).some((c) => c.member_id === m.id && kindOf(c) === kind);
+    const people = (kind === "task" ? adultsOf(this.members) : kidsOf(this.members)).filter(has);
+    const homes = kind === "chore" ? (this.members || []).filter((m) => m.role === "home" && has(m)) : [];
+    const back = `<button data-action="chores-mode" data-mode="day">‹ ${kindLabel}</button>`;
+    if (!people.length && !homes.length) return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div></div><div class="empty"><h2>Nothing here yet</h2><p>Add some on the ${kindLabel} tab to see weekly progress here.</p></div>`;
     const thisWeek = this.weekStart(new Date());
     const weeks = [3, 2, 1, 0].map((k) => addDays(thisWeek, -7 * k));
     const label = (w, k) => (k === 3 ? "This week" : w.toLocaleDateString([], { month: "short", day: "numeric" }));
-    return `<div class="toolbar"><div class="nav">${back}<h1>Progress</h1></div>${people.length ? `<span class="hint">Chores done, last 4 weeks</span>` : ""}</div>
+    return `<div class="toolbar"><div class="nav">${back}<h1>Progress · ${kindLabel}</h1></div>${people.length ? `<span class="hint">Done, last 4 weeks</span>` : ""}</div>
       ${people.length ? `<div class="progress">${people.map((m) => `<div class="prow" style="--c:${m.color}">
         <div class="pwho"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b></div>
         <div class="pbars">${weeks.map((w, k) => {
@@ -205,10 +226,12 @@ export class ChoresView {
     if (this.ui.choresMode === "progress") return this.renderProgress();
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
-    const kids = choreOwnersOf(this.members);
-    if (!kids.length) return `<div class="empty"><h2>No kids set up yet</h2><p>Chores are for kids (and Household profiles like “Maintenance”). Set someone's type in Setup → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
+    const kind = this.choreKind, [, kindLabel, , example] = CHORE_KINDS.find(([k]) => k === kind);
+    const kindBar = `<div class="seg kindpick">${CHORE_KINDS.map(([k, l, ic]) => `<button class="${kind === k ? "on" : ""}" data-action="chore-kind" data-kind="${k}">${ic} ${l}</button>`).join("")}</div>`;
+    const kids = this.kindOwners(kind);
+    if (!kids.length) return `${kindBar}<div class="empty"><h2>No ${kind === "task" ? "grown-ups" : "kids"} set up yet</h2><p>${kind === "task" ? "Tasks are for adults (and anyone else)." : `${kindLabel} are for kids (and Household profiles like “Maintenance”).`} Set someone's type in Setup → Family members.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     const cols = kids.map((m) => {
-      const chores = this._choresOn(m.id, day);
+      const chores = this._choresOn(m.id, day, [kind]);
       const done = chores.filter((x) => x.st.done).length;
       const pct = chores.length ? done / chores.length : 0;
       return `<div class="ccol" style="--c:${m.color}">
@@ -223,10 +246,10 @@ export class ChoresView {
               <span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}${this._sinceNote(st)}</span>
 <span class="box">${dn ? "✓" : ""}</span></button>
             <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`;
-        }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? "No chores" : ""}</p>`}
+        }).join("") || `<p class="hint center">${pct === 0 && !chores.length ? `Nothing ${isToday ? "today" : "this day"}` : ""}</p>`}
         ${chores.length && done === chores.length ? `<div class="alldone">All done! 🎉</div>` : ""}
         </div>
-        <button class="add wide" data-action="new-chore" data-member="${m.id}">+ Add chore</button>
+        <button class="add wide" data-action="new-chore" data-member="${m.id}" data-kind="${kind}">+ Add ${KIND_WORD[kind]}</button>
       </div>`;
     }).join("");
     return `<div class="toolbar"><div class="nav">
@@ -234,6 +257,7 @@ export class ChoresView {
         <button data-action="chore-day" data-dir="0">Today</button>
         <button class="icon" data-action="chore-day" data-dir="1">›</button>
         <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div>
+        ${kindBar}
         <button data-action="chores-mode" data-mode="progress">📊 Progress</button></div>
       ${this._cvError ? `<p class="hint center">${esc(this._cvError)}</p>` : ""}
       <div class="chores">${cols}</div>`;

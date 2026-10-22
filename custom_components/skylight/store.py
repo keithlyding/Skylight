@@ -17,6 +17,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from . import chores, security, verses
+from .chores import KINDS as CHORE_KINDS
 from .const import DEFAULT_DATA, EVENT_UPDATED, STORAGE_KEY, STORAGE_VERSION, VERSION, app_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -155,6 +156,8 @@ def clean_chores(chores: list[Any]) -> list[dict[str, Any]]:
         c = dict(c)
         if "icon" in c:
             c["icon"] = safe_token(c["icon"])
+        if "kind" in c and c["kind"] not in CHORE_KINDS:
+            c.pop("kind")  # unknown kind: a plain chore
         out.append(c)
     return out
 

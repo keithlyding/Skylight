@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.60.0";
-import { STYLES } from "./styles.js?v=1.60.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.60.0";
-import { CalendarView } from "./calendar.js?v=1.60.0";
-import { WeatherView } from "./weather.js?v=1.60.0";
-import { HomeView } from "./home.js?v=1.60.0";
-import { ChoresView } from "./chores.js?v=1.60.0";
-import { MealsView } from "./meals.js?v=1.60.0";
-import { ListsView } from "./lists.js?v=1.60.0";
-import { PhotosView } from "./photos.js?v=1.60.0";
-import { SettingsView } from "./settings.js?v=1.60.0";
-import { PickersView } from "./pickers.js?v=1.60.0";
-import { keepAwake } from "./wake.js?v=1.60.0";
-import { MlbView } from "./mlb.js?v=1.60.0";
-import { TravelView } from "./travel.js?v=1.60.0";
-import { NotesView } from "./notes.js?v=1.60.0";
-import { VerseView } from "./verses.js?v=1.60.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.61.0";
+import { STYLES } from "./styles.js?v=1.61.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.61.0";
+import { CalendarView } from "./calendar.js?v=1.61.0";
+import { WeatherView } from "./weather.js?v=1.61.0";
+import { HomeView } from "./home.js?v=1.61.0";
+import { ChoresView } from "./chores.js?v=1.61.0";
+import { MealsView } from "./meals.js?v=1.61.0";
+import { ListsView } from "./lists.js?v=1.61.0";
+import { PhotosView } from "./photos.js?v=1.61.0";
+import { SettingsView } from "./settings.js?v=1.61.0";
+import { PickersView } from "./pickers.js?v=1.61.0";
+import { keepAwake } from "./wake.js?v=1.61.0";
+import { MlbView } from "./mlb.js?v=1.61.0";
+import { TravelView } from "./travel.js?v=1.61.0";
+import { NotesView } from "./notes.js?v=1.61.0";
+import { VerseView } from "./verses.js?v=1.61.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -60,7 +60,7 @@ export class SkylightPanel extends HTMLElement {
     if (!conn?.addEventListener || this._connWatched === conn) return;
     this._connWatched = conn;
     this._onConnLost = () => {
-      diag("conn-lost");
+      diag("conn-lost", navigator.onLine === false ? "device offline" : "server");
       if (this._lostAt) return;
       this._lostAt = Date.now();
       clearTimeout(this._lostTimer);
@@ -84,7 +84,7 @@ export class SkylightPanel extends HTMLElement {
   renderConnBanner() {
     if (!this._lostAt || Date.now() - this._lostAt < 10000) return "";
     const since = this.fmtTime(new Date(this._lostAt));
-    return `<div class="connbar" role="status">📡 <b>Can't reach Home Assistant</b> — showing what was here at ${since}. Reconnecting…</div>`;
+    return `<div class="connbar" role="status">📡 <b>Can't reach Home Assistant</b> — showing what was here at ${since}. Reconnecting… <button data-action="reload-page">Reload</button></div>`;
   }
 
   disconnectedCallback() {
@@ -603,6 +603,12 @@ export class SkylightPanel extends HTMLElement {
       }
       case "esv-clear": await this._ws({ type: "skylight/verse/configure", esv_key: "" }); this._toast("ESV key removed"); this._verseReset(); break;
       case "verse-today": await this._set("settings", el.value === "off" ? { verse_today: false } : { verse_today: true, verse_place: el.value }); break;
+      case "today-kind": {
+        const cur = new Set(Array.isArray(this.settings.today_kinds) ? this.settings.today_kinds : ["chore"]);
+        if (el.checked) cur.add(d.kind); else cur.delete(d.kind);
+        cur.add("chore");
+        await this._set("settings", { today_kinds: [...cur] }); break;
+      }
       case "family-verses": {
         const refs = el.value.split("\n").map((r) => r.trim()).filter(Boolean);
         await this._set("settings", { family_verses: refs });
@@ -824,7 +830,9 @@ export class SkylightPanel extends HTMLElement {
         break;
       }
       case "chore-day": this.ui.choreDay = addDays(this.ui.choreDay, Number(d.dir)); if (d.dir === "0") this.ui.choreDay = startOfDay(new Date()); this.render(); break;
-      case "new-chore": this.openChoreDialog(null, d.member); break;
+      case "new-chore": this.openChoreDialog(null, d.member, d.kind); break;
+      case "chore-kind": this.choreKind = d.kind; this.ui.choresMode = "day"; this._resetScroll = true; this.render(); break;
+      case "chore-type": { const dlg = this.ui.dialog; if (dlg?.type === "chore" && dlg.kind !== d.kind) { dlg.kind = d.kind; this.renderDialog(); } break; }
       case "edit-chore": this.openChoreDialog(D.chores.find((c) => c.id === d.chore)); break;
       case "chore-repeat": this.ui.dialog.repeat = el.value; this._syncChoreDialog(); break;
       case "chore-every": this._syncChoreDialog(); break;

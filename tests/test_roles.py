@@ -89,7 +89,9 @@ def test_chore_picker_shows_kids_and_household():
     # Progress stays kids-only; a Household profile is not an adult (can't own lists)
     assert _node(f"console.log(JSON.stringify(kidsOf({json.dumps(members)}).map((m) => m.id)))") == ["sam", "leo"]
     assert _node(f"console.log(JSON.stringify(adultsOf({json.dumps(members)}).map((m) => m.id)))") == ["dad"]
-    assert '<label>Who<select id="c-member">${choreOwnersOf(this.members)' in JS
+    # The editor's Who list comes from kindOwners: kids and Household for chores and homework, adults for tasks.
+    assert '<label>Who<select id="c-member">${owners.map(' in JS
+    assert 'kindOwners(kind) { return kind === "task" ? adultsOf(this.members) : choreOwnersOf(this.members); }' in JS
 
 
 async def test_household_role_is_kept(hass, tmp_path, hass_storage, hass_ws_client):

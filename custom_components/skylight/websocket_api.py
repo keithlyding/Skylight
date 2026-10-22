@@ -262,6 +262,8 @@ def _day(value: str) -> date:
         vol.Required("end"): str,
         # Ranges [from, to] to total up per person (Progress weeks, "this week" on the Chores tab).
         vol.Optional("ranges", default=[]): vol.All([vol.All([str], vol.Length(min=2, max=2))], vol.Length(max=12)),
+        # Only these kinds count in the totals (the Chores tab shows one kind at a time). Days cover every chore.
+        vol.Optional("kinds"): vol.All([vol.In(chores.KINDS)], vol.Length(max=3)),
     }
 )
 @callback
@@ -281,9 +283,12 @@ def ws_chore_view(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     week_start = int(data["settings"].get("week_start") or 0)
     days = {c["id"]: chores.day_states(c, start, end, week_start) for c in data["chores"]}
     totals = []
+    kinds = msg.get("kinds")
     for a, b in ranges:
         per: dict[str, list[int]] = {}
         for c in data["chores"]:
+            if kinds and chores.kind_of(c) not in kinds:
+                continue
             due, done = chores.stats(c, a, b, today, week_start)
             t = per.setdefault(c.get("member_id") or "", [0, 0])
             t[0] += due

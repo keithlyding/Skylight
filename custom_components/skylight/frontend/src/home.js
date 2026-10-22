@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.60.0";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.61.0";
 
 export class HomeView {
 
@@ -75,12 +75,15 @@ export class HomeView {
     const lists = this.allLists();
     // Chores first so they're never pushed out of view; to-do lists in their own block after them.
     const listCards = members.filter((m) => m.today === "list").map((m) => this.renderHomeList(m, lists.find((l) => l.id === m.today_list))).join("");
+    // Which kinds show here: kids' chores by default; homework and grown-ups' tasks if Setup says so.
+    const kinds = Array.isArray(this.settings.today_kinds) ? this.settings.today_kinds : ["chore"];
     const chores = members.map((m) => {
       if (m.today === "none" || m.today === "list") return "";
-      if (m.role !== "kid" && m.role !== "home") return ""; // chores are for kids and household profiles
-      const list = this._choresOn(m.id, today);
+      const kid = m.role === "kid" || m.role === "home";
+      if (!kid && !kinds.includes("task")) return ""; // grown-ups only appear for their tasks
+      const list = this._choresOn(m.id, today, kinds);
       const done = list.filter((x) => x.st.done).length;
-      if (!list.length) { free.push(m); return ""; } // summarized in one line below
+      if (!list.length) { if (kid) free.push(m); return ""; } // kids are summarized in one line below
       return `<div class="hchores" style="--c:${m.color}">
         <div class="hhead"><span class="av" style="background:${m.color}">${m.avatar}</span><b>${esc(m.name)}</b>
           <span class="hint">${done}/${list.length}</span></div>
