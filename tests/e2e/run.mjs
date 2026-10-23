@@ -1320,8 +1320,9 @@ const SCENARIOS = {
     await p.evaluate(() => { D.members[0].today = undefined; push(); });
     await p.evaluate(() => { el.homeAgenda = false; el.homeDays = 7; el.render(); }); await p.waitForTimeout(300);
     const l7 = await layout();
-    eq(new Set(l7.cards.map(([left]) => left)).size, 1, "7 days: one narrow column");
-    eq(await p.S(".hinfo .tonight").count(), 1, "7 days: tonight's dinner stays with the family cards");
+    check(new Set(l7.cards.map(([left]) => left)).size >= 2, "7 days: the same wide side column as 5 days");
+    check(l7.chores.every(([, , bottom]) => bottom <= l7.bottom), `7 days: every kid's chores fully on screen (${JSON.stringify(l7)})`);
+    eq(await p.evaluate(() => { const c = el.shadowRoot.querySelector(".home .tg-col.today"); return c ? getComputedStyle(c).boxShadow !== "none" : null; }), true, "today's column has its accent edges");
     check((await text(p.S(".board")))[0]?.includes("none yet"), "empty message board is one line");
     eq(p.errors, [], "page errors");
     await p.context().close();

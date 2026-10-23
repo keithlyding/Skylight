@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.62.5";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.62.6";
 
 export class HomeView {
 
@@ -96,11 +96,11 @@ export class HomeView {
       </div>`;
     }).join("");
     if (this.settings.weather_hints !== false && this._wxSourceOk()) this._loadWeatherFull();
-    // Up to 5 days the side column is wide: the family cards span it; under them the kids' chores (and tonight's
+    // The side column is wide in every view (7 days no longer squeezes it): the family cards span it; under them the kids' chores (and tonight's
     // dinner, filling the space beside them) flow in columns, and grown-ups' lists in their own block below, so a
     // long list never sits above a kid's chores. Upcoming dates stay up top, one column wide. 7 days keeps a
     // narrow single column.
-    const wideSide = agenda || n <= 5;
+    const wideSide = true; // every view: the calendar never grows past the 5-day width
     const tonight = this.renderTonight();
     const upcoming = this.renderUpcoming();
     if (this.portraitPhone) {

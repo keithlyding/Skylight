@@ -135,7 +135,10 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .tg-hr { position:absolute; right:6px; transform:translateY(2px); font-size:11px; color:var(--muted); white-space:nowrap; }
 .tg-cols { position:relative; display:grid; grid-template-columns:repeat(var(--n), minmax(0,1fr)); background:repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--h)); }
 .tg-col { position:relative; border-left:1px solid var(--line); }
-.tg-col.today { background:color-mix(in srgb, var(--accent) 5%, transparent); }
+/* Today's column stands out: a tinted column with accent edges and a filled header. */
+.tg-col.today { background:color-mix(in srgb, var(--accent) 12%, transparent); box-shadow:inset 2px 0 0 var(--accent), inset -2px 0 0 var(--accent); }
+.tg-dh.today { background:color-mix(in srgb, var(--accent) 16%, transparent); border-radius:12px 12px 0 0; box-shadow:inset 0 4px 0 var(--accent); }
+.tg-dh.today .dn { color:var(--accent); font-weight:800; }
 .tg-slot { position:absolute; left:0; right:0; cursor:pointer; }
 .tg-slot:active { background:color-mix(in srgb, var(--accent) 12%, transparent); }
 .tg-ev { position:absolute; z-index:1; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:3px 6px; text-align:left; overflow:hidden;
@@ -159,8 +162,7 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 .hmid .members { flex:none; }
 .hometool.inhead { margin:0; }
 /* Fewer calendar days = a wider side column, so every kid's chores fit without scrolling. */
-.home.d7 { grid-template-columns:minmax(0,3fr) minmax(230px,1fr); }
-.home.d5 { grid-template-columns:minmax(0,1.15fr) minmax(260px,1fr); }
+.home.d7, .home.d5 { grid-template-columns:minmax(0,1.15fr) minmax(260px,1fr); } /* 5 days is as wide as the calendar gets */
 .home.d3 { grid-template-columns:minmax(0,1.05fr) minmax(260px,1fr); }
 .home.d1, .home.agenda { grid-template-columns:minmax(0,1fr) minmax(260px,1.25fr); }
 /* day (legacy) */
