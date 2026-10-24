@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.62.6";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.62.7";
 
 export class WeatherView {
 
@@ -115,9 +115,17 @@ export class WeatherView {
     try { return localStorage.getItem("skylight.weatherWhere") === "here" ? "here" : "home"; } catch (e) { return "home"; }
   }
   // Current conditions, shaped like a Home Assistant weather entity ({state, attributes}), or null.
+  // The chosen weather entity, or null while it has no usable state (the integration is still
+  // starting after a Home Assistant restart, or its service is down): nothing renders "NaN°".
   wxState() {
     if (this.wxWhere === "here") return this.wxHere?.state ? { state: this.wxHere.state, attributes: this.wxHere.attributes } : null;
-    return (this.settings.weather_entity && this._hass.states[this.settings.weather_entity]) || null;
+    const w = (this.settings.weather_entity && this._hass.states[this.settings.weather_entity]) || null;
+    return w && !["unavailable", "unknown"].includes(w.state) ? w : null;
+  }
+  // True when a weather entity is chosen but Home Assistant can't provide it right now.
+  wxDown() {
+    const w = this.settings.weather_entity && this._hass.states[this.settings.weather_entity];
+    return !!w && ["unavailable", "unknown"].includes(w.state);
   }
   _wxSourceOk() { return this.wxWhere === "here" || !!(this.settings.weather_entity && this._hass.states[this.settings.weather_entity]); }
 
@@ -323,7 +331,7 @@ export class WeatherView {
     const high = f?.temperature ?? (temps.length ? Math.max(...temps) : null);
     const low = f?.templow ?? (temps.length ? Math.min(...temps) : null);
     const cond = f?.condition || hours.find((h) => new Date(h.datetime).getHours() >= 12)?.condition || this.wxState()?.state;
-    if (high === null && !cond) return null;
+    if ((high === null || high === undefined) && !LABEL[cond]) return null; // nothing known: no bare "Weather today" tip
     // Evening (from 5 PM, or when only the night period is left): tonight's low and tomorrow instead.
     if (now.getHours() >= 17 || f?.is_daytime === false) {
       const tm = this.forecast?.[ymd(addDays(now, 1))];
@@ -460,6 +468,7 @@ export class WeatherView {
       if (this.wxWhere === "here") return `${this.renderWhereToggle()}<div class="empty">${this.wxHereErr
         ? `<h2>Can't show the weather here</h2><p>${esc(this.wxHereErr)}</p><button class="primary" data-action="wx-here-retry">Try again</button>`
         : `<h2>Finding where you are…</h2><p class="hint">Allow location if your phone asks.</p>`}</div>`;
+      if (this.wxDown()) return `${this.renderWhereToggle()}<div class="empty"><h2>Weather is unavailable right now</h2><p class="hint">Home Assistant's weather integration isn't answering. This is normal for a few minutes after a restart and usually comes back on its own.</p></div>`;
       return `${this.renderWhereToggle()}<div class="empty"><h2>No weather source</h2><p>Choose one in Setup → Display → Weather, or tap 📍 Here.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     }
     this._loadWeatherFull();

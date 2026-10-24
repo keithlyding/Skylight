@@ -1,6 +1,6 @@
 /* Skylight panel: lists and linked HA to-do lists (methods mixed into SkylightPanel). */
 
-import { PALETTE, adultsOf, orderItems, groupLists, uid, esc, ymd, parseYmd, startOfDay } from "./helpers.js?v=1.62.6";
+import { PALETTE, adultsOf, orderItems, groupLists, uid, esc, ymd, parseYmd, startOfDay } from "./helpers.js?v=1.62.7";
 
 export class ListsView {
 

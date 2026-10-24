@@ -67,7 +67,7 @@ async def async_get_alerts(hass: HomeAssistant, force: bool = False) -> dict[str
                 alerts.sort(key=lambda a: SEVERITY_ORDER.get(a["severity"], 9))
                 result["alerts"] = alerts
     except (aiohttp.ClientError, TimeoutError) as err:
-        result["error"] = f"Weather alerts unavailable: {err}"
+        result["error"] = f"Weather alerts unavailable: {err or type(err).__name__}"
     hass.data[CACHE_KEY] = {"at": time.monotonic(), "result": result}
     return result
 

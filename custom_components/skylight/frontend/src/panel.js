@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.6";
-import { STYLES } from "./styles.js?v=1.62.6";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.6";
-import { CalendarView } from "./calendar.js?v=1.62.6";
-import { WeatherView } from "./weather.js?v=1.62.6";
-import { HomeView } from "./home.js?v=1.62.6";
-import { ChoresView } from "./chores.js?v=1.62.6";
-import { MealsView } from "./meals.js?v=1.62.6";
-import { ListsView } from "./lists.js?v=1.62.6";
-import { PhotosView } from "./photos.js?v=1.62.6";
-import { SettingsView } from "./settings.js?v=1.62.6";
-import { PickersView } from "./pickers.js?v=1.62.6";
-import { keepAwake } from "./wake.js?v=1.62.6";
-import { MlbView } from "./mlb.js?v=1.62.6";
-import { TravelView } from "./travel.js?v=1.62.6";
-import { NotesView } from "./notes.js?v=1.62.6";
-import { VerseView } from "./verses.js?v=1.62.6";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.7";
+import { STYLES } from "./styles.js?v=1.62.7";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.7";
+import { CalendarView } from "./calendar.js?v=1.62.7";
+import { WeatherView } from "./weather.js?v=1.62.7";
+import { HomeView } from "./home.js?v=1.62.7";
+import { ChoresView } from "./chores.js?v=1.62.7";
+import { MealsView } from "./meals.js?v=1.62.7";
+import { ListsView } from "./lists.js?v=1.62.7";
+import { PhotosView } from "./photos.js?v=1.62.7";
+import { SettingsView } from "./settings.js?v=1.62.7";
+import { PickersView } from "./pickers.js?v=1.62.7";
+import { keepAwake } from "./wake.js?v=1.62.7";
+import { MlbView } from "./mlb.js?v=1.62.7";
+import { TravelView } from "./travel.js?v=1.62.7";
+import { NotesView } from "./notes.js?v=1.62.7";
+import { VerseView } from "./verses.js?v=1.62.7";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -1443,7 +1443,8 @@ export class SkylightPanel extends HTMLElement {
 
   renderHeader() {
     const w = this.wxState();
-    const weather = w ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(Number(w.attributes.temperature))}°</b></div>` : "";
+    const temp = Number(w?.attributes?.temperature);
+    const weather = w && !Number.isNaN(temp) ? `<div class="weather">${WEATHER_ICONS[w.state] || "🌡️"}<b>${Math.round(temp)}°</b></div>` : "";
     const showChips = ["calendar", "home"].includes(this.ui.tab);
     return `<header>
       <div class="when ${this.verseInHeader ? "withverse" : ""}"><div id="clock" class="clock"></div><div class="dateline"><div id="date" class="date"></div>${this.settings.seasonal ? `<span class="season" title="Seasonal accent">${seasonFor(new Date()).emoji}</span>` : ""}</div>${this.renderHeaderVerse()}</div>

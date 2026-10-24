@@ -4,7 +4,7 @@
    score, then the final). Tapping it opens the team page: schedule, division, wild-card race and who
    to root for in today's other games. Home Assistant fetches and works everything out (mlb.py). */
 
-import { esc } from "./helpers.js?v=1.62.6";
+import { esc } from "./helpers.js?v=1.62.7";
 
 // id: [abbreviation, short name] (names only; the server has the rest)
 export const MLB_TEAMS = {

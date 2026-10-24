@@ -1410,6 +1410,25 @@ const SCENARIOS = {
     }
   },
 
+  // Weather entity "unavailable" (its integration still starting after an HA restart): no "NaN°" in the
+  // header, no "null°" on the Weather tab, and a plain explanation instead.
+  async weather_unavailable(browser, base) {
+    const p = await open(browser, base, { width: 1536, height: 864 });
+    await p.evaluate(() => { window.hass.states["weather.home"] = { state: "unavailable", attributes: { friendly_name: "Forecast Home" } }; el.wx = null; el.forecast = {}; el.hass = { ...window.hass }; el.render(); });
+    await p.waitForTimeout(300);
+    const head = (await p.S("header").textContent()) || "";
+    check(!/NaN|null/.test(head), `header shows no NaN/null (${head.slice(0, 80)})`);
+    eq(await p.S("header .weather").count(), 0, "header temperature hidden while weather is unavailable");
+    await p.evaluate(() => { el.ui.tab = "weather"; el.render(); }); await p.waitForTimeout(300);
+    const body = (await p.S("main").textContent()) || "";
+    check(!/NaN°|null°/.test(body), "weather tab shows no NaN°/null°");
+    check(/Weather is unavailable right now/.test(body), "weather tab explains the outage");
+    await p.evaluate(() => { el.ui.tab = "home"; el.render(); }); await p.waitForTimeout(300);
+    const tips = await text(p.S(".hints .hint, .hints li, .hint"));
+    check(!tips.some((t) => /^\S*\s*Weather today$/.test(t)), `no bare "Weather today" tip (${JSON.stringify(tips.slice(0, 5))})`);
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
   async fresh_start(browser, base) {
     // A wall screen reloads once a day when its screen-off sensor turns off (the screen came back on).
     const p = await open(browser, base, { width: 1536, height: 864, ctx: { hasTouch: true }, at: "2026-10-22T06:00:00" });
@@ -1616,8 +1635,14 @@ const SCENARIOS = {
     const p = await open(browser, base);
     await p.tab("meals");
     const calls = () => p.evaluate(() => window.calls.filter((c) => c.type === "skylight/mealie/recipes").map((c) => c.query));
-    const tomorrow = await p.evaluate(() => { const d = new Date(Date.now() + 864e5); return d.toISOString().slice(0, 10); });
-    const today = await p.evaluate(() => new Date().toISOString().slice(0, 10));
+    // Two cells that are on the grid whatever weekday it is: "tomorrow" is off the grid on Saturdays
+    // (the grid shows this week), so use today's dinner as the source and the first other visible day's lunch as the target.
+    const today = await p.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+    // Source: a visible dinner cell with nothing planned (today's dinner is already planned in the fake).
+    const tomorrow = await p.evaluate(() => el.shadowRoot.querySelector('.meal.emptymeal[data-slot="dinner"]')?.dataset.date);
+    check(!!tomorrow, "the meal grid shows an unplanned dinner");
+    const other = await p.evaluate((t) => [...el.shadowRoot.querySelectorAll('.meal[data-slot="lunch"]')].map((c) => c.dataset.date).find((d) => d !== t), tomorrow);
+    check(!!other, "the meal grid shows another day's lunch");
     await p.S(`.meal[data-date="${tomorrow}"][data-slot="dinner"]`).click(); await p.waitForTimeout(300);
     eq(await calls(), [], "no search until something is typed");
     eq(await p.S("#mealie-results .rcardmini").count(), 0, "no recipe list without a search");
@@ -1642,9 +1667,9 @@ const SCENARIOS = {
     const cellText = (await text(p.S(`.meal[data-date="${tomorrow}"][data-slot="dinner"]`)))[0] || "";
     check(cellText.includes("Chicken Tacos") && cellText.includes("Pancakes"), `both show in the cell: ${cellText}`);
 
-    // drag tomorrow's dinner onto today's lunch
+    // drag that dinner onto another day's lunch
     const from = await p.S(`.meal[data-date="${tomorrow}"][data-slot="dinner"]`).boundingBox();
-    const to = await p.S(`.meal[data-date="${today}"][data-slot="lunch"]`).boundingBox();
+    const to = await p.S(`.meal[data-date="${other}"][data-slot="lunch"]`).boundingBox();
     await p.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await p.mouse.down();
     await p.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 4, { steps: 3 });
@@ -1653,9 +1678,9 @@ const SCENARIOS = {
     await p.mouse.up(); await p.waitForTimeout(700);
     const moves = await p.evaluate(() => window.MOVES || []);
     eq(moves.length, 2, "both entries moved");
-    check(moves.every((m) => m.date === today && m.slot === "lunch"), `moved to today's lunch: ${JSON.stringify(moves)}`);
-    const lunch = (await text(p.S(`.meal[data-date="${today}"][data-slot="lunch"]`)))[0] || "";
-    check(lunch.includes("Chicken Tacos") && lunch.includes("Pancakes"), `today's lunch now holds them: ${lunch}`);
+    check(moves.every((m) => m.date === other && m.slot === "lunch"), `moved to the other day's lunch: ${JSON.stringify(moves)}`);
+    const lunch = (await text(p.S(`.meal[data-date="${other}"][data-slot="lunch"]`)))[0] || "";
+    check(lunch.includes("Chicken Tacos") && lunch.includes("Pancakes"), `that lunch now holds them: ${lunch}`);
     eq(await p.S(".dialog").count(), 0, "a drag doesn't open the editor");
     eq(p.errors, [], "page errors");
     await p.context().close();
