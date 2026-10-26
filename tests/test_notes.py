@@ -15,7 +15,9 @@ def test_expiry():
     now = dt_util.now().replace(hour=15)
     today_end = dt_util.parse_datetime(notes.expires_at("today", now))
     assert dt_util.as_local(today_end).date() == now.date() + timedelta(days=1) and today_end.hour == 0
-    assert dt_util.parse_datetime(notes.expires_at("week", now)) - today_end == timedelta(days=7)
+    week_end = dt_util.parse_datetime(notes.expires_at("week", now))
+    # Compare calendar days, not a timedelta: across a DST change the week is an hour short or long.
+    assert dt_util.as_local(week_end).date() == dt_util.as_local(today_end).date() + timedelta(days=7) and week_end.hour == 0
     assert notes.expires_at("never", now) is None
     kept = notes.live_notes([{"id": "a", "expires": (now - timedelta(minutes=1)).isoformat()}, {"id": "b", "expires": None}], now)
     assert [n["id"] for n in kept] == ["b"]

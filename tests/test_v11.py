@@ -18,6 +18,9 @@ async def setup(hass: HomeAssistant, tmp_path):
     hass.config.config_dir = str(tmp_path)
     (tmp_path / ".storage").mkdir()
     assert await async_setup_component(hass, "http", {})
+    # The calendar component registers HTTP views and websocket commands; load it before any test
+    # client starts the aiohttp app, since the app's router is frozen from then on (HA 2026.10+).
+    assert await async_setup_component(hass, "calendar", {})
     entry = MockConfigEntry(domain=DOMAIN, data={})
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
