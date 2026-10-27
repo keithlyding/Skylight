@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie
+      - run: pip install pytest-homeassistant-custom-component home-assistant-frontend ical respx aiomealie gcal_sync # gcal_sync: the Google calendar library the free/busy tests build events with
       - run: pytest -q
 
   e2e:
