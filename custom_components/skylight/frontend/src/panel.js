@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.62.7";
-import { STYLES } from "./styles.js?v=1.62.7";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.62.7";
-import { CalendarView } from "./calendar.js?v=1.62.7";
-import { WeatherView } from "./weather.js?v=1.62.7";
-import { HomeView } from "./home.js?v=1.62.7";
-import { ChoresView } from "./chores.js?v=1.62.7";
-import { MealsView } from "./meals.js?v=1.62.7";
-import { ListsView } from "./lists.js?v=1.62.7";
-import { PhotosView } from "./photos.js?v=1.62.7";
-import { SettingsView } from "./settings.js?v=1.62.7";
-import { PickersView } from "./pickers.js?v=1.62.7";
-import { keepAwake } from "./wake.js?v=1.62.7";
-import { MlbView } from "./mlb.js?v=1.62.7";
-import { TravelView } from "./travel.js?v=1.62.7";
-import { NotesView } from "./notes.js?v=1.62.7";
-import { VerseView } from "./verses.js?v=1.62.7";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.63.0";
+import { STYLES } from "./styles.js?v=1.63.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.63.0";
+import { CalendarView } from "./calendar.js?v=1.63.0";
+import { WeatherView } from "./weather.js?v=1.63.0";
+import { HomeView } from "./home.js?v=1.63.0";
+import { ChoresView } from "./chores.js?v=1.63.0";
+import { MealsView } from "./meals.js?v=1.63.0";
+import { ListsView } from "./lists.js?v=1.63.0";
+import { PhotosView } from "./photos.js?v=1.63.0";
+import { SettingsView } from "./settings.js?v=1.63.0";
+import { PickersView } from "./pickers.js?v=1.63.0";
+import { keepAwake } from "./wake.js?v=1.63.0";
+import { MlbView } from "./mlb.js?v=1.63.0";
+import { TravelView } from "./travel.js?v=1.63.0";
+import { NotesView } from "./notes.js?v=1.63.0";
+import { VerseView } from "./verses.js?v=1.63.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -622,6 +622,14 @@ export class SkylightPanel extends HTMLElement {
         this._toast("Google Places key saved"); break;
       }
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
+      case "free-all-day": {
+        const btn = this.shadowRoot.querySelector('[data-action="free-all-day"]'); if (btn) btn.disabled = true;
+        try {
+          const r = await this._ws({ type: "skylight/calendar/free_all_day" });
+          this._toast(r.changed ? `${r.changed} all-day event${r.changed === 1 ? "" : "s"} now show as Free` : "Every all-day event already shows as Free");
+        } catch (e) { this._toast(`Couldn't update: ${e?.message || e}`); } finally { if (btn) btn.disabled = false; }
+        break;
+      }
       case "esv-save": {
         const key = this.shadowRoot.getElementById("esv-key").value.trim();
         if (!key) return;

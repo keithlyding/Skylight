@@ -53,7 +53,8 @@ window.hass = {
     case "skylight/chore/toggle": {const c=D.chores.find(x=>x.id===msg.chore_id); const i=c.completions.indexOf(msg.date); if(i>=0){c.completions.splice(i,1); if(c.done_log) delete c.done_log[msg.date];}else{c.completions.push(msg.date); c.completions.sort(); (c.done_log||={})[msg.date]={at:new Date().toISOString(),by:"Test User"};} push(); return null;}
     case "skylight/stars/adjust": D.stars[msg.member_id]=(D.stars[msg.member_id]||0)+msg.delta; push(); return null;
     case "skylight/reward/redeem": {const r=D.rewards.find(x=>x.id===msg.reward_id); if(D.stars[msg.member_id]<r.cost) return {redeemed:false}; D.stars[msg.member_id]-=r.cost; push(); return {redeemed:true}}
-    case "calendar/event/create": created.push(msg); return null;
+    case "calendar/event/create": case "skylight/calendar/event/create": created.push(msg); return null;
+    case "skylight/calendar/free_all_day": return {changed:0,calendars:0};
     case "calendar/event/delete": { const i=created.findIndex(c=>"new-"+c.entity_id===msg.uid); if(i>=0) created.splice(i,1); return null; }
     case "skylight/calendar/create": hass.states["calendar."+msg.name.toLowerCase()]={attributes:{friendly_name:msg.name}}; return {entry_id:"x"};
     case "call_service": { const t=msg.service_data.type;

@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.62.7";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.63.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -81,6 +81,7 @@ export class CalendarView {
         return [start, addDays(start, 42)];
       }
       case "agenda": return [a, addDays(a, 14)];
+      case "7day": { const w = this.weekStart(a); return [w, addDays(w, 7)]; } // a whole week, Sunday (or the chosen first day) on the left
       default: return [a, addDays(a, viewDays(this.calView) || 7)];
     }
   }
@@ -491,7 +492,7 @@ export class CalendarView {
     const who = this.ui.dialog.who || new Set();
     const plan = this._planCopies(ev, who, form.entity);
     if (!ev) {
-      for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
+      for (const entity of plan.create) await this._ws({ type: "skylight/calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
     } else if (this._isRecurring(ev)) {
       // Series edits on calendars without update support need the repeat rule to recreate the series.
       const seriesOk = plan.keep.every((c) => this._canUpdate(c.entity) || c.rrule || ev.rrule);
@@ -501,18 +502,18 @@ export class CalendarView {
       for (const entity of plan.create) {
         // New person on a repeating event: "this" adds just this occurrence; otherwise the series from here.
         const rrule = scope === "this" ? "" : ev.rrule;
-        await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form, { rrule }) });
+        await this._ws({ type: "skylight/calendar/event/create", entity_id: entity, event: this._eventPayload(form, { rrule }) });
       }
       for (const c of plan.remove) await this._deleteCopy(c, scope);
     } else {
       for (const c of plan.keep) {
         if (this._canUpdate(c.entity)) await this._ws({ type: "calendar/event/update", entity_id: c.entity, uid: c.uid, event: this._eventPayload(form, { rrule: "" }) });
         else { // e.g. Google Calendar in Home Assistant: no edit support, so replace the event
-          await this._ws({ type: "calendar/event/create", entity_id: c.entity, event: this._eventPayload(form, { rrule: "" }) });
+          await this._ws({ type: "skylight/calendar/event/create", entity_id: c.entity, event: this._eventPayload(form, { rrule: "" }) });
           await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
         }
       }
-      for (const entity of plan.create) await this._ws({ type: "calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
+      for (const entity of plan.create) await this._ws({ type: "skylight/calendar/event/create", entity_id: entity, event: this._eventPayload(form) });
       for (const c of plan.remove) await this._ws({ type: "calendar/event/delete", entity_id: c.entity, uid: c.uid });
     }
     await this._saveReminder(ev, form, plan);
@@ -580,7 +581,7 @@ export class CalendarView {
       const shiftDays = Math.round((startOfDay(first) - startOfDay(ev.start)) / 86400000);
       created = this._eventPayload(form, { shiftDays, rrule });
     }
-    await this._ws({ type: "calendar/event/create", entity_id: c.entity, event: created });
+    await this._ws({ type: "skylight/calendar/event/create", entity_id: c.entity, event: created });
     await this._deleteCopy(c, scope === "all" ? null : scope);
   }
 
@@ -633,7 +634,7 @@ export class CalendarView {
     if (noCals) return toolbar + `<div class="empty"><h2>No calendars connected yet</h2><p>Open <b>Setup</b> to add family members and create or link calendars.</p><button class="primary" data-action="tab" data-tab="settings">Go to Setup</button></div>`;
     const body = v === "month" ? this.renderMonth()
       : v === "agenda" ? this.renderSchedule()
-      : this.renderTimeGrid([...Array(viewDays(v) || 7)].map((_, i) => addDays(a, i)), { labels: (d) => this.dayLabel(d, viewDays(v)) });
+      : this.renderTimeGrid([...Array(viewDays(v) || 7)].map((_, i) => addDays(this._range()[0], i)), { labels: (d) => this.dayLabel(d, viewDays(v)) }); // the range, not the anchor: 7 days is a whole week
     return toolbar + body;
   }
 

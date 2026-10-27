@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.62.7";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.62.7";
-import { MLB_TEAMS } from "./mlb.js?v=1.62.7";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.63.0";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.63.0";
+import { MLB_TEAMS } from "./mlb.js?v=1.63.0";
 
 export class SettingsView {
 
@@ -367,6 +367,8 @@ export class SettingsView {
           return `<label class="check"><input type="checkbox" data-change="family-cal" data-entity="${e}" ${fam.has(e) ? "checked" : ""}> ${esc(this.calName(e))} ${o ? `<small class="tag" style="background:${o.color}">${o.avatar} ${esc(o.name)}</small>` : ""}</label>`;
         }).join("") || `<p class="hint">No calendars in Home Assistant yet.</p>`}</div>
         <label class="inline">Family color <input type="color" value="${s.family_color}" data-change="setting" data-key="family_color"></label>
+        <p class="hint">All-day events added here to a Google calendar show as <b>Free</b>, like in Google's own app, so a family day doesn't block anyone's availability. Timed events stay Busy.</p>
+        ${Object.values(this.calInfo || {}).some((c) => c.integration === "google") ? `<div class="additem"><button data-action="free-all-day">Mark existing all-day events as Free</button></div>` : ""}
       </section>
 
 <section class="card">

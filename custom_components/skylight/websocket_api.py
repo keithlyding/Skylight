@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.components import websocket_api
+from homeassistant.components.calendar import WEBSOCKET_EVENT_SCHEMA, CalendarEntityFeature
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.exceptions import HomeAssistantError, Unauthorized
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.util import dt as dt_util
 
 import logging
 
 from .const import DOMAIN, EDITABLE_KEYS, EVENT_UPDATED, VERSION
-from . import chores, immich, photos, security
+from . import calendar_events, chores, immich, photos, security
 from .photos import async_delete_photo
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,6 +53,8 @@ def async_register(hass: HomeAssistant) -> None:
         ws_immich_albums,
         ws_immich_configure,
         ws_calendars,
+        ws_event_create,
+        ws_free_all_day,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -429,6 +434,75 @@ async def ws_immich_configure(hass: HomeAssistant, connection, msg: dict[str, An
     await store.async_set_immich(msg["url"], msg.get("api_key") or None, msg["albums"], msg["favorites"])
     immich.invalidate(hass)
     connection.send_result(msg["id"])
+
+
+def _calendar_component(hass: HomeAssistant):
+    """Home Assistant's calendar entity component (by its typed key, or the plain domain on older cores)."""
+    try:
+        from homeassistant.components.calendar import DATA_COMPONENT  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - older Home Assistant
+        return hass.data.get("calendar")
+    return hass.data.get(DATA_COMPONENT)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/calendar/event/create",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("event"): WEBSOCKET_EVENT_SCHEMA,
+        vol.Optional("busy"): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_event_create(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Like calendar/event/create, but all-day events on Google calendars show as Free.
+
+    Google's app gives all-day events "Free" and timed events "Busy"; Home Assistant's own command
+    can't say, so Google makes everything Busy. `busy` overrides the default for this event.
+    """
+    if not connection.user.permissions.check_entity(msg["entity_id"], POLICY_CONTROL):
+        raise Unauthorized(entity_id=msg["entity_id"])
+    component = _calendar_component(hass)
+    entity = component.get_entity(msg["entity_id"]) if component else None
+    if entity is None:
+        connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, "Entity not found")
+        return
+    if not entity.supported_features & CalendarEntityFeature.CREATE_EVENT:
+        connection.send_error(msg["id"], websocket_api.ERR_NOT_SUPPORTED, "Calendar does not support event creation")
+        return
+    try:
+        await calendar_events.async_create_event(entity, msg["event"], msg.get("busy"))
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "failed", str(err))
+        return
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): "skylight/calendar/free_all_day", vol.Optional("entity_id"): cv.entity_id})
+@websocket_api.async_response
+@security.gated
+async def ws_free_all_day(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Mark existing all-day events on the Google calendars (or one of them) as Free.
+
+    Covers last week through the next 400 days. Returns how many events and calendars changed.
+    """
+    component = _calendar_component(hass)
+    entities = list(component.entities) if component else []
+    if msg.get("entity_id"):
+        entities = [e for e in entities if e.entity_id == msg["entity_id"]]
+    now = dt_util.now()
+    changed = calendars = 0
+    for entity in entities:
+        if not calendar_events.is_google(entity):
+            continue
+        try:
+            n = await calendar_events.async_free_all_day(entity, now - timedelta(days=7), now + timedelta(days=400))
+        except Exception as err:  # noqa: BLE001 - one calendar failing shouldn't stop the rest
+            _LOGGER.warning("Couldn't update all-day events on %s: %s", entity.entity_id, err)
+            continue
+        calendars += 1
+        changed += n
+    connection.send_result(msg["id"], {"changed": changed, "calendars": calendars})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "skylight/calendars"})

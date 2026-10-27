@@ -96,6 +96,26 @@ async def test_create_local_calendar(hass: HomeAssistant, setup, hass_ws_client)
     assert hass.states.get("calendar.soccer") is not None
 
 
+async def test_skylight_event_create_falls_back_for_local_calendars(hass: HomeAssistant, setup, hass_ws_client) -> None:
+    """Our create command takes the panel's exact payloads and, off Google, behaves like calendar/event/create."""
+    ws = await hass_ws_client(hass)
+    await ws.send_json({"id": 1, "type": "skylight/calendar/create", "name": "Family"})
+    assert (await ws.receive_json())["success"]
+    await hass.async_block_till_done()
+    await ws.send_json({"id": 2, "type": "skylight/calendar/event/create", "entity_id": "calendar.family",
+                        "event": {"summary": "Vacation", "dtstart": "2026-11-02", "dtend": "2026-11-05"}})
+    assert (await ws.receive_json())["success"]
+    await ws.send_json({"id": 3, "type": "skylight/calendar/event/create", "entity_id": "calendar.family", "busy": True,
+                        "event": {"summary": "Dentist", "dtstart": "2026-11-02T09:00:00-05:00", "dtend": "2026-11-02T10:00:00-05:00"}})
+    assert (await ws.receive_json())["success"]
+    await ws.send_json({"id": 4, "type": "skylight/calendar/event/create", "entity_id": "calendar.nope",
+                        "event": {"summary": "x", "dtstart": "2026-11-02", "dtend": "2026-11-03"}})
+    assert (await ws.receive_json())["error"]["code"] == "not_found"
+    await hass.async_block_till_done()
+    events = await hass.services.async_call("calendar", "get_events", {"entity_id": "calendar.family", "start_date_time": "2026-11-01T00:00:00", "end_date_time": "2026-11-08T00:00:00"}, blocking=True, return_response=True)
+    assert sorted(e["summary"] for e in events["calendar.family"]["events"]) == ["Dentist", "Vacation"]
+
+
 async def test_photo_upload_and_delete(hass: HomeAssistant, setup, hass_client, hass_ws_client, tmp_path) -> None:
     http = await hass_client()
     form = aiohttp.FormData()

@@ -260,7 +260,7 @@ const SCENARIOS = {
     const p = await open(browser, base);
     await p.evaluate(() => el.openEventDialog(null, "2026-10-05")); await p.waitForTimeout(300);
     await p.S("#ev-title").fill("Haircut");
-    const before = await p.evaluate(() => window.calls.filter((c) => c.type === "calendar/event/create").length);
+    const before = await p.evaluate(() => window.calls.filter((c) => c.type === "skylight/calendar/event/create").length);
     await p.evaluate(() => { window.SLOW = 1500; });
     const btn = p.S('[data-action="save-event"]');
     await btn.click(); await p.waitForTimeout(200);
@@ -269,7 +269,7 @@ const SCENARIOS = {
     await btn.evaluate((b) => { b.disabled = false; b.click(); }); // even a forced second tap is ignored
     await p.waitForTimeout(2200);
     await p.evaluate(() => { window.SLOW = 0; });
-    eq(await p.evaluate(() => window.calls.filter((c) => c.type === "calendar/event/create").length), before + 1, "saved once");
+    eq(await p.evaluate(() => window.calls.filter((c) => c.type === "skylight/calendar/event/create").length), before + 1, "saved once");
     eq(await p.S(".dialog").count(), 0, "dialog closed after saving");
     eq(p.errors, [], "page errors");
     await p.context().close();
@@ -279,13 +279,20 @@ const SCENARIOS = {
     // A multi-day all-day event is one bar across its days, not a copy per day; overlapping ones stack.
     const p = await open(browser, base, { width: 1300, height: 912 });
     await p.evaluate(() => {
-      const ymd = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+      // The 7-day view shows the whole week (first day on the left), so place the events from the week's start.
+      const ymd = (n) => { const d = el.weekStart(new Date()); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
       const cal = "calendar.family";
       window.EVS[cal].push({ summary: "Fall Break", start: { date: ymd(0) }, end: { date: ymd(3) }, uid: "fb" },
                           { summary: "Stay at Holiday Inn", start: { date: ymd(1) }, end: { date: ymd(3) }, uid: "hi" });
       el.ui.tab = "calendar"; el.ui.view = "7day"; el.ui.anchor = new Date(); el._eventsKey = ""; el._loadEvents();
     });
     await p.waitForTimeout(800);
+    const week = await p.evaluate(() => {
+      const ws = el.weekStart(new Date()); const want = `${ws.getFullYear()}-${String(ws.getMonth() + 1).padStart(2, "0")}-${String(ws.getDate()).padStart(2, "0")}`;
+      const heads = [...el.shadowRoot.querySelectorAll(".tg-dh[data-date]")].map((h) => h.dataset.date);
+      return { first: heads[0], n: heads.length, want };
+    });
+    eq([week.first, week.n], [week.want, 7], "7-day calendar shows the whole week starting on its first day, whatever today is");
     const bars = await p.evaluate(() => {
       const col = el.shadowRoot.querySelector(".tg-adbg").getBoundingClientRect().width;
       return [...el.shadowRoot.querySelectorAll(".tg-adbar")].filter((b) => /Fall Break|Holiday Inn/.test(b.textContent))

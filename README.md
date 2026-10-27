@@ -47,6 +47,7 @@ Requires Home Assistant **2024.7 or newer**. The automated tests run against 202
 - **Google / iCloud / Outlook**: an admin adds the matching integration once (Google Calendar, CalDAV, or a remote-calendar integration) under Settings → Devices & Services. Those calendars then show up in Lyding Strike's member and family calendar pickers. Whether you can *add* events to them from the tablet depends on that integration: Local and Google calendars support it, while read-only feeds such as ICS URLs do not.
 - **Subscribe to a calendar link** (iCal / webcal) from Lyding Strike Setup for school, sports or Plan to Eat. This uses HA's *Remote Calendar* integration (HA 2025.4+), and the calendar is read-only.
 - A calendar assigned to a person uses that person's color. Calendars ticked as **Shared family calendars** use the family color.
+- **All-day events on Google calendars show as Free.** Google's app marks all-day events "Free" and timed events "Busy", but events created through Home Assistant come out Busy, so a family "Vacation" blocked everyone's availability. Lyding Strike creates all-day events as Free and timed events as Busy. Setup → Family & calendars → Calendars has a button that fixes the all-day events already on your Google calendars (last week through next year; a repeating series is fixed in one go).
 
 ## Meal planning with Mealie (recommended)
 
