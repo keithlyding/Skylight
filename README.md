@@ -2,7 +2,7 @@
 
 [![Validate](https://github.com/keithlyding/Skylight/actions/workflows/validate.yml/badge.svg)](https://github.com/keithlyding/Skylight/actions/workflows/validate.yml) [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 
-A family display for Home Assistant in the style of a Skylight Calendar, built for a wall-mounted Android tablet. It's called **Lyding Strike** by default; rename it under Setup → Display → *Name* (the sidebar, the integration and the to-do list names follow).
+A family display for Home Assistant in the style of a Skylight Calendar, built for a wall-mounted Android tablet/raspberry pi & touch display. It's called **Lyding Strike** by default; rename it under Setup → Display → *Name* (the sidebar, the integration and the to-do list names follow).
 **Everything is set up from the touchscreen**: family members, calendars, events, chores,
 meals, lists, photos and display settings. No YAML editing.
 
