@@ -1,7 +1,7 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.63.0";
-import { keepAwake } from "./wake.js?v=1.63.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.63.1";
+import { keepAwake } from "./wake.js?v=1.63.1";
 
 export class MealsView {
   async _loadMealie() {
@@ -101,8 +101,9 @@ export class MealsView {
 
   // ---------- drag a planned meal to another day or row ----------
   _mealDragStart(e) {
+    if (this._mdrag) this._mealDragAbort(); // a drag whose end we never saw (second finger, lost pointer): start clean
     const cell = e.target.closest?.(".meal:not(.emptymeal)[data-date]");
-    if (!cell || this._mdrag || this.ui.dialog || (e.pointerType === "mouse" && e.button !== 0)) return;
+    if (!cell || this.ui.dialog || (e.pointerType === "mouse" && e.button !== 0)) return;
     const ids = this.mealieFor(cell.dataset.date, cell.dataset.slot).map((m) => m.id).filter((id) => id !== undefined && id !== null);
     if (!ids.length) return; // synced (calendar) meals and plain notes can't be moved
     const g = { cell, ids, from: { date: cell.dataset.date, slot: cell.dataset.slot }, x0: e.clientX, y0: e.clientY, pid: e.pointerId, active: false, over: null };
@@ -114,7 +115,9 @@ export class MealsView {
     const g = this._mdrag;
     if (!g || g.active) return;
     g.active = true;
-    try { g.cell.setPointerCapture(g.pid); } catch (err) { /* old WebView */ }
+    // No pointer capture: the ghost ignores pointer events and drop targets come from measured rects, so
+    // the page's own listeners see every move. (Capturing a touch pointer has been seen to leave the kiosk
+    // browser unable to focus text boxes afterwards.)
     g.cell.classList.add("dragging");
     const ghost = g.cell.cloneNode(true);
     ghost.classList.add("mealghost"); ghost.classList.remove("dragging");
@@ -143,15 +146,21 @@ export class MealsView {
     const target = under && (under.dataset.date !== g.from.date || under.dataset.slot !== g.from.slot) ? under : null;
     if (target !== g.over) { g.over?.classList.remove("dropover"); target?.classList.add("dropover"); g.over = target; }
   }
-  async _mealDragEnd(e) {
+  // Drop everything about the current drag without moving anything (pointer lost, window hidden, stale state).
+  _mealDragAbort() {
     const g = this._mdrag;
-    if (!g || (e && e.pointerId !== g.pid)) return;
+    if (!g) return;
     clearTimeout(g.timer);
     this._mdrag = null;
     if (!g.active) return;
-    this._suppressClickUntil = Date.now() + 300;
     g.cell.classList.remove("dragging"); g.ghost?.remove(); g.over?.classList.remove("dropover");
-    const to = g.over && e?.type !== "pointercancel" ? { date: g.over.dataset.date, slot: g.over.dataset.slot } : null;
+  }
+  async _mealDragEnd(e) {
+    const g = this._mdrag;
+    if (!g || (e && e.pointerId !== g.pid)) return;
+    const to = g.active && g.over && e?.type !== "pointercancel" ? { date: g.over.dataset.date, slot: g.over.dataset.slot } : null;
+    if (g.active) this._suppressClickUntil = Date.now() + 300;
+    this._mealDragAbort();
     if (!to) return;
     try {
       for (const id of g.ids) await this._ws({ type: "skylight/mealie/move", mealplan_id: Number(id), ...to });

@@ -22,6 +22,11 @@ button.primary { background:var(--accent); color:#fff; font-weight:700; }
 button.danger { background:#ffe3e3; color:#c0392b; }
 button.icon { width:40px; height:40px; padding:0; font-size:22px; border-radius:50%; }
 button.icon.sm { width:32px; height:32px; font-size:18px; }
+/* Touch screens: − / + either side of a number box (see _touchNumbers); the native spinner is hidden. */
+.stepper { display:inline-flex; align-items:center; gap:4px; }
+.stepper .step { min-width:44px; min-height:44px; padding:0 10px; font-size:22px; line-height:1; font-weight:700; }
+.stepper input[type=number] { -moz-appearance:textfield; appearance:textfield; text-align:center; }
+.stepper input[type=number]::-webkit-inner-spin-button, .stepper input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 input, select, textarea { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 12px; width:100%; }
 /* The visible screen height (dvh follows iOS's changing visible area). Not "100%": Home Assistant's
    panel container has no fixed height, and sizing to it made the calendar resize itself in a loop. */

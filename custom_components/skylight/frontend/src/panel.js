@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.63.0";
-import { STYLES } from "./styles.js?v=1.63.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.63.0";
-import { CalendarView } from "./calendar.js?v=1.63.0";
-import { WeatherView } from "./weather.js?v=1.63.0";
-import { HomeView } from "./home.js?v=1.63.0";
-import { ChoresView } from "./chores.js?v=1.63.0";
-import { MealsView } from "./meals.js?v=1.63.0";
-import { ListsView } from "./lists.js?v=1.63.0";
-import { PhotosView } from "./photos.js?v=1.63.0";
-import { SettingsView } from "./settings.js?v=1.63.0";
-import { PickersView } from "./pickers.js?v=1.63.0";
-import { keepAwake } from "./wake.js?v=1.63.0";
-import { MlbView } from "./mlb.js?v=1.63.0";
-import { TravelView } from "./travel.js?v=1.63.0";
-import { NotesView } from "./notes.js?v=1.63.0";
-import { VerseView } from "./verses.js?v=1.63.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.63.1";
+import { STYLES } from "./styles.js?v=1.63.1";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.63.1";
+import { CalendarView } from "./calendar.js?v=1.63.1";
+import { WeatherView } from "./weather.js?v=1.63.1";
+import { HomeView } from "./home.js?v=1.63.1";
+import { ChoresView } from "./chores.js?v=1.63.1";
+import { MealsView } from "./meals.js?v=1.63.1";
+import { ListsView } from "./lists.js?v=1.63.1";
+import { PhotosView } from "./photos.js?v=1.63.1";
+import { SettingsView } from "./settings.js?v=1.63.1";
+import { PickersView } from "./pickers.js?v=1.63.1";
+import { keepAwake } from "./wake.js?v=1.63.1";
+import { MlbView } from "./mlb.js?v=1.63.1";
+import { TravelView } from "./travel.js?v=1.63.1";
+import { NotesView } from "./notes.js?v=1.63.1";
+import { VerseView } from "./verses.js?v=1.63.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -365,6 +365,12 @@ export class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("pointermove", (e) => this._mealDragMove(e));
     this.shadowRoot.addEventListener("pointerup", (e) => this._mealDragEnd(e));
     this.shadowRoot.addEventListener("pointercancel", (e) => this._mealDragEnd(e));
+    // The finger can lift outside the panel (over Home Assistant's own bar) or the page can lose focus mid-drag:
+    // end or abandon the drag anyway, so nothing stays half-dragged and taps keep working.
+    window.addEventListener("pointerup", (e) => this._mealDragEnd(e));
+    window.addEventListener("pointercancel", (e) => this._mealDragEnd(e));
+    window.addEventListener("blur", () => this._mealDragAbort());
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this._mealDragAbort(); });
     this.shadowRoot.addEventListener("input", (e) => { if (e.target.dataset?.input === "mealie-type") this._mealieTyped(e.target.value); });
     this.shadowRoot.addEventListener("pointermove", (e) => this._holdMove(e), { passive: true });
     for (const ev of ["pointerup", "pointercancel"]) {
@@ -622,6 +628,15 @@ export class SkylightPanel extends HTMLElement {
         this._toast("Google Places key saved"); break;
       }
       case "places-clear": await this._ws({ type: "skylight/places/configure", google_key: "" }); this._toast("Using free OpenStreetMap lookup"); break;
+      case "step": { // − / + beside a number box (touch screens)
+        const inp = el.parentElement?.querySelector('input[type="number"]');
+        if (!inp) break;
+        try { Number(d.step) > 0 ? inp.stepUp() : inp.stepDown(); }
+        catch (e) { inp.value = String(Number(inp.value || 0) + Number(d.step)); }
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+        inp.dispatchEvent(new Event("change", { bubbles: true }));
+        break;
+      }
       case "free-all-day": {
         const btn = this.shadowRoot.querySelector('[data-action="free-all-day"]'); if (btn) btn.disabled = true;
         try {
@@ -720,7 +735,13 @@ export class SkylightPanel extends HTMLElement {
       case "kb-entity":
         try { if (el.value) localStorage.setItem("skylight.kbEntity", el.value); else localStorage.removeItem("skylight.kbEntity"); } catch (e) { /* private mode */ }
         this.render(); break;
-      case "kb-show": this._kbShow(true); this._toast(this.kbEntity ? "Asked the kiosk to show its keyboard" : "Pick this screen's keyboard switch first"); break;
+      case "kb-show": {
+        if (!this.kbEntity) { this._toast("Pick this screen's keyboard switch first"); break; }
+        const on = !this.kbShowing;
+        this._kbShow(on); this._toast(on ? "Asked the kiosk to show its keyboard" : "Asked the kiosk to hide its keyboard");
+        setTimeout(() => { if (this.ui.tab === "settings") this.render(); }, 600); // the button's label follows the switch
+        break;
+      }
       case "setup-tab":
         this.ui.setupTab = d.tab;
         try { localStorage.setItem("skylight.setupTab", d.tab); } catch (e) { /* private mode */ }
@@ -1104,7 +1125,7 @@ export class SkylightPanel extends HTMLElement {
     // keep typed values across re-renders of the same dialog
     const saved = {};
     this.$dialog.querySelectorAll("input[id],textarea[id],select[id]").forEach((i) => { saved[i.id] = i.type === "checkbox" ? i.checked : i.value; });
-    this.$dialog.innerHTML = `<div class="backdrop" data-action="close"><div class="dialog">${dlg.html()}</div></div>`;
+    this.$dialog.innerHTML = `<div class="backdrop" data-action="close"><div class="dialog">${this._touchNumbers(dlg.html())}</div></div>`;
     for (const [id, v] of Object.entries(saved)) {
       const i = this.shadowRoot.getElementById(id);
       if (!i || i.dataset.fresh) continue;
@@ -1225,6 +1246,13 @@ export class SkylightPanel extends HTMLElement {
   get screenAwake() { try { return localStorage.getItem("skylight.awake") === "1"; } catch (e) { return false; } }
   // Touch screens that aren't phones (the kitchen kiosk, tablets) get the panel's own pick lists for <select>.
   get pickInApp() { return isTouchScreen() && !this.isPhone; }
+  // Touch screens: a − / + button either side of every number box, since the native spinner arrows are far
+  // too small for a finger. Phones keep their own numeric keypad.
+  _touchNumbers(html) {
+    if (!this.pickInApp) return html;
+    return html.replace(/<input\b[^>]*\btype="number"[^>]*>/g, (m) =>
+      `<span class="stepper"><button type="button" class="step" data-action="step" data-step="-1" aria-label="Less">−</button>${m}<button type="button" class="step" data-action="step" data-step="1" aria-label="More">+</button></span>`);
+  }
   // A fresh start every morning for a wall screen: the kiosk browser's on-screen keyboard hook-up (and other
   // long-session state) has been seen to die overnight, and a page reload is what brings it back.
   get dailyReload() { try { const v = localStorage.getItem("skylight.dailyReload"); if (v) return v === "1"; } catch (e) { /* private mode */ } return this.pickInApp; }
@@ -1270,6 +1298,8 @@ export class SkylightPanel extends HTMLElement {
   // A kiosk's on-screen keyboard switch (TouchKio: switch.<name>_keyboard), saved on this device. With one set, the
   // keyboard is shown when a text box is tapped and hidden when typing ends; Setup also has a "Show keyboard" button.
   get kbEntity() { try { return localStorage.getItem("skylight.kbEntity") || ""; } catch (e) { return ""; } }
+  // True while the kiosk's keyboard switch is on (a button-type entity can't say, so: never).
+  get kbShowing() { const e = this.kbEntity; return !!e && !e.startsWith("button.") && this._hass?.states?.[e]?.state === "on"; }
   _kbTypingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !["checkbox", "radio", "range", "color", "file", "date", "time", "number"].includes(t.type) && !t.readOnly)); }
   _kbShow(on) {
     const entity = this.kbEntity;
@@ -1399,7 +1429,7 @@ export class SkylightPanel extends HTMLElement {
     if (this._drag) return; // don't redraw under a finger that's dragging an item
     clearTimeout(this._dropTimer);
     const itemTops = tab === "lists" ? this._snapshotItems() : null;
-    this.$app.innerHTML = `
+    this.$app.innerHTML = this._touchNumbers(`
       <nav class="rail">
         <div class="logo" title="${this.appName}">⚡</div>
         ${TABS.map(([id, label, icon]) => `<button class="tab ${tab === id ? "active" : ""}" data-action="tab" data-tab="${id}"><ha-icon icon="${icon}"></ha-icon><span>${label}${id === "settings" && this.pinSet ? ` <i class="lockmark" title="${this.unlocked ? "Unlocked" : "Locked"}">${this.unlocked ? "🔓" : "🔒"}</i>` : ""}</span></button>`).join("")}
@@ -1409,7 +1439,7 @@ export class SkylightPanel extends HTMLElement {
         ${this.renderConnBanner()}
         ${this.renderAlertBanner()}
         <div class="content">${body}</div>
-      </main>${this.renderAlertPopup()}${this.renderReminderPop()}`;
+      </main>${this.renderAlertPopup()}${this.renderReminderPop()}`);
     const c = this.$app.querySelector(".content"); if (c) c.scrollTop = scroll;
     this._fillClock();
     const restore = () => { for (const [sel, i, t, l] of kept) { const el = this.$app.querySelectorAll(sel)[i]; if (el) { el.scrollTop = t; el.scrollLeft = l; } } };

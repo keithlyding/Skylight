@@ -1482,6 +1482,15 @@ const SCENARIOS = {
     await p.S('#pick [data-pick="button.osk_show"]').click(); await p.waitForTimeout(300);
     await p.S('[data-action="kb-show"]').click(); await p.waitForTimeout(200);
     eq(await p.evaluate(() => calls.filter((c) => c.svc === "button.press").length), 1, "a button entity is pressed to show the keyboard");
+    // number boxes get finger-sized − / + buttons on a touch screen, and they fire the setting's change
+    const secs = p.S('.stepper:has(input[data-key="photo_seconds"])');
+    eq(await secs.count(), 1, "seconds-per-photo has a stepper");
+    const before = await secs.locator("input").inputValue();
+    await secs.locator('[data-step="1"]').tap(); await p.waitForTimeout(300);
+    eq(Number(await secs.locator("input").inputValue()), Number(before) + 1, "+ steps the box up");
+    check(await p.evaluate((v) => window.calls.some((c) => c.type === "skylight/set" && c.key === "settings" && Number(c.value?.photo_seconds) === v), Number(before) + 1), "and saves the new value");
+    const box = await secs.locator('[data-step="1"]').boundingBox();
+    check(box.width >= 44 && box.height >= 44, `step button is finger-sized (${box.width}x${box.height})`);
     // inside a dialog too (the event editor's calendar list), without losing the dialog
     await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
     await p.S("#ev-cal").tap(); await p.waitForTimeout(400);
@@ -1529,10 +1538,17 @@ const SCENARIOS = {
     await p.S('[data-action="kb-show"]').click(); await p.waitForTimeout(200);
     const kb = () => p.evaluate(() => calls.filter((c) => c.svc === "switch.turn_on" || c.svc === "switch.turn_off").map((c) => c.svc));
     eq(await kb(), ["switch.turn_on"], "Show keyboard turns the switch on");
+    // once the switch reports on, the same button hides it (a keyboard that won't go away)
+    await p.evaluate(() => { window.hass.states["switch.touchkio_kitchen_keyboard"] = { state: "on", attributes: { friendly_name: "Kitchen Keyboard" } }; el.hass = { ...window.hass }; el.render(); });
+    await p.waitForTimeout(200);
+    eq((await text(p.S('[data-action="kb-show"]')))[0], "⌨ Hide keyboard", "button offers to hide a showing keyboard");
+    await p.S('[data-action="kb-show"]').click(); await p.waitForTimeout(200);
+    eq(await kb(), ["switch.turn_on", "switch.turn_off"], "Hide keyboard turns the switch off");
+    await p.evaluate(() => { window.hass.states["switch.touchkio_kitchen_keyboard"].state = "off"; el.hass = { ...window.hass }; });
     await p.evaluate(() => el.openEventDialog(null, "2026-10-05", 16)); await p.waitForTimeout(300);
     await p.S("#ev-title").focus(); await p.waitForTimeout(100);
     await p.S("#ev-title").blur(); await p.waitForTimeout(600);
-    eq(await kb(), ["switch.turn_on", "switch.turn_on", "switch.turn_off"], "typing shows it, leaving the box hides it");
+    eq(await kb(), ["switch.turn_on", "switch.turn_off", "switch.turn_on", "switch.turn_off"], "typing shows it, leaving the box hides it");
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
@@ -1686,6 +1702,10 @@ const SCENARIOS = {
     const moves = await p.evaluate(() => window.MOVES || []);
     eq(moves.length, 2, "both entries moved");
     check(moves.every((m) => m.date === other && m.slot === "lunch"), `moved to the other day's lunch: ${JSON.stringify(moves)}`);
+    eq(await p.evaluate(() => [!!el._mdrag, el.shadowRoot.querySelectorAll(".mealghost, .dragging, .dropover").length]), [false, 0], "nothing left behind after the drop");
+    // a drag the page never sees the end of (finger lifted elsewhere, window hidden) is abandoned cleanly
+    await p.evaluate(() => { el._mdrag = { cell: el.shadowRoot.querySelector(".meal"), active: true, pid: 99, timer: 0, ghost: null, over: null }; window.dispatchEvent(new Event("blur")); });
+    eq(await p.evaluate(() => !!el._mdrag), false, "a lost drag is abandoned when the window loses focus");
     const lunch = (await text(p.S(`.meal[data-date="${other}"][data-slot="lunch"]`)))[0] || "";
     check(lunch.includes("Chicken Tacos") && lunch.includes("Pancakes"), `that lunch now holds them: ${lunch}`);
     eq(await p.S(".dialog").count(), 0, "a drag doesn't open the editor");

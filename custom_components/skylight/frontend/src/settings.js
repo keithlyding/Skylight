@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.63.0";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.63.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.63.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.63.1";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.63.1";
+import { MLB_TEAMS } from "./mlb.js?v=1.63.1";
 
 export class SettingsView {
 
@@ -119,8 +119,8 @@ export class SettingsView {
       <label class="inline">This screen <select data-change="screen-scheme">${[["follow", "Follow this device's light/dark"], ["light", "Always light"], ["dark", "Always dark"], ["night", "Dark at night"]].map(([v, l]) => `<option value="${v}" ${mine === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       ${s.night_dim ? `<label class="inline">Dim this screen at night <select data-change="screen-dim"><option value="1" ${this.screenDims ? "selected" : ""}>Yes (wall display)</option><option value="0" ${this.screenDims ? "" : "selected"}>No (keep this device's own brightness)</option></select></label>` : ""}
       <label class="inline">On-screen keyboard (kiosk) <select data-change="kb-entity"><option value="">None</option>${kbs.map((e) => `<option value="${e}" ${e === this.kbEntity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select>
-        <button type="button" data-action="kb-show" ${this.kbEntity ? "" : "disabled"}>⌨ Show keyboard</button></label>
-      <p class="hint">For a kiosk app that exposes its keyboard as a switch (TouchKio: "Keyboard"). With one picked, this screen shows the keyboard whenever a text box is tapped and hides it afterwards; the button brings it back if it ever goes missing. Saved on this device.</p>
+        <button type="button" data-action="kb-show" ${this.kbEntity ? "" : "disabled"}>⌨ ${this.kbShowing ? "Hide" : "Show"} keyboard</button></label>
+      <p class="hint">For a kiosk app that exposes its keyboard as a switch (TouchKio: "Keyboard"). With one picked, this screen shows the keyboard whenever a text box is tapped and hides it afterwards; the button shows or hides it by hand if it ever gets stuck. Saved on this device.</p>
       <label class="inline">Fresh start every morning <select data-change="daily-reload"><option value="1" ${this.dailyReload ? "selected" : ""}>Yes (reload when the screen comes back on)</option><option value="0" ${this.dailyReload ? "" : "selected"}>No</option></select></label>
       <p class="hint">Wall screens reload themselves once a day, when the screen turns back on in the morning (or at 4:30 AM without a screen-off window). A kiosk browser's on-screen keyboard hook-up can die overnight, and a reload is what fixes it. Saved on this device.</p>
       <label class="inline">Keep this screen on <select data-change="screen-awake"><option value="" ${this.screenAwake ? "" : "selected"}>No (the device's own sleep setting)</option><option value="1" ${this.screenAwake ? "selected" : ""}>Yes, while ${esc(this.appName)} is open</option></select></label>
