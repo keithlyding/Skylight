@@ -122,7 +122,7 @@ For a Pi 5 driving an HDMI touch monitor, [TouchKio](https://github.com/leukipp/
 
 If the keyboard stops popping up on its own after a while (seen on TouchKio after the screen has been off overnight; a page reload fixes it), the panel does that reload for you: Setup → Screens & look → **Fresh start every morning** reloads a wall screen once a day when the screen comes back on. The **On-screen keyboard (kiosk)** switch below covers the rest.
 
-TouchKio exposes its on-screen keyboard as a Home Assistant switch (`switch.<name>_keyboard`). On the kitchen screen, open Setup → Screens & look → **On-screen keyboard (kiosk)** and pick that switch (saved on that device). From then on the keyboard appears whenever a text box is tapped and goes away when typing ends, and **⌨ Show keyboard** brings it back if it ever goes missing.
+TouchKio exposes its on-screen keyboard as a Home Assistant switch (`switch.<name>_keyboard`). On the kitchen screen, open Setup → Screens & look → **On-screen keyboard (kiosk)** and pick that switch (saved on that device). From then on the keyboard appears whenever a text box is tapped and goes away when typing ends, and the **⌨ Show / Hide keyboard** button shows or hides it by hand if it ever gets stuck. On touch screens, number boxes in Setup get finger-sized − and + buttons.
 
 ### Monitor brightness from Home Assistant (DDC/CI)
 
