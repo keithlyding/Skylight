@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.63.1";
+import { parseYmd, esc } from "./helpers.js?v=1.63.2";
 
 export class PhotosView {
 
@@ -86,8 +86,21 @@ export class PhotosView {
       back.classList.add("show"); front.classList.remove("show"); bg.src = src;
       const cap = this.shadowRoot.getElementById("sv-cap");
       if (cap) cap.innerHTML = this.settings.photo_captions === false ? "" : this._photoCaption(item);
+      this._saverShuffle();
     };
     back.src = src;
+  }
+
+  // Burn-in guard: the clock, caption and verse never sit on the same pixels for long. Every photo they
+  // move between four arrangements (verse top or bottom; clock and caption swap corners) and get a small
+  // random nudge, so no text stays put for more than one photo. Phones keep their fixed safe-area layout.
+  _saverShuffle() {
+    const saver = this.shadowRoot.querySelector(".saver");
+    if (!saver || this.isPhone) return;
+    const n = this._slideIdx % 4;
+    saver.classList.remove("lay-0", "lay-1", "lay-2", "lay-3"); saver.classList.add(`lay-${n}`);
+    const nudge = () => `${Math.round(Math.random() * 48 - 24)}px`;
+    saver.style.setProperty("--sx", nudge()); saver.style.setProperty("--sy", nudge());
   }
 
   // "June 14, 2024 · Estes Park, Colorado" (either part may be missing).

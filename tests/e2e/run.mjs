@@ -429,6 +429,36 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // Screensaver burn-in guard: the clock, caption and verse change places from photo to photo and get a nudge.
+  async saver_burnin_guard(browser, base) {
+    const p = await open(browser, base, { width: 1536, height: 864 });
+    await p.evaluate(() => {
+      el.ui.saver = true;
+      el.$saver.innerHTML = `<div class="saver"><div class="saver-clock"><div id="sv-time">3:39 PM</div><div id="sv-date">Saturday</div></div>
+        <div class="saver-cap" id="sv-cap"><span>📍 Beach</span></div><div class="saver-verse" id="sv-verse"><p>Verse text</p><small>Ref</small></div></div>`;
+    });
+    const pos = async (idx) => p.evaluate((idx) => {
+      el._slideIdx = idx; el._saverShuffle();
+      const r = (sel) => { const b = el.shadowRoot.querySelector(sel).getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top)]; };
+      const sv = el.shadowRoot.querySelector(".saver");
+      return { lay: [...sv.classList].find((c) => c.startsWith("lay-")), sx: sv.style.getPropertyValue("--sx"), verse: r(".saver-verse"), clock: r(".saver-clock"), cap: r(".saver-cap") };
+    }, idx);
+    const a = await pos(0), b = await pos(1), c = await pos(2), d = await pos(3);
+    eq([a.lay, b.lay, c.lay, d.lay], ["lay-0", "lay-1", "lay-2", "lay-3"], "four arrangements in turn");
+    check(/^-?\d+px$/.test(a.sx) && /^-?\d+px$/.test(b.sx), `a pixel nudge is set (${a.sx}, ${b.sx})`);
+    check(a.verse[1] < 200 && b.verse[1] > 500, `verse moves top → bottom (${a.verse[1]} → ${b.verse[1]})`);
+    check(a.clock[1] > 500 && b.clock[1] < 200, `clock moves bottom → top (${a.clock[1]} → ${b.clock[1]})`);
+    check(a.clock[0] < 300 && c.clock[0] > 900, `clock swaps left → right (${a.clock[0]} → ${c.clock[0]})`);
+    check(a.cap[0] > 900 && c.cap[0] < 300, `caption swaps right → left (${a.cap[0]} → ${c.cap[0]})`);
+    // nothing overlaps in any arrangement
+    for (const [name, x] of [["lay-0", a], ["lay-1", b], ["lay-2", c], ["lay-3", d]]) {
+      const sameRow = Math.abs(x.verse[1] - x.clock[1]) < 120;
+      check(!sameRow, `${name}: verse and clock on different edges (${x.verse[1]} vs ${x.clock[1]})`);
+    }
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async savercaption(browser, base) {
     // Screensaver on phones: the clock, the verse of the day and the photo's date and place never cover each other.
     for (const [w, h] of [[390, 844], [844, 390], [1300, 912]]) {

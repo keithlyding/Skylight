@@ -321,6 +321,14 @@ header { display:flex; align-items:center; gap:16px; padding:max(14px, env(safe-
 #sv-date { font-size:24px; font-weight:600; }
 .saver-verse { position:absolute; top:28px; left:50%; transform:translateX(-50%); width:min(72%, 980px); text-align:center; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,.8); }
 .saver-verse:empty { display:none; }
+/* Burn-in guard (see _saverShuffle): four arrangements plus a per-photo nudge via --sx/--sy. */
+.saver .saver-clock, .saver .saver-cap { transform:translate(var(--sx, 0px), var(--sy, 0px)); }
+.saver .saver-verse { transform:translate(calc(-50% + var(--sx, 0px)), var(--sy, 0px)); }
+.saver.lay-1 .saver-verse, .saver.lay-3 .saver-verse { top:auto; bottom:28px; }
+.saver.lay-1 .saver-clock, .saver.lay-3 .saver-clock { bottom:auto; top:28px; }
+.saver.lay-1 .saver-cap, .saver.lay-3 .saver-cap { bottom:auto; top:30px; }
+.saver.lay-2 .saver-clock, .saver.lay-3 .saver-clock { left:auto; right:36px; text-align:right; }
+.saver.lay-2 .saver-cap, .saver.lay-3 .saver-cap { right:auto; left:32px; align-items:flex-start; }
 .saver-verse p { margin:0 0 4px; font-size:26px; font-style:italic; line-height:1.3; } .saver-verse p.long { font-size:21px; }
 .saver-verse small { font-size:17px; font-weight:600; opacity:.9; }
 /* Phones: a smaller clock at the top, so the photo's date and place have the bottom to themselves. */
