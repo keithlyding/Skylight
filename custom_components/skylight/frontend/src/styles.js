@@ -472,6 +472,7 @@ label.check input { width:22px; height:22px; }
 .wh span { font-size:18px; }
 .wh small { color:var(--muted); font-size:11px; }
 .rain { color:#2f6fb3; font-weight:700; font-size:12px; }
+.wh .rain.low { opacity:.5; font-weight:600; }
 .wdaily { display:flex; flex-direction:column; }
 .wsun { display:block; font-size:11px; color:var(--muted); font-weight:600; white-space:nowrap; }
 .wday { display:grid; grid-template-columns:130px 36px 48px 40px 1fr 40px; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:16px; }

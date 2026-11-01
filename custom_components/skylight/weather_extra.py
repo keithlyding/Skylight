@@ -61,13 +61,16 @@ async def _forecast(hass: HomeAssistant, lat: float, lon: float) -> dict[str, An
     data = await _get(hass, FORECAST_URL, {
         "latitude": lat, "longitude": lon, "timezone": "auto",
         "minutely_15": "precipitation", "forecast_minutely_15": 8,
+        "hourly": "precipitation_probability",  # for weather sources whose hourly forecast has no chance of rain
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
         "past_days": 30, "forecast_days": 2, **_units(hass),
     })
     m = data.get("minutely_15") or {}
+    h = data.get("hourly") or {}
     d = data.get("daily") or {}
     return {
         "minutely": [{"time": t, "precip": p} for t, p in zip(m.get("time", []), m.get("precipitation", []))],
+        "hourly": [{"time": t, "pop": p} for t, p in zip(h.get("time", []), h.get("precipitation_probability", [])) if p is not None],
         "days": [{"date": t, "high": hi, "low": lo, "precip": p} for t, hi, lo, p in zip(
             d.get("time", []), d.get("temperature_2m_max", []), d.get("temperature_2m_min", []), d.get("precipitation_sum", []))],
         "utc_offset": data.get("utc_offset_seconds"),

@@ -65,7 +65,7 @@ window.hass = {
       const days=[...Array(30)].map((_,i)=>({date:new Date(base-(29-i)*864e5).toISOString().slice(0,10),high:70+(i%5),low:50,precip:i===25?0.4:(i===10?0.2:0)}));
       days.push({date:new Date(base).toISOString().slice(0,10),high:82,low:55,precip:0}); days[29].high=68;
       return {errors:{},pollen_source:"google",utc_offset:0,
-        forecast:{utc_offset:0,minutely:[...Array(8)].map((_,k)=>({time:iso(base+k*9e5),precip:k>=2&&k<6?0.03:0})),days},
+        forecast:{utc_offset:0,hourly:[...Array(30)].map((_,k)=>{const t=new Date(base); t.setUTCMinutes(0,0,0); return {time:iso(t.getTime()+k*36e5),pop:k<3?5:(k<6?45:15)};}),minutely:[...Array(8)].map((_,k)=>({time:iso(base+k*9e5),precip:k>=2&&k<6?0.03:0})),days},
         last_year:{date:"2025-09-27",high:79,low:58,precip:0},
         air:{aqi:112,pm2_5:38,ozone:90,hourly:[...Array(24)].map((_,k)=>({time:iso(base+k*36e5),aqi:40+k*4})),eu_pollen:[]},
         pollen:[{date:"2026-09-27",types:[{code:"TREE",name:"Tree",value:1,category:"Low",in_season:false},{code:"GRASS",name:"Grass",value:2,category:"Moderate",in_season:true},{code:"WEED",name:"Weed",value:4,category:"High",in_season:true}]}]}; }

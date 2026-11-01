@@ -34,6 +34,7 @@ async def _call(ws, msg, _id=[900]):
 async def test_extra_without_google(hass, ws, aioclient_mock):
     aioclient_mock.get(FORECAST, json={
         "minutely_15": {"time": ["2026-09-27T09:00", "2026-09-27T09:15"], "precipitation": [0, 0.02]},
+        "hourly": {"time": ["2026-09-27T09:00", "2026-09-27T10:00", "2026-09-27T11:00"], "precipitation_probability": [5, 40, None]},
         "daily": {"time": ["2026-09-26", "2026-09-27"], "temperature_2m_max": [70, 78],
                   "temperature_2m_min": [50, 55], "precipitation_sum": [0.1, 0]}})
     aioclient_mock.get(ARCHIVE, json={"daily": {"time": ["2025-09-27"], "temperature_2m_max": [81],
@@ -44,6 +45,7 @@ async def test_extra_without_google(hass, ws, aioclient_mock):
     assert res["success"], res
     r = res["result"]
     assert r["forecast"]["minutely"][1] == {"time": "2026-09-27T09:15", "precip": 0.02}
+    assert r["forecast"]["hourly"] == [{"time": "2026-09-27T09:00", "pop": 5}, {"time": "2026-09-27T10:00", "pop": 40}]  # hour-by-hour chance of rain, gaps dropped
     assert r["forecast"]["days"][0]["high"] == 70
     assert r["last_year"]["high"] == 81
     assert r["air"]["aqi"] == 42 and r["air"]["eu_pollen"] == []

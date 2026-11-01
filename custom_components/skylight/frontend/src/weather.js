@@ -1,6 +1,6 @@
 /* Skylight panel: weather tab, alerts and hints (methods mixed into SkylightPanel). */
 
-import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.63.2";
+import { textOn, sunTimes, moonPhase, moonInfo, WEATHER_ICONS, ymd, parseYmd, addDays, startOfDay, sameDay, esc, alertType, ALERT_TYPE_LABELS, feelsLike } from "./helpers.js?v=1.64.0";
 
 export class WeatherView {
 
@@ -214,6 +214,20 @@ export class WeatherView {
   _isMetric() {
     const w = this.wxState();
     return !((w?.attributes?.temperature_unit || this._hass.config?.unit_system?.temperature || "°F").includes("F"));
+  }
+  // Hour-by-hour chance of rain for sources whose hourly forecast has none (Met.no, for one): filled in from
+  // Open-Meteo's hourly feed (see weather_extra.py), matched on the hour. Hours that already have one keep it.
+  _withRainChance(hours) {
+    const list = this.wxx?.forecast?.hourly, off = this.wxx?.forecast?.utc_offset;
+    if (!list?.length || off === undefined || off === null) return hours;
+    if (hours.every((h) => h.precipitation_probability !== undefined && h.precipitation_probability !== null)) return hours;
+    const key = (ms) => Math.floor(ms / 3600000);
+    const byHour = new Map(list.map((s) => [key(Date.parse(s.time + "Z") - off * 1000), Number(s.pop)]));
+    return hours.map((h) => {
+      if (h.precipitation_probability !== undefined && h.precipitation_probability !== null) return h;
+      const p = byHour.get(key(Date.parse(h.datetime)));
+      return p === undefined || Number.isNaN(p) ? h : { ...h, precipitation_probability: p };
+    });
   }
   // Rain in the next 2 hours from 15-minute data. Returns {text, bars} or null.
   _rainSoon() {
@@ -500,7 +514,9 @@ export class WeatherView {
       </div></section>`;
     if (!this.wx) return current + `<p class="hint center">Loading forecast…</p>`;
     // ----- hourly: one temperature line (single series, no legend), labels only at high/low -----
-    const hours = this.wx.hourly.filter((h) => new Date(h.datetime) >= new Date(Date.now() - 3600000)).slice(0, 24);
+    const hours0 = this.wx.hourly.filter((h) => new Date(h.datetime) >= new Date(Date.now() - 3600000)).slice(0, 24);
+    const hours = this._withRainChance(hours0);
+    const popFilled = hours.some((h, i) => h.precipitation_probability !== hours0[i].precipitation_probability);
     let hourly = "";
     if (hours.length > 1) {
       const W = 44 * hours.length, H = 120, top = 26, bottom = 30;
@@ -512,10 +528,10 @@ export class WeatherView {
       const x = (i) => 22 + i * 44, y = (t) => top + (1 - (t - lo) / span) * (H - top - bottom);
       const pts = temps.map((t, i) => `${x(i)},${y(t).toFixed(1)}`).join(" ");
       const iHi = temps.indexOf(hi), iLo = temps.indexOf(lo);
-      const precip = (h) => (h.precipitation_probability !== undefined && h.precipitation_probability !== null
-        ? (h.precipitation_probability >= 20 ? `${Math.round(h.precipitation_probability)}%` : "")
-        : h.precipitation ? `${Number(h.precipitation).toFixed(1)}${pu}` : "");
-      hourly = `<section class="wcard"><h3>Next ${hours.length} hours${showFeels ? ` <small class="wlegend"><i class="wl-temp"></i> temperature <i class="wl-feels"></i> feels like</small>` : ""}</h3><div class="whourly">
+      // Hour-by-hour chance of rain, every hour (low chances dimmed); rain amount when that's all the source has.
+      const pop = (h) => (h.precipitation_probability === undefined || h.precipitation_probability === null ? null : Number(h.precipitation_probability));
+      const precip = (h) => (pop(h) !== null ? `${Math.round(pop(h))}%` : h.precipitation ? `${Number(h.precipitation).toFixed(1)}${pu}` : "");
+      hourly = `<section class="wcard"><h3>Next ${hours.length} hours${showFeels ? ` <small class="wlegend"><i class="wl-temp"></i> temperature <i class="wl-feels"></i> feels like</small>` : ""}${popFilled ? ` <small class="wlegend">💧 chance of rain from Open-Meteo</small>` : ""}</h3><div class="whourly">
         <svg width="${W}" height="${H}" role="img" aria-label="Hourly temperature">
           ${showFeels ? `<polyline class="wfeels" points="${feels.map((t, i) => `${x(i)},${y(t).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>` : ""}
           <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
@@ -524,10 +540,10 @@ export class WeatherView {
             <rect x="${x(i) - 22}" y="0" width="44" height="${H}" fill="transparent"/></g>`).join("")}
           ${[iHi, iLo].filter((v, k, arr) => arr.indexOf(v) === k).map((i) => `<text x="${x(i)}" y="${(y(temps[i]) + (i === iHi ? -9 : 17)).toFixed(1)}" text-anchor="middle" class="wlab">${Math.round(temps[i])}°</text>`).join("")}
         </svg>
-        ${hours.some((h) => Number(h.precipitation) > 0 || Number(h.precipitation_probability) >= 20) ? (() => {
-          // Bars show rain amount when provided, otherwise chance of rain (scaled to 100%).
-          const useProb = !hours.some((h) => Number(h.precipitation) > 0);
-          const amt = hours.map((h) => (useProb ? (Number(h.precipitation_probability) >= 20 ? Number(h.precipitation_probability) : 0) : Number(h.precipitation) || 0));
+        ${hours.some((h) => Number(h.precipitation) > 0 || pop(h) > 0) ? (() => {
+          // Bars show the chance of rain for every hour that has one (scaled to 100%); rain amount when that's all there is.
+          const useProb = hours.some((h) => pop(h) !== null);
+          const amt = hours.map((h) => (useProb ? Math.max(0, pop(h) || 0) : Number(h.precipitation) || 0));
           const maxA = useProb ? 100 : Math.max(...amt);
           return `<svg width="${W}" height="36" role="img" aria-label="Hourly precipitation">${amt.map((v, i) => v > 0
             ? `<rect x="${x(i) - 8}" y="${(34 - (v / maxA) * 30).toFixed(1)}" width="16" height="${((v / maxA) * 30).toFixed(1)}" rx="4" fill="#6fa8dc"><title>${this.fmtTime(new Date(hours[i].datetime))}: ${useProb ? `${Math.round(v)}% chance of rain` : `${v.toFixed(1)} ${pu}`}</title></rect>` : "").join("")}
@@ -535,7 +551,7 @@ export class WeatherView {
         })() : ""}
         <div class="whrow" style="width:${W}px">${hours.map((h, i) => `<div class="wh" title="${this.fmtTime(new Date(h.datetime))}">
           <span>${WEATHER_ICONS[h.condition] || ""}</span><b>${Math.round(Number(h.temperature))}°</b>
-          <small class="rain">${precip(h) || "&nbsp;"}</small>
+          <small class="rain ${pop(h) !== null && pop(h) < 20 ? "low" : ""}">${precip(h) ? `💧${precip(h)}` : "&nbsp;"}</small>
           <small>${new Date(h.datetime).toLocaleTimeString([], { hour: "numeric", hour12: !this.settings.clock_24h })}</small></div>`).join("")}</div>
         ${this._hourlyTable(hours, { tu, wu, pu, pressureUnit: a.pressure_unit || "", compass })}
       </div></section>`;

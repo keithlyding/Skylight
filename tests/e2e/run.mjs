@@ -1212,6 +1212,27 @@ const SCENARIOS = {
     eq(p.errors, [], "page errors");
     await p.context().close();
   },
+  // Hour-by-hour chance of rain: a percentage under every hour (dim when low), and filled in from Open-Meteo
+  // when the weather source's own hourly forecast has none.
+  async hourly_rain_chance(browser, base) {
+    const p = await open(browser, base, { width: 1300, height: 912 });
+    await p.evaluate(() => { el.ui.tab = "weather"; el.render(); }); await p.waitForTimeout(800);
+    const strip = async () => text(p.S(".whrow .wh .rain"));
+    let r = await strip();
+    check(r.length >= 20 && r.every((t) => /^💧\d+%$/.test(t)), `a chance of rain under every hour from the source (${r.slice(0, 4)})`);
+    check(r[0] === "💧10%" && (await p.S(".whrow .wh .rain.low").count()) > 0, "low chances are shown, dimmed");
+    eq(await p.S(".wtable tr:has(th:text-is('Rain chance'))").count(), 1, "the hourly table has the rain chance row");
+    // a source without any chance of rain: Open-Meteo's hourly feed fills it in, and the card says so
+    await p.evaluate(() => { el.wx.hourly.forEach((h) => { delete h.precipitation_probability; }); el.render(); }); await p.waitForTimeout(400);
+    r = await strip();
+    check(r.length >= 20 && r.every((t) => /^💧\d+%$/.test(t)), `filled in from Open-Meteo (${r.slice(0, 7)})`);
+    check(r.slice(0, 3).every((t) => t === "💧5%") && r[3] === "💧45%", `the right hour gets the right chance (${r.slice(0, 7)})`);
+    check((await text(p.S(".wcard h3 .wlegend"))).some((t) => t.includes("Open-Meteo")), "the card says where the chance comes from");
+    eq(await p.S('svg[aria-label="Hourly precipitation"] rect').count(), 24, "a bar for every hour that has a chance");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);
