@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.66.0";
-import { STYLES } from "./styles.js?v=1.66.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.66.0";
-import { CalendarView } from "./calendar.js?v=1.66.0";
-import { WeatherView } from "./weather.js?v=1.66.0";
-import { HomeView } from "./home.js?v=1.66.0";
-import { ChoresView } from "./chores.js?v=1.66.0";
-import { MealsView } from "./meals.js?v=1.66.0";
-import { ListsView } from "./lists.js?v=1.66.0";
-import { PhotosView } from "./photos.js?v=1.66.0";
-import { SettingsView } from "./settings.js?v=1.66.0";
-import { PickersView } from "./pickers.js?v=1.66.0";
-import { keepAwake } from "./wake.js?v=1.66.0";
-import { MlbView } from "./mlb.js?v=1.66.0";
-import { TravelView } from "./travel.js?v=1.66.0";
-import { NotesView } from "./notes.js?v=1.66.0";
-import { VerseView } from "./verses.js?v=1.66.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.67.0";
+import { STYLES } from "./styles.js?v=1.67.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.67.0";
+import { CalendarView } from "./calendar.js?v=1.67.0";
+import { WeatherView } from "./weather.js?v=1.67.0";
+import { HomeView } from "./home.js?v=1.67.0";
+import { ChoresView } from "./chores.js?v=1.67.0";
+import { MealsView } from "./meals.js?v=1.67.0";
+import { ListsView } from "./lists.js?v=1.67.0";
+import { PhotosView } from "./photos.js?v=1.67.0";
+import { SettingsView } from "./settings.js?v=1.67.0";
+import { PickersView } from "./pickers.js?v=1.67.0";
+import { keepAwake } from "./wake.js?v=1.67.0";
+import { MlbView } from "./mlb.js?v=1.67.0";
+import { TravelView } from "./travel.js?v=1.67.0";
+import { NotesView } from "./notes.js?v=1.67.0";
+import { VerseView } from "./verses.js?v=1.67.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -279,6 +279,34 @@ export class SkylightPanel extends HTMLElement {
     return true;
   }
   _reloadPage() { location.reload(); }
+  // Kiosk screens (a keyboard switch is picked): a tap on a text box that is followed by no focus, while the
+  // document says it has no focus, means the kiosk window lost the system's keyboard focus (seen on TouchKio
+  // after its keyboard toggles). Nothing in the page can get it back, so: note it in the diagnostics, and
+  // after two such taps reload the page; if that didn't help either, press the kiosk's own Refresh button.
+  _focusProbe(e) {
+    const t = e.target;
+    if (!this.kbEntity || !t?.matches?.("input:not([type=checkbox]):not([type=radio]):not([type=color]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])")) return;
+    setTimeout(() => {
+      if (!t.isConnected || this.shadowRoot.activeElement === t || document.hasFocus()) { this._nofocus = 0; return; }
+      const now = Date.now();
+      this._nofocus = (this._nofocus || 0) + 1;
+      diag("nofocus", `${this._nofocus} active=${this.shadowRoot.activeElement?.tagName || "none"}`);
+      if (this._nofocus < 2 || (this._healAt && now - this._healAt < 600000)) return; // two taps a bit apart, at most one heal per 10 min
+      this._healAt = now; this._nofocus = 0;
+      let last = 0;
+      try { last = Number(sessionStorage.getItem("skylight.focusHeal") || 0); sessionStorage.setItem("skylight.focusHeal", String(now)); } catch (err) { /* no storage */ }
+      const refresh = this.kbEntity.replace(/^switch\./, "button.").replace(/_keyboard$/, "_refresh"); // TouchKio's Refresh button
+      if (now - last < 180000 && this._hass?.states?.[refresh]) { // a reload 3 minutes ago didn't fix it: let the kiosk app restart its window
+        diag("focus-heal", "kiosk refresh");
+        this._toast("The keyboard still isn't connecting. Asking the kiosk to refresh…");
+        this._hass.callService("button", "press", { entity_id: refresh }).catch((err) => diag("focus-heal-fail", String(err?.message || err)));
+        return;
+      }
+      diag("focus-heal", "reload");
+      this._toast("The screen lost its keyboard connection. Reloading…");
+      setTimeout(() => this._reloadPage(), 1200);
+    }, 350);
+  }
 
   async _loadMealieInfo() {
     try { this.mealie = await this._hass.callWS({ type: "skylight/mealie/info" }); }
@@ -346,6 +374,7 @@ export class SkylightPanel extends HTMLElement {
     // Swipe left/right to go forward/back on Calendar, Chores and Meals.
     this.shadowRoot.addEventListener("pointerdown", (e) => this._swipeStart(e), { passive: true });
     this.shadowRoot.addEventListener("pointerdown", (e) => diag("tap", e.target.closest?.("[data-action]")?.dataset.action || e.target.tagName?.toLowerCase()), { passive: true, capture: true });
+    this.shadowRoot.addEventListener("pointerdown", (e) => this._focusProbe(e), { passive: true, capture: true });
     // iPhone: an up/down drag that starts on the header or the tab bar would rubber-band the whole page.
     // The guard is attached to just those two (see _guardBars) so scrolling anywhere else never waits on it.
     this._barTouchStart = (e) => { const t = e.touches[0]; this._touch0 = t ? [t.clientX, t.clientY] : null; };
@@ -722,7 +751,7 @@ export class SkylightPanel extends HTMLElement {
       case "retry-render":
         this.ui.dialog = null; this.ui.alertPop = null; this.ui.reminderPop = null; this.$dialog.innerHTML = "";
         this.render(); break;
-      case "reload-page": location.reload(); break;
+      case "reload-page": this._reloadPage(); break;
       case "screen-awake":
         try { if (el.value) localStorage.setItem("skylight.awake", "1"); else localStorage.removeItem("skylight.awake"); } catch (e) { /* private mode */ }
         keepAwake(!!el.value, "screen"); break;
@@ -913,7 +942,7 @@ export class SkylightPanel extends HTMLElement {
       case "mealmove-month": { const g = this.ui.dialog; if (g?.type === "mealmove") { g.month = new Date(g.month.getFullYear(), g.month.getMonth() + Number(d.dir), 1); this.renderDialog(); } break; }
       case "mealmove-slot": { const g = this.ui.dialog; if (g?.type === "mealmove") { g.slot = d.slot; this.renderDialog(); } break; }
       case "mealmove-day": await this._mealMoveTo(d.date, this.ui.dialog?.slot); break;
-      case "reload-screen": location.reload(); break;
+      case "reload-screen": this._reloadPage(); break;
       case "mealie-remove": {
         if (!confirm("Remove this meal from the plan?")) return;
         await this._ws({ type: "skylight/mealie/remove", mealplan_id: Number(d.meal) });
@@ -1423,7 +1452,7 @@ export class SkylightPanel extends HTMLElement {
     const active = this.shadowRoot.activeElement;
     const focusId = active?.id;
     // Keep text being typed in the main screen (not dialogs) across re-renders.
-    const typing = active && active.tagName === "INPUT" && active.id && this.$app.contains(active)
+    const typing = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") && active.id && this.$app.contains(active)
       ? { id: active.id, value: active.value, pos: active.selectionStart } : null;
     const tg = this.$app.querySelector(".tg-scroll");
     if (tg && this._tgH) this._tgScroll = tg.scrollTop / this._tgH; // hours

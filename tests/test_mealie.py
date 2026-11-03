@@ -208,16 +208,20 @@ async def test_save_recipe(hass, setup, hass_ws_client, aioclient_mock):
     aioclient_mock.patch(f"{MEALIE_URL}/api/recipes/chicken-tacos", json={"slug": "chicken-tacos-deluxe", "name": "Chicken Tacos Deluxe"})
     res = await _cmd(ws, {"type": "skylight/mealie/save_recipe", "recipe": "chicken-tacos", "name": " Chicken Tacos Deluxe ", "yield": "6 tacos",
                           "description": "Tuesday favourite",
-                          "ingredients": ["# Filling", "1 1/2 pounds chicken boneless", "2 limes", "# Toppings", "salt to taste", ""],
+                          "ingredients": ["# Filling", "1 1/2 pounds chicken boneless", "2 limes", "# Toppings", "salt to taste", "", "1 1/2 cups shredded cheese", "½ tsp cumin", "2-3 jalapeños, sliced"],
                           "steps": ["Cook chicken.", "# Serve", "Assemble.", "Eat warm."]})
     assert res["success"], res
     assert res["result"] == {"slug": "chicken-tacos-deluxe", "name": "Chicken Tacos Deluxe"}
     method, url, body, _ = [c for c in aioclient_mock.mock_calls if c[0] == "PATCH"][0]
     assert body["name"] == "Chicken Tacos Deluxe" and body["recipeYield"] == "6 tacos" and body["description"] == "Tuesday favourite"
-    kept, limes, salt = body["recipeIngredient"]
+    kept, limes, salt, cheese, cumin, jal = body["recipeIngredient"]
     assert kept["quantity"] == 1.5 and kept["referenceId"] == "ref-1" and kept["title"] == "Filling"  # unchanged line: structured amount kept
-    assert limes["note"] == "2 limes" and limes["title"] is None and limes["food"] is None  # new line: plain text, same section
-    assert salt["title"] == "Toppings" and salt["note"] == "salt to taste"
+    assert (limes["quantity"], limes["note"], limes["title"], limes["food"]) == (2, "limes", None, None)  # new line: number + text, so it scales
+    assert salt["title"] == "Toppings" and salt["note"] == "salt to taste" and not salt["quantity"]  # unchanged line, no number: as it was
+    assert (cheese["quantity"], cheese["note"]) == (1.5, "cups shredded cheese")
+    assert (cumin["quantity"], cumin["note"]) == (0.5, "tsp cumin")
+    assert (jal["quantity"], jal["note"]) == (2, "jalapeños, sliced")  # a range scales from its first number
+    assert "settings" not in body  # amounts were already on
     assert body["recipeInstructions"] == [{"title": "", "text": "Cook chicken."}, {"title": "Serve", "text": "Assemble."}, {"title": "", "text": "Eat warm."}]
 
     aioclient_mock.get(f"{MEALIE_URL}/api/recipes/locked-one", json={"slug": "locked-one", "settings": {"locked": True}, "recipeIngredient": [], "recipeInstructions": []})
@@ -225,6 +229,43 @@ async def test_save_recipe(hass, setup, hass_ws_client, aioclient_mock):
     assert not res["success"] and "locked" in res["error"]["message"]
     res = await _cmd(ws, {"type": "skylight/mealie/save_recipe", "recipe": "chicken-tacos", "name": "  ", "ingredients": [], "steps": []})
     assert not res["success"]
+
+
+def test_split_amount():
+    from custom_components.skylight.mealie import split_amount
+    assert split_amount("2 limes") == (2, "limes")
+    assert split_amount("1 1/2 pounds chicken") == (1.5, "pounds chicken")
+    assert split_amount("1/4 cup sugar") == (0.25, "cup sugar")
+    assert split_amount("¾ cup milk") == (0.75, "cup milk")
+    assert split_amount("1½ cups flour") == (1.5, "cups flour")
+    assert split_amount("2.5 oz butter") == (2.5, "oz butter")
+    assert split_amount("3 to 4 eggs") == (3, "eggs")
+    assert split_amount("Salt to taste") == (None, "Salt to taste")
+    assert split_amount("2") == (None, "2")  # a bare number isn't an ingredient line
+
+
+async def test_save_turns_amounts_on_and_cook_scales_typed_lines(hass, setup, hass_ws_client, aioclient_mock):
+    ws = await hass_ws_client(hass)
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes/soup", json={
+        "id": RID, "name": "Soup", "slug": "soup", "settings": {"disableAmount": True, "locked": False},
+        "recipeIngredient": [], "recipeInstructions": []})
+    aioclient_mock.patch(f"{MEALIE_URL}/api/recipes/soup", json={"slug": "soup", "name": "Soup"})
+    res = await _cmd(ws, {"type": "skylight/mealie/save_recipe", "recipe": "soup", "name": "Soup", "ingredients": ["2 carrots", "water"], "steps": ["Boil."]})
+    assert res["success"], res
+    body = [c for c in aioclient_mock.mock_calls if c[0] == "PATCH"][-1][2]
+    assert body["settings"]["disableAmount"] is False  # typed numbers only count once amounts are on
+    # cook mode scales a quantity-plus-text ingredient as "2 carrots"
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{MEALIE_URL}/api/groups/self", json={"slug": "home"})
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes/soup", json={
+        "id": RID, "name": "Soup", "slug": "soup", "recipeServings": 4, "settings": {"disableAmount": False},
+        "recipeIngredient": [{"quantity": 2, "unit": None, "food": None, "note": "carrots", "display": "2 carrots"},
+                             {"quantity": None, "unit": None, "food": None, "note": "water", "display": "water"}],
+        "recipeInstructions": [{"text": "Boil."}]})
+    c = (await _cmd(ws, {"type": "skylight/mealie/cook", "recipe": "soup"}))["result"]
+    carrots, water = c["ingredients"]
+    assert carrots["scalable"] is True and carrots["qty"] == 2 and carrots["food"] == "carrots" and carrots["note"] == ""
+    assert water["scalable"] is False and water["text"] == "water"
 
 
 async def test_delete_recipe(hass, setup, hass_ws_client, aioclient_mock):

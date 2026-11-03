@@ -1,10 +1,10 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.66.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.67.0";
 
 const COOK_IDLE_MS = 60 * 60000; // cook mode asks "Still cooking?" after an hour without a touch
 const COOK_ASK_MS = 60000; // and a minute later, with no answer, the screensaver comes on over the recipe
-import { keepAwake } from "./wake.js?v=1.66.0";
+import { keepAwake } from "./wake.js?v=1.67.0";
 
 export class MealsView {
   async _loadMealie() {
@@ -115,7 +115,7 @@ export class MealsView {
       <label>Title<input id="re-name" value="${esc(e.name)}" data-fresh="1"></label>
       <div class="ckedit2"><label>Makes<input id="re-yield" value="${esc(e.yield)}" placeholder="e.g. 4 servings"></label>
         <label>Description<input id="re-desc" value="${esc(e.desc)}"></label></div>
-      <label>Ingredients <small>one per line · a line starting with # is a section title · a line left as it was keeps its scalable amount</small>
+      <label>Ingredients <small>one per line, starting with the amount (2 limes, 1 1/2 cups flour) so it scales · a line starting with # is a section title</small>
         <textarea id="re-ings" rows="10">${esc(e.ings)}</textarea></label>
       <label>Steps <small>one step per paragraph (blank line between) · # for a section title</small>
         <textarea id="re-steps" rows="12">${esc(e.steps)}</textarea></label>

@@ -524,11 +524,15 @@ async def ws_cook(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         except (TypeError, ValueError):
             qty = None
         text = (i.get("display") or i.get("originalText") or i.get("note") or "").strip()
-        scalable = not no_amounts and qty is not None and qty > 0 and bool(i.get("food") or i.get("unit"))
+        note = (i.get("note") or "").strip()
+        food, unit = _food(i.get("food")), _unit(i.get("unit"))
+        if qty and not food and not unit and note:  # "2 limes" typed in the editor: the text is the thing to scale
+            food, note = note, ""
+        scalable = not no_amounts and qty is not None and qty > 0 and bool(food or unit)
         ingredients.append({
             "section": (i.get("title") or "").strip(), "text": text, "scalable": scalable, "qty": qty if scalable else None,
-            "unit": _unit(i.get("unit")), "unit_plural": _unit(i.get("unit"), True),
-            "food": _food(i.get("food")), "food_plural": _food(i.get("food"), True), "note": (i.get("note") or "").strip(),
+            "unit": unit, "unit_plural": _unit(i.get("unit"), True),
+            "food": food, "food_plural": _food(i.get("food"), True) if i.get("food") else food, "note": note,
         })
     steps = [{"section": (s.get("title") or "").strip(), "text": (s.get("text") or "").strip()}
              for s in r.get("recipeInstructions") or [] if (s.get("text") or "").strip()]
@@ -582,9 +586,35 @@ def _sectioned(lines: list[str]) -> list[tuple[str, str]]:
     return out
 
 
+_FRACTIONS = {"½": 0.5, "⅓": 1 / 3, "⅔": 2 / 3, "¼": 0.25, "¾": 0.75, "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875}
+_AMOUNT = re.compile(r"^\s*(\d+(?:[.,]\d+)?(?:\s+\d+/\d+)?|\d+/\d+|[½⅓⅔¼¾⅛⅜⅝⅞]|\d+\s*[½⅓⅔¼¾⅛⅜⅝⅞])(?:\s*(?:-|–|to)\s*\d+(?:[.,]\d+)?)?\s+(.+)$")
+
+
+def split_amount(text: str) -> tuple[float | None, str]:
+    """("2 limes") -> (2.0, "limes"); handles 1 1/2, 1/2, ½, 2.5 and ranges like 2-3 (the first number).
+    No leading number -> (None, text), so "Salt to taste" stays plain."""
+    m = _AMOUNT.match(text)
+    if not m:
+        return None, text.strip()
+    num, rest = m.group(1).strip(), m.group(2).strip()
+    total = 0.0
+    for part in num.replace(",", ".").split():
+        if part in _FRACTIONS:
+            total += _FRACTIONS[part]
+        elif part[-1] in _FRACTIONS:
+            total += float(part[:-1]) + _FRACTIONS[part[-1]]
+        elif "/" in part:
+            a, b = part.split("/", 1)
+            total += float(a) / float(b) if float(b) else 0
+        else:
+            total += float(part)
+    return (round(total, 3) if total > 0 else None), rest
+
+
 def _ingredient_rows(existing: list[dict], rows: list[tuple[str, str]]) -> list[dict]:
     """Mealie ingredient objects for the editor's lines. A line left exactly as it was keeps its structured
-    amount (so scaling still works); a changed or new line becomes a plain-text ingredient."""
+    amount; a changed or new line that starts with a number gets that number as its quantity and the rest
+    as its text (so Mealie and cook mode both scale it); a line with no number stays plain text."""
     by_text = {}
     for i in existing:
         text = (i.get("display") or i.get("originalText") or i.get("note") or "").strip()
@@ -600,8 +630,9 @@ def _ingredient_rows(existing: list[dict], rows: list[tuple[str, str]]) -> list[
             item["title"] = title or None
             out.append(item)
         else:
-            out.append({"title": title or None, "note": text, "originalText": text, "display": text,
-                        "quantity": 0, "unit": None, "food": None, "disableAmount": True})
+            qty, rest = split_amount(text)
+            out.append({"title": title or None, "note": rest if qty else text, "originalText": text,
+                        "quantity": qty, "unit": None, "food": None})
     return out
 
 
@@ -639,6 +670,9 @@ async def ws_save_recipe(hass: HomeAssistant, connection, msg: dict[str, Any]) -
         prev = section
     body = {"name": name, "description": msg["description"].strip(), "recipeYield": msg["yield"].strip(),
             "recipeIngredient": ingredients, "recipeInstructions": steps}
+    settings = dict(current.get("settings") or {})
+    if settings.get("disableAmount") and any(i.get("quantity") for i in ingredients):
+        body["settings"] = {**settings, "disableAmount": False}  # amounts were off: turn them on so the numbers scale
     try:
         resp = await _mealie_http(hass, "PATCH", f"api/recipes/{key}", json=body)
         if resp.status in (404, 405):  # older Mealie: no partial update, send the whole recipe back

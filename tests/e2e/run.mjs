@@ -1318,6 +1318,38 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // Kiosk focus loss: a tap on a text box with no focus following (the window has no keyboard focus) is recorded,
+  // a second one reloads the page, and a repeat soon after a reload presses the kiosk's Refresh button.
+  async kiosk_focus_heal(browser, base) {
+    const p = await open(browser, base, { width: 1536, height: 864, ctx: { hasTouch: true } });
+    await p.evaluate(() => {
+      localStorage.setItem("skylight.kbEntity", "switch.touchkio_kitchen_keyboard");
+      window.hass.states["switch.touchkio_kitchen_keyboard"] = { state: "off", attributes: { friendly_name: "Kitchen Keyboard" } };
+      window.hass.states["button.touchkio_kitchen_refresh"] = { state: "unknown", attributes: { friendly_name: "Kitchen Refresh" } };
+      el.hass = { ...window.hass }; window.RELOADS = 0; el._reloadPage = () => { window.RELOADS++; };
+      sessionStorage.removeItem("skylight.focusHeal");
+    });
+    await p.tab("lists");
+    const box = p.S("#newitem").first();
+    // a healthy tap: the box takes focus, nothing is recorded
+    await box.tap(); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => [window.RELOADS, el._nofocus || 0]), [0, 0], "a tap that focuses the box is fine");
+    // the window has lost keyboard focus: taps reach the box but it never gets focus
+    await p.evaluate(() => { document.hasFocus = () => false; el.shadowRoot.activeElement?.blur(); });
+    await p.evaluate(() => { const b = el.shadowRoot.getElementById("newitem"); b.addEventListener("focus", (e) => e.target.blur(), { capture: true }); });
+    await box.dispatchEvent("pointerdown"); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => [window.RELOADS, el._nofocus]), [0, 1], "first dead tap is only recorded");
+    await box.dispatchEvent("pointerdown"); await p.waitForTimeout(1800); // the reload waits 1.2 s so the toast can be read
+    eq(await p.evaluate(() => window.RELOADS), 1, "second dead tap reloads the page");
+    // right after a reload (marker in sessionStorage) it happens again: the kiosk's Refresh button is pressed instead
+    await p.evaluate(() => { el._healAt = 0; sessionStorage.setItem("skylight.focusHeal", String(Date.now() - 30000)); });
+    await box.dispatchEvent("pointerdown"); await p.waitForTimeout(500);
+    await box.dispatchEvent("pointerdown"); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => [window.RELOADS, calls.filter((c) => c.svc === "button.press" && c.data.entity_id === "button.touchkio_kitchen_refresh").length]), [1, 1], "a repeat soon after a reload presses the kiosk's Refresh instead");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);
