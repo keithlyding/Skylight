@@ -1,10 +1,10 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.64.1";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.64.2";
 
 const COOK_IDLE_MS = 60 * 60000; // cook mode asks "Still cooking?" after an hour without a touch
-const COOK_ASK_MS = 60000; // and closes a minute later if nobody answers
-import { keepAwake } from "./wake.js?v=1.64.1";
+const COOK_ASK_MS = 60000; // and a minute later, with no answer, the screensaver comes on over the recipe
+import { keepAwake } from "./wake.js?v=1.64.2";
 
 export class MealsView {
   async _loadMealie() {
@@ -277,14 +277,15 @@ export class MealsView {
     keepAwake(false, "cook"); this.cook = null; this.$cook.innerHTML = ""; this._lastActivity = Date.now();
   }
   // A recipe left open isn't a person at the screen: after an hour without a touch, ask "Still cooking?" for a
-  // minute (any tap keeps it), then close so the screensaver and night mode can do their jobs again.
+  // minute (any tap keeps it). With no answer the photo screensaver comes on over the recipe, which stays open
+  // underneath: a tap on the screensaver brings it straight back. (Without a photo source the recipe closes.)
   _cookIdleCheck() {
     const c = this.cook;
-    if (!c?.r) return;
+    if (!c?.r || this.ui.saver) return;
     const now = Date.now();
     if (c.ask) {
       if (this._lastActivity > c.ask.since) { this._cookKeep(); return; } // someone touched the screen
-      if (now >= c.ask.until) { this.closeCook(); this._toast("Cook mode closed after an hour without a touch"); }
+      if (now >= c.ask.until) this._cookRest();
       return;
     }
     if (now - this._lastActivity >= COOK_IDLE_MS) {
@@ -298,6 +299,11 @@ export class MealsView {
         if (Date.now() >= this.cook.ask.until) this._cookIdleCheck();
       }, 1000);
     }
+  }
+  async _cookRest() {
+    this._cookKeep(); // the question is answered by silence: the recipe stays, the screen rests
+    if (this._hasPhotoSource()) { await this.startSaver(); return; }
+    this.closeCook(); this._toast("Cook mode closed after an hour without a touch");
   }
   _cookKeep() {
     if (!this.cook) return;
@@ -378,8 +384,8 @@ export class MealsView {
         <span>Step ${c.step + 1} of ${r.steps.length}</span>
         <button class="primary" data-action="${c.step >= r.steps.length - 1 ? "cook-close" : "cook-next"}">${c.step >= r.steps.length - 1 ? "Done 🎉" : "Next ›"}</button></div>` : ""}
       ${c.ask ? `<div class="ckask" data-action="cook-keep"><div class="ckaskcard"><h3>Still cooking?</h3>
-        <p>Nobody has touched the screen for an hour. This recipe closes in <b id="ck-left">${Math.max(0, Math.ceil((c.ask.until - Date.now()) / 1000))}</b> seconds. Tap anywhere to keep it.</p>
-        <div class="ckaskbtns"><button class="primary" data-action="cook-keep">Keep cooking</button><button data-action="cook-close">Close now</button></div></div></div>` : ""}
+        <p>Nobody has touched the screen for an hour. The screensaver starts in <b id="ck-left">${Math.max(0, Math.ceil((c.ask.until - Date.now()) / 1000))}</b> seconds; the recipe will still be here when you tap the screen.</p>
+        <div class="ckaskbtns"><button class="primary" data-action="cook-keep">Keep cooking</button><button data-action="cook-close">Close the recipe</button></div></div></div>` : ""}
       ${c.qr ? `<div class="ckqr" data-action="cook-qr"><div class="ckqrcard"><h3>Scan with your phone</h3><div class="qrbox">${c.qrSvg || "…"}</div>
         <p class="hint">Opens this recipe in Mealie. Your phone must be able to reach Mealie (same Wi-Fi, or a link set in Setup → Mealie).</p><small class="qrurl">${esc(r.link)}</small></div></div>` : ""}`);
     [".ckbody", ".ckings", ".cksteps"].forEach((sel, i) => { const el = this.$cook.querySelector(sel); if (el) el.scrollTop = kept[i]; });

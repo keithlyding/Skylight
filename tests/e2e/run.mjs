@@ -1242,15 +1242,23 @@ const SCENARIOS = {
     eq(await p.S(".cook .ckask").count(), 0, "59 minutes idle: still nothing");
     await p.evaluate(() => { el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); }); await p.waitForTimeout(100);
     eq(await p.S(".cook .ckask").count(), 1, "an hour idle: Still cooking? appears");
-    check(/closes in \d+ seconds/.test((await text(p.S(".ckaskcard")))[0]), "with a countdown");
+    check(/starts in \d+ seconds/.test((await text(p.S(".ckaskcard")))[0]), "with a countdown");
     await p.S('.ckaskbtns [data-action="cook-keep"]').click(); await p.waitForTimeout(100);
     eq(await p.evaluate(() => [el.shadowRoot.querySelectorAll(".cook .ckask").length, !!el.cook?.r]), [0, true], "Keep cooking dismisses it and the recipe stays");
     // ask again, touch nothing, and let the minute run out
     await p.evaluate(() => { el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); el.cook.got.add(0); el.cook.step = 1; }); await p.waitForTimeout(100);
     eq(await p.S(".cook .ckask").count(), 1, "asked again");
-    await p.evaluate(() => { el.cook.ask.until = Date.now() - 1; el._checkIdle(); }); await p.waitForTimeout(200);
-    eq(await p.evaluate(() => [!!el.cook, el.shadowRoot.querySelectorAll(".cook").length]), [false, 0], "no answer for a minute: cook mode closed");
-    // reopening the same recipe brings the ticks and step back
+    // no answer for a minute: the screensaver comes on over the recipe, which is still there after a tap
+    await p.evaluate(() => { el._hasPhotoSource = () => true; el._photoUrls = async () => [{ url: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" }]; });
+    await p.evaluate(() => { el.cook.ask.until = Date.now() - 1; el._checkIdle(); }); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => [el.ui.saver, !!el.cook?.r, el.shadowRoot.querySelectorAll(".saver").length, el.shadowRoot.querySelectorAll(".cook .ckask").length]), [true, true, 1, 0], "screensaver on, recipe kept underneath, question gone");
+    await p.evaluate(() => { el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); }); await p.waitForTimeout(100);
+    eq(await p.S(".cook .ckask").count(), 0, "not asked again while the screensaver shows");
+    await p.S(".saver").click(); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => [el.ui.saver, [...el.cook.got], el.cook.step, el.shadowRoot.querySelectorAll(".cook").length]), [false, [0], 1, 1], "a tap: screensaver gone, the recipe is right there with its ticks and step");
+    // without a photo source there is nothing to rest on, so the recipe closes; reopening brings the ticks back
+    await p.evaluate(() => { el._hasPhotoSource = () => false; el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); el.cook.ask.until = Date.now() - 1; el._checkIdle(); }); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => [!!el.cook, el.shadowRoot.querySelectorAll(".cook").length]), [false, 0], "no screensaver to show: cook mode closed instead");
     await p.evaluate(() => el.openCook("r1")); await p.waitForTimeout(500);
     eq(await p.evaluate(() => [[...el.cook.got], el.cook.step]), [[0], 1], "ticked ingredients and the step survive a reopen");
     eq(p.errors, [], "no page errors");
