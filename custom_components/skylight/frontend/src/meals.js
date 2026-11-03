@@ -1,10 +1,10 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.65.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.66.0";
 
 const COOK_IDLE_MS = 60 * 60000; // cook mode asks "Still cooking?" after an hour without a touch
 const COOK_ASK_MS = 60000; // and a minute later, with no answer, the screensaver comes on over the recipe
-import { keepAwake } from "./wake.js?v=1.65.0";
+import { keepAwake } from "./wake.js?v=1.66.0";
 
 export class MealsView {
   async _loadMealie() {
@@ -101,6 +101,46 @@ export class MealsView {
     await this._reloadMealie();
     if (this.ui.dialog === dlg) { dlg.query = ""; dlg.results = null; this.renderDialog(); }
     this._toast(extra.random ? "Random recipe added" : "Added to the plan");
+  }
+
+  // ---------- edit a recipe from cook mode (saved back to Mealie) ----------
+  // Ingredients: one per line; steps: one per paragraph. A line starting with # is a section title in both.
+  _recipeEditText(r) {
+    const lines = (items, sep) => { let sec = null; const out = []; for (const x of items) { if ((x.section || "") !== (sec ?? "") && x.section) out.push(`# ${x.section}`); sec = x.section || ""; out.push(x.text); } return out.join(sep); };
+    return { name: r.name || "", yield: r.yield || "", desc: r.description || "", ings: lines(r.ingredients, "\n"), steps: lines(r.steps, "\n\n") };
+  }
+  _recipeEditorHtml(c) {
+    const e = c.edit;
+    return `<div class="ckedit">
+      <label>Title<input id="re-name" value="${esc(e.name)}" data-fresh="1"></label>
+      <div class="ckedit2"><label>Makes<input id="re-yield" value="${esc(e.yield)}" placeholder="e.g. 4 servings"></label>
+        <label>Description<input id="re-desc" value="${esc(e.desc)}"></label></div>
+      <label>Ingredients <small>one per line · a line starting with # is a section title · a line left as it was keeps its scalable amount</small>
+        <textarea id="re-ings" rows="10">${esc(e.ings)}</textarea></label>
+      <label>Steps <small>one step per paragraph (blank line between) · # for a section title</small>
+        <textarea id="re-steps" rows="12">${esc(e.steps)}</textarea></label>
+      <div class="actions"><button data-action="recipe-edit-cancel">Cancel</button><span class="spacer"></span><button class="primary" data-action="recipe-edit-save">Save to Mealie</button></div>
+    </div>`;
+  }
+  async _recipeEditSave() {
+    const c = this.cook; if (!c?.r || !c.edit) return;
+    const $ = (id) => this.$cook.querySelector(`#${id}`);
+    const name = $("re-name").value.trim();
+    if (!name) { this._toast("The recipe needs a title"); return; }
+    const ingredients = $("re-ings").value.split("\n").map((l) => l.trim()).filter(Boolean);
+    const steps = []; // one step per paragraph; a "# Section" line may sit right above its first step
+    for (const para of $("re-steps").value.split(/\n\s*\n/)) {
+      const lines = para.split("\n").map((l) => l.trim()).filter(Boolean);
+      while (lines.length && lines[0].startsWith("#")) steps.push(lines.shift());
+      if (lines.length) steps.push(lines.join("\n"));
+    }
+    let res;
+    try { res = await this._ws({ type: "skylight/mealie/save_recipe", recipe: c.r.slug || c.key, name, description: $("re-desc").value.trim(), yield: $("re-yield").value.trim(), ingredients, steps }); }
+    catch (e) { return; } // _ws showed the error; the editor stays open with the text
+    this._cookMemo = null; this._todayMeals = null; this.browse = null;
+    this._toast("Saved to Mealie");
+    await this.openCook(res.slug || c.key);
+    this._reloadMealie();
   }
 
   // ---------- move a planned meal to any day (the grid shows one week, so dragging can't reach next week) ----------
@@ -309,7 +349,7 @@ export class MealsView {
   // underneath: a tap on the screensaver brings it straight back. (Without a photo source the recipe closes.)
   _cookIdleCheck() {
     const c = this.cook;
-    if (!c?.r || this.ui.saver) return;
+    if (!c?.r || this.ui.saver || c.edit) return; // never redraw over someone's typing
     const now = Date.now();
     if (c.ask) {
       if (this._lastActivity > c.ask.since) { this._cookKeep(); return; } // someone touched the screen
@@ -397,9 +437,10 @@ export class MealsView {
         <span class="spacer"></span>
         ${serv}
         ${r.link ? `<button data-action="cook-qr" title="Open on your phone">📱 On my phone</button>` : ""}
+        ${c.edit ? "" : `<button data-action="recipe-edit" title="Change the title, ingredients or steps">✏️ Edit</button>`}
         <button class="ckx" data-action="cook-close">✕ Close</button>
       </div>
-      <div class="ckbody">
+      ${c.edit ? this._recipeEditorHtml(c) : `<div class="ckbody">
         <section class="ckings"><h3>Ingredients <small>${c.got.size}/${r.ingredients.length}</small></h3>
           ${unscalable ? `<p class="hint">Some amounts are plain text in Mealie and aren't scaled.</p>` : ""}
           ${ings || `<p class="hint">None listed</p>`}
@@ -407,8 +448,8 @@ export class MealsView {
         </section>
         <section class="cksteps"><h3>Steps${r.steps.length ? ` <small>${Math.min(c.step + 1, r.steps.length)} of ${r.steps.length}</small>` : ""}</h3>
           ${steps || `<p class="hint">No steps in this recipe.${r.source ? ` <br>Source: ${esc(r.source)}` : ""}</p>`}</section>
-      </div>
-      ${r.steps.length ? `<div class="cknav"><button data-action="cook-prev" ${c.step <= 0 ? "disabled" : ""}>‹ Back</button>
+      </div>`}
+      ${r.steps.length && !c.edit ? `<div class="cknav"><button data-action="cook-prev" ${c.step <= 0 ? "disabled" : ""}>‹ Back</button>
         <span>Step ${c.step + 1} of ${r.steps.length}</span>
         <button class="primary" data-action="${c.step >= r.steps.length - 1 ? "cook-close" : "cook-next"}">${c.step >= r.steps.length - 1 ? "Done 🎉" : "Next ›"}</button></div>` : ""}
       ${c.ask ? `<div class="ckask" data-action="cook-keep"><div class="ckaskcard"><h3>Still cooking?</h3>

@@ -1290,6 +1290,34 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // ✏️ Edit in cook mode: title, makes, description, ingredients and steps as plain text, saved back to Mealie.
+  async recipe_edit(browser, base) {
+    const p = await open(browser, base, { width: 1300, height: 912 });
+    await p.evaluate(() => el.openCook("r1")); await p.waitForTimeout(500);
+    const r = await p.evaluate(() => ({ name: el.cook.r.name, ings: el.cook.r.ingredients.map((i) => i.text), steps: el.cook.r.steps.map((s) => s.text) }));
+    await p.S('.cook [data-action="recipe-edit"]').click(); await p.waitForTimeout(300);
+    eq(await p.S(".cook .ckedit").count(), 1, "the editor replaces the recipe body");
+    eq(await p.S(".cook #re-name").inputValue(), r.name, "title prefilled");
+    const ingLines = (await p.S(".cook #re-ings").inputValue()).split("\n").filter((l) => l && !l.startsWith("#"));
+    eq(ingLines, r.ings, "one ingredient per line");
+    const stepParas = (await p.S(".cook #re-steps").inputValue()).split(/\n\s*\n/).filter((l) => l && !l.startsWith("#"));
+    eq(stepParas, r.steps, "one step per paragraph");
+    await p.evaluate(() => { el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); });
+    eq(await p.S(".cook .ckask").count(), 0, "no Still cooking? while editing");
+    await p.S(".cook #re-name").fill(`${r.name} Deluxe`);
+    await p.S(".cook #re-ings").fill(`${ingLines.join("\n")}\n2 limes`);
+    await p.S(".cook #re-steps").fill(`${stepParas.join("\n\n")}\n\n# Serve\nEat warm.`);
+    await p.S('.cook [data-action="recipe-edit-save"]').click(); await p.waitForTimeout(800);
+    const saved = await p.evaluate(() => (window.SAVES || [])[0]);
+    check(saved && saved.name === `${r.name} Deluxe` && saved.ingredients.at(-1) === "2 limes" && saved.steps.slice(-2).join("|") === "# Serve|Eat warm.", `saved what was typed (${JSON.stringify(saved)})`);
+    eq(await p.evaluate(() => [el.shadowRoot.querySelectorAll(".cook .ckedit").length, !!el.cook?.r]), [0, true], "back to the recipe after saving");
+    await p.S('.cook [data-action="recipe-edit"]').click(); await p.waitForTimeout(200);
+    await p.S('.cook [data-action="recipe-edit-cancel"]').click(); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => [el.shadowRoot.querySelectorAll(".cook .ckedit").length, (window.SAVES || []).length]), [0, 1], "cancel leaves the recipe alone");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);

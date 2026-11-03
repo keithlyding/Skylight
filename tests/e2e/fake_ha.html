@@ -74,6 +74,7 @@ window.hass = {
       const items=[...Array(msg.page===1?24:6)].map((_,i)=>({id:"r"+i+"p"+msg.page,slug:"recipe-"+i,name:names[i%8]+(msg.page>1?" "+i:""),total_time:i%3?"30 minutes":null,rating:i%4,image:i%5?"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='30'%3E%3Crect width='40' height='30' fill='%23d35400'/%3E%3Ccircle cx='20' cy='15' r='9' fill='%23f1c40f'/%3E%3C/svg%3E":null}))
         .filter(r=>!msg.query||r.name.toLowerCase().includes(msg.query.toLowerCase()));
       return {items,page:msg.page,total_pages:2,total:30}; }
+    case "skylight/mealie/save_recipe": (window.SAVES=window.SAVES||[]).push(msg); return {slug:"chicken-tacos",name:msg.name};
     case "skylight/mealie/delete_recipe": (window.DELS=window.DELS||[]).push(msg.recipe); if(msg.recipe==="recipe-2") throw new Error("Mealie won't let this account delete that recipe (it may be locked or owned by someone else)."); return null;
     case "skylight/mealie/organizers": return {categories:[{id:"c1",name:"Dinner",slug:"dinner"},{id:"c2",name:"Breakfast",slug:"breakfast"},{id:"c3",name:"Dessert",slug:"dessert"}],tags:[{id:"t1",name:"Quick",slug:"quick"}]};
     case "skylight/mealie/cook": return {id:"r1",name:"Chicken Tacos",slug:"chicken-tacos",image:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='30'%3E%3Crect width='40' height='30' fill='%23d35400'/%3E%3Ccircle cx='20' cy='15' r='9' fill='%23f1c40f'/%3E%3C/svg%3E",total_time:"30 minutes",prep_time:"10 minutes",cook_time:"20 minutes",servings:4,yield:"4 servings",

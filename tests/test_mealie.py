@@ -195,6 +195,38 @@ async def test_browse_organizers_and_cook(hass, setup, hass_ws_client, aioclient
     assert not bad["success"]
 
 
+async def test_save_recipe(hass, setup, hass_ws_client, aioclient_mock):
+    """The cook-mode editor: an unchanged ingredient line keeps its structured amount, changed lines become
+    plain text, # lines name sections, steps are rebuilt, and the title/yield/description go along."""
+    ws = await hass_ws_client(hass)
+    chicken = {"referenceId": "ref-1", "title": "Filling", "quantity": 1.5, "unit": {"name": "pound"}, "food": {"name": "chicken"},
+               "note": "boneless", "display": "1 1/2 pounds chicken boneless"}
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes/chicken-tacos", json={
+        "id": RID, "name": "Chicken Tacos", "slug": "chicken-tacos", "settings": {"locked": False},
+        "recipeIngredient": [chicken, {"quantity": 0, "note": "salt to taste", "display": "salt to taste"}],
+        "recipeInstructions": [{"title": "", "text": "Cook chicken."}]})
+    aioclient_mock.patch(f"{MEALIE_URL}/api/recipes/chicken-tacos", json={"slug": "chicken-tacos-deluxe", "name": "Chicken Tacos Deluxe"})
+    res = await _cmd(ws, {"type": "skylight/mealie/save_recipe", "recipe": "chicken-tacos", "name": " Chicken Tacos Deluxe ", "yield": "6 tacos",
+                          "description": "Tuesday favourite",
+                          "ingredients": ["# Filling", "1 1/2 pounds chicken boneless", "2 limes", "# Toppings", "salt to taste", ""],
+                          "steps": ["Cook chicken.", "# Serve", "Assemble.", "Eat warm."]})
+    assert res["success"], res
+    assert res["result"] == {"slug": "chicken-tacos-deluxe", "name": "Chicken Tacos Deluxe"}
+    method, url, body, _ = [c for c in aioclient_mock.mock_calls if c[0] == "PATCH"][0]
+    assert body["name"] == "Chicken Tacos Deluxe" and body["recipeYield"] == "6 tacos" and body["description"] == "Tuesday favourite"
+    kept, limes, salt = body["recipeIngredient"]
+    assert kept["quantity"] == 1.5 and kept["referenceId"] == "ref-1" and kept["title"] == "Filling"  # unchanged line: structured amount kept
+    assert limes["note"] == "2 limes" and limes["title"] is None and limes["food"] is None  # new line: plain text, same section
+    assert salt["title"] == "Toppings" and salt["note"] == "salt to taste"
+    assert body["recipeInstructions"] == [{"title": "", "text": "Cook chicken."}, {"title": "Serve", "text": "Assemble."}, {"title": "", "text": "Eat warm."}]
+
+    aioclient_mock.get(f"{MEALIE_URL}/api/recipes/locked-one", json={"slug": "locked-one", "settings": {"locked": True}, "recipeIngredient": [], "recipeInstructions": []})
+    res = await _cmd(ws, {"type": "skylight/mealie/save_recipe", "recipe": "locked-one", "name": "X", "ingredients": [], "steps": []})
+    assert not res["success"] and "locked" in res["error"]["message"]
+    res = await _cmd(ws, {"type": "skylight/mealie/save_recipe", "recipe": "chicken-tacos", "name": "  ", "ingredients": [], "steps": []})
+    assert not res["success"]
+
+
 async def test_delete_recipe(hass, setup, hass_ws_client, aioclient_mock):
     ws = await hass_ws_client(hass)
     aioclient_mock.delete(f"{MEALIE_URL}/api/recipes/chicken-tacos", json={})

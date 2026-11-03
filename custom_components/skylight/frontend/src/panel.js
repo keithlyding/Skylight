@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.65.0";
-import { STYLES } from "./styles.js?v=1.65.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.65.0";
-import { CalendarView } from "./calendar.js?v=1.65.0";
-import { WeatherView } from "./weather.js?v=1.65.0";
-import { HomeView } from "./home.js?v=1.65.0";
-import { ChoresView } from "./chores.js?v=1.65.0";
-import { MealsView } from "./meals.js?v=1.65.0";
-import { ListsView } from "./lists.js?v=1.65.0";
-import { PhotosView } from "./photos.js?v=1.65.0";
-import { SettingsView } from "./settings.js?v=1.65.0";
-import { PickersView } from "./pickers.js?v=1.65.0";
-import { keepAwake } from "./wake.js?v=1.65.0";
-import { MlbView } from "./mlb.js?v=1.65.0";
-import { TravelView } from "./travel.js?v=1.65.0";
-import { NotesView } from "./notes.js?v=1.65.0";
-import { VerseView } from "./verses.js?v=1.65.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.66.0";
+import { STYLES } from "./styles.js?v=1.66.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.66.0";
+import { CalendarView } from "./calendar.js?v=1.66.0";
+import { WeatherView } from "./weather.js?v=1.66.0";
+import { HomeView } from "./home.js?v=1.66.0";
+import { ChoresView } from "./chores.js?v=1.66.0";
+import { MealsView } from "./meals.js?v=1.66.0";
+import { ListsView } from "./lists.js?v=1.66.0";
+import { PhotosView } from "./photos.js?v=1.66.0";
+import { SettingsView } from "./settings.js?v=1.66.0";
+import { PickersView } from "./pickers.js?v=1.66.0";
+import { keepAwake } from "./wake.js?v=1.66.0";
+import { MlbView } from "./mlb.js?v=1.66.0";
+import { TravelView } from "./travel.js?v=1.66.0";
+import { NotesView } from "./notes.js?v=1.66.0";
+import { VerseView } from "./verses.js?v=1.66.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -933,6 +933,9 @@ export class SkylightPanel extends HTMLElement {
       case "view-recipe": this.closeDialog(); await this.openCook(d.recipe); break;
       case "cook": await this.openCook(d.recipe); break;
       case "cook-close": this.closeCook(); break;
+      case "recipe-edit": if (this.cook?.r) { this.cook.edit = this._recipeEditText(this.cook.r); this.renderCook(); this.$cook.querySelector("#re-name")?.focus(); } break;
+      case "recipe-edit-cancel": if (this.cook) { this.cook.edit = null; this.renderCook(); } break;
+      case "recipe-edit-save": await this._recipeEditSave(); break;
       case "cook-keep": this._cookKeep(); break;
       case "recipe-delete": {
         if (!confirm(`Delete "${d.name}" from Mealie?\n\nThis removes the recipe for everyone and can't be undone.`)) return;

@@ -506,6 +506,11 @@ label.check input { width:22px; height:22px; }
 .cookbtn { display:inline-block; margin-top:4px; font-weight:800; color:var(--accent); }
 .tonight .tothers { font-weight:600; margin-top:4px; }
 .cook { position:fixed; inset:0; z-index:400; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; }
+.ckedit { flex:1; overflow:auto; padding:16px 24px 24px; display:grid; gap:12px; align-content:start; max-width:980px; width:100%; box-sizing:border-box; margin:0 auto; }
+.ckedit label { display:grid; gap:4px; font-weight:700; } .ckedit small { font-weight:400; color:var(--muted); }
+.ckedit input, .ckedit textarea { font:inherit; font-size:18px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:inherit; width:100%; box-sizing:border-box; }
+.ckedit textarea { line-height:1.45; resize:vertical; } .ckedit2 { display:grid; grid-template-columns:1fr 2fr; gap:12px; }
+.ckedit .actions { display:flex; gap:10px; } .ckedit .actions button { min-height:48px; font-size:18px; }
 .ckask { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.45); display:grid; place-items:center; }
 .ckaskcard { background:var(--card); border-radius:18px; padding:24px 28px; max-width:440px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.35); }
 .ckaskcard h3 { margin:0 0 8px; font-size:26px; } .ckaskcard p { font-size:18px; line-height:1.4; } .ckaskcard b { font-size:24px; }

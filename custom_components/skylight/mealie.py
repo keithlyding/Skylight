@@ -86,19 +86,19 @@ def _recipe(hass: HomeAssistant, r: dict[str, Any] | None, token_id: str | None)
     }
 
 
-async def _mealie_http(hass: HomeAssistant, method: str, path: str) -> aiohttp.ClientResponse:
+async def _mealie_http(hass: HomeAssistant, method: str, path: str, json: Any = None) -> aiohttp.ClientResponse:
     entry = _entry(hass)
     host = entry.data["host"].rstrip("/")
     session = async_get_clientsession(hass, verify_ssl=entry.data.get("verify_ssl", True))
     return await session.request(
-        method, f"{host}/{path}",
+        method, f"{host}/{path}", json=json,
         headers={"Authorization": f"Bearer {entry.data['api_token']}"}, timeout=TIMEOUT,
     )
 
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_move, ws_import, ws_browse, ws_organizers, ws_cook, ws_delete_recipe):
+    for cmd in (ws_info, ws_week, ws_recipes, ws_recipe, ws_set, ws_remove, ws_move, ws_import, ws_browse, ws_organizers, ws_cook, ws_delete_recipe, ws_save_recipe):
         websocket_api.async_register_command(hass, cmd)
     hass.http.register_view(MealieImageView())
 
@@ -565,6 +565,96 @@ async def ws_delete_recipe(hass: HomeAssistant, connection, msg: dict[str, Any])
     if resp.status >= 400:
         raise MealieError(f"Mealie refused to delete the recipe (HTTP {resp.status})")
     connection.send_result(msg["id"])
+
+
+def _sectioned(lines: list[str]) -> list[tuple[str, str]]:
+    """(section, text) per item from editor lines: a line starting with # names the section for what follows."""
+    out: list[tuple[str, str]] = []
+    section = ""
+    for raw in lines:
+        line = str(raw).strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            section = line.lstrip("#").strip()
+            continue
+        out.append((section, line))
+    return out
+
+
+def _ingredient_rows(existing: list[dict], rows: list[tuple[str, str]]) -> list[dict]:
+    """Mealie ingredient objects for the editor's lines. A line left exactly as it was keeps its structured
+    amount (so scaling still works); a changed or new line becomes a plain-text ingredient."""
+    by_text = {}
+    for i in existing:
+        text = (i.get("display") or i.get("originalText") or i.get("note") or "").strip()
+        by_text.setdefault(text, []).append(i)
+    out = []
+    prev_section = None
+    for section, text in rows:
+        title = section if section != prev_section else ""  # Mealie puts the section title on its first item
+        prev_section = section
+        kept = by_text.get(text)
+        if kept:
+            item = dict(kept.pop(0))
+            item["title"] = title or None
+            out.append(item)
+        else:
+            out.append({"title": title or None, "note": text, "originalText": text, "display": text,
+                        "quantity": 0, "unit": None, "food": None, "disableAmount": True})
+    return out
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "skylight/mealie/save_recipe",
+        vol.Required("recipe"): str,
+        vol.Required("name"): str,
+        vol.Optional("description", default=""): str,
+        vol.Optional("yield", default=""): str,
+        vol.Required("ingredients"): [str],
+        vol.Required("steps"): [str],
+    }
+)
+@websocket_api.async_response
+@_wrap
+async def ws_save_recipe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Save the cook-mode editor: title, yield, description, ingredients (one per line) and steps."""
+    key = msg["recipe"].strip()
+    if not re.match(r"^[\w-]{1,200}$", key):
+        connection.send_error(msg["id"], "invalid", "Bad recipe id")
+        return
+    name = msg["name"].strip()
+    if not name:
+        connection.send_error(msg["id"], "invalid", "The recipe needs a title")
+        return
+    current = await _mealie_json(hass, f"api/recipes/{key}")
+    if (current.get("settings") or {}).get("locked"):
+        raise MealieError("This recipe is locked in Mealie. Unlock it there first.")
+    ingredients = _ingredient_rows(current.get("recipeIngredient") or [], _sectioned(msg["ingredients"]))
+    prev = None
+    steps = []
+    for section, text in _sectioned(msg["steps"]):
+        steps.append({"title": section if section != prev else "", "text": text})
+        prev = section
+    body = {"name": name, "description": msg["description"].strip(), "recipeYield": msg["yield"].strip(),
+            "recipeIngredient": ingredients, "recipeInstructions": steps}
+    try:
+        resp = await _mealie_http(hass, "PATCH", f"api/recipes/{key}", json=body)
+        if resp.status in (404, 405):  # older Mealie: no partial update, send the whole recipe back
+            resp = await _mealie_http(hass, "PUT", f"api/recipes/{key}", json={**current, **body})
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise MealieError(f"Cannot reach Mealie: {err}") from err
+    if resp.status in (401, 403):
+        raise MealieError("Mealie won't let this account change that recipe.")
+    if resp.status >= 400:
+        raise MealieError(f"Mealie refused the change (HTTP {resp.status})")
+    try:
+        saved = await resp.json(content_type=None)
+    except Exception:  # noqa: BLE001 - some versions answer with no body
+        saved = {}
+    hass.data.pop(ALL_RECIPES_CACHE, None)  # the title may have changed
+    connection.send_result(msg["id"], {"slug": (saved or {}).get("slug") or key, "name": (saved or {}).get("name") or name})
 
 
 class MealieImageView(HomeAssistantView):
