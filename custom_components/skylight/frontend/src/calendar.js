@@ -1,6 +1,6 @@
 /* Skylight panel: calendar views, events and event search (methods mixed into SkylightPanel). */
 
-import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.64.2";
+import { textOn, INFO_COLORS, CAL_VIEWS, viewDays, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, sameDay, localIso, uid, occasionDay, allOccasions, esc, REMINDERS } from "./helpers.js?v=1.65.0";
 
 export class CalendarView {
   calendarOwner(entity) {
@@ -296,22 +296,24 @@ export class CalendarView {
     const a = this.ui.anchor;
     const dlg = {
       type: "jump", month: new Date(a.getFullYear(), a.getMonth(), 1),
-      html: () => {
-        const m = dlg.month, first = this.weekStart(m), today = startOfDay(new Date());
-        const ws = Number(this.settings.week_start) || 0;
-        const names = [...Array(7)].map((_, i) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][(ws + i) % 7]);
-        const cells = [...Array(42)].map((_, i) => addDays(first, i));
-        return `
-        <div class="toolbar"><div class="nav"><button class="icon" data-action="jump-month" data-dir="-1" aria-label="Previous month">‹</button>
-          <h2>${m.toLocaleDateString([], { month: "long", year: "numeric" })}</h2>
-          <button class="icon" data-action="jump-month" data-dir="1" aria-label="Next month">›</button></div>
-          <button data-action="jump-pick" data-date="${ymd(today)}">Today</button></div>
-        <div class="jgrid">${names.map((n) => `<div class="jhead">${n}</div>`).join("")}
-          ${cells.map((d) => `<button class="jday ${d.getMonth() !== m.getMonth() ? "other" : ""} ${sameDay(d, today) ? "today" : ""} ${sameDay(d, a) ? "on" : ""}" data-action="jump-pick" data-date="${ymd(d)}">${d.getDate()}</button>`).join("")}</div>
-        <div class="actions"><span class="spacer"></span><button data-action="close">Cancel</button></div>`;
-      },
+      html: () => `${this._monthGridHtml(dlg.month, { pick: "jump-pick", nav: "jump-month", selected: a })}
+        <div class="actions"><span class="spacer"></span><button data-action="close">Cancel</button></div>`,
     };
     this._openDialog(dlg);
+  }
+  // A month of day buttons with ‹ › and Today (the jump-to-date picker, and "move this meal to…").
+  _monthGridHtml(m, { pick, nav, selected }) {
+    const first = this.weekStart(m), today = startOfDay(new Date());
+    const ws = Number(this.settings.week_start) || 0;
+    const names = [...Array(7)].map((_, i) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][(ws + i) % 7]);
+    const cells = [...Array(42)].map((_, i) => addDays(first, i));
+    return `
+        <div class="toolbar"><div class="nav"><button class="icon" data-action="${nav}" data-dir="-1" aria-label="Previous month">‹</button>
+          <h2>${m.toLocaleDateString([], { month: "long", year: "numeric" })}</h2>
+          <button class="icon" data-action="${nav}" data-dir="1" aria-label="Next month">›</button></div>
+          <button data-action="${pick}" data-date="${ymd(today)}">Today</button></div>
+        <div class="jgrid">${names.map((n) => `<div class="jhead">${n}</div>`).join("")}
+          ${cells.map((d) => `<button class="jday ${d.getMonth() !== m.getMonth() ? "other" : ""} ${sameDay(d, today) ? "today" : ""} ${selected && sameDay(d, selected) ? "on" : ""}" data-action="${pick}" data-date="${ymd(d)}">${d.getDate()}</button>`).join("")}</div>`;
   }
 
   // Plain-English description of an RRULE, e.g. "every 2 weeks on Tue, Thu, until Dec 18".

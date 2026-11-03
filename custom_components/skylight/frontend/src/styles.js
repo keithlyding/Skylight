@@ -707,6 +707,8 @@ header, .rail { touch-action:pan-x; overscroll-behavior:contain; }
 .mplan { display:flex; align-items:center; gap:12px; background:var(--bg); border-radius:14px; padding:8px; margin:6px 0; }
 .mplan.planned { border-left:6px solid #2e9e5b; background:color-mix(in srgb, #2e9e5b 10%, var(--bg)); }
 .mplan.planned b { font-size:1.15em; }
+.mplan .mv { white-space:nowrap; flex:none; }
+.mvslots { margin:6px 0 10px; flex-wrap:wrap; }
 .mplan img, .mplan .noimg { width:72px; height:72px; border-radius:10px; object-fit:cover; display:grid; place-items:center; font-size:26px; }
 /* Dragging a planned meal: the cell fades, a copy follows the finger, the cell under it lights up. */
 .meal.dragging { opacity:.4; }

@@ -1265,6 +1265,31 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // A planned meal can be moved to any day and meal from its dialog (the week grid can't be dragged into next week).
+  async mealie_move_dialog(browser, base) {
+    const p = await open(browser, base, { width: 1300, height: 912 });
+    await p.tab("meals");
+    const cell = p.S('.meal:not(.emptymeal)[data-slot="dinner"]').first();
+    const from = await cell.getAttribute("data-date");
+    await cell.click(); await p.waitForTimeout(300);
+    eq(await p.S('.dialog [data-action="mealie-move-pick"]').count(), 1, "a planned meal offers Move");
+    await p.S('.dialog [data-action="mealie-move-pick"]').first().click(); await p.waitForTimeout(300);
+    eq(await p.evaluate(() => el.ui.dialog?.type), "mealmove", "the move dialog opens");
+    eq((await text(p.S(".dialog .mvslots button.on")))[0], "🍝 Dinner", "the current meal is preselected");
+    await p.S('.dialog [data-action="mealmove-slot"][data-slot="lunch"]').click(); await p.waitForTimeout(200);
+    await p.S('.dialog [data-action="mealmove-month"][data-dir="1"]').click(); await p.waitForTimeout(200);
+    const day = p.S(".dialog .jday:not(.other)").nth(9);
+    const date = await day.getAttribute("data-date");
+    check(date > from, `a day in next month (${date} after ${from})`);
+    await day.click(); await p.waitForTimeout(500);
+    const moves = await p.evaluate(() => window.MOVES || []);
+    eq(moves.length === 1 ? [moves[0].date, moves[0].slot] : moves, [date, "lunch"], "moved to that day's lunch");
+    eq(await p.evaluate(() => [el.ui.dialog, el.shadowRoot.querySelector(".dialog") ? 1 : 0]), [null, 0], "dialog closed");
+    check(await p.evaluate((d) => !!el.shadowRoot.querySelector(`.meal[data-date="${d}"][data-slot="lunch"]`), date), "the grid jumped to the week it went to");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);

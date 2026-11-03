@@ -161,29 +161,34 @@ def _hits(text: str, terms: list[str]) -> int:
 
 
 def rank_recipes(query: str, recipes: list[dict], content_ids: list[str], limit: int = 40) -> list[dict]:
-    """Recipes whose title has the search words come first (all words before some, then a title that
-    starts with them), then ones found in the description, then Mealie's own ingredient/instruction
-    matches. Quoted phrases must match exactly wherever they're checked."""
+    """Every search word in the title first ("pumpkin cookies" puts Pecan Pumpkin Chocolate Chip Cookies
+    at the top), then every word across title and description, then titles with only some of the words,
+    then Mealie's own ingredient/instruction matches. Within a tier: more title words, then a title that
+    starts with the first word. Quoted phrases must appear exactly (in the title or description)."""
     phrases, words = parse_query(query)
     terms = phrases + words
     if not terms:
         return recipes[:limit]
     by_id = {r.get("id"): r for r in recipes}
     scored = []
-    for i, r in enumerate(recipes):
+    for r in recipes:
         name = str(r.get("name") or "").lower()
-        n = _hits(name, terms)
-        if n and _hits(name, phrases) == len(phrases):
-            whole = n == len(terms)
-            starts = name.startswith(terms[0])
-            scored.append(((0 if whole else 1), -n, 0 if starts else 1, name, r))
+        both = name + " \n " + str(r.get("description") or "").lower()
+        if phrases and _hits(both, phrases) != len(phrases):
+            continue
+        n_name, n_both = _hits(name, terms), _hits(both, terms)
+        if n_name == len(terms):
+            tier = 0
+        elif n_both == len(terms):
+            tier = 1
+        elif n_name:
+            tier = 2
+        else:
+            continue  # only some words, and only in the description: noise
+        scored.append((tier, -n_name, 0 if name.startswith(terms[0]) else 1, name, r))
     scored.sort(key=lambda x: x[:4])
     out = [x[4] for x in scored]
     seen = {r.get("id") for r in out}
-    for r in recipes:  # description (summaries include it)
-        desc = str(r.get("description") or "").lower()
-        if r.get("id") not in seen and _hits(desc, terms) == len(terms):
-            out.append(r); seen.add(r.get("id"))
     for rid in content_ids:  # Mealie's full-text matches (ingredients, instructions)
         if rid not in seen and rid in by_id:
             out.append(by_id[rid]); seen.add(rid)
@@ -200,11 +205,20 @@ ALL_RECIPES_CACHE = f"{DOMAIN}_mealie_all"
 
 
 async def _all_recipes(hass: HomeAssistant) -> list[dict]:
+    """Every recipe summary, read page by page (newer Mealie versions cap a page), cached for 5 minutes."""
     hit = hass.data.get(ALL_RECIPES_CACHE)
     if hit and time.monotonic() - hit[0] < 300:
         return hit[1]
-    data = await _mealie_json(hass, "api/recipes", {"perPage": -1, "orderBy": "name", "orderDirection": "asc"})
-    items = data.get("items", []) if isinstance(data, dict) else []
+    items: list[dict] = []
+    page = 1
+    while page <= 50:  # 10,000 recipes is plenty
+        data = await _mealie_json(hass, "api/recipes", {"page": page, "perPage": 200, "orderBy": "name", "orderDirection": "asc"})
+        batch = data.get("items", []) if isinstance(data, dict) else []
+        items.extend(batch)
+        pages = data.get("total_pages") if isinstance(data, dict) else None
+        if not batch or len(batch) < 200 or (isinstance(pages, int) and page >= pages):
+            break
+        page += 1
     hass.data[ALL_RECIPES_CACHE] = (time.monotonic(), items)
     return items
 
@@ -232,6 +246,9 @@ async def ws_recipes(hass: HomeAssistant, connection, msg: dict[str, Any]) -> No
                 return
             raise
         items = res.get("recipes", {}).get("items", [])
+        if query:  # Mealie's own search is any-word: put the recipes with every word first
+            top = rank_recipes(query, items, [], limit=len(items))
+            items = top + [r for r in items if r not in top]
         connection.send_result(msg["id"], [_recipe(hass, r, connection.refresh_token_id) for r in items])
         return
     content: list[str] = []

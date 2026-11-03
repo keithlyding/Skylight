@@ -216,8 +216,16 @@ def test_rank_recipes():
         (1, "Apple Pie", ""), (2, "Chicken Pot Pie", ""), (3, "Pot Roast", "a pie-like dish"),
         (4, "Chicken Soup", ""), (5, "Grilled Chicken", "great with pot pie crust"), (6, "Shepherd's Pie", "")]]
     names = lambda q, content=(): [r["name"] for r in rank_recipes(q, rs, list(content))]
-    assert names("chicken pie")[:2] == ["Chicken Pot Pie", "Chicken Soup"]  # both words in the title first
-    assert set(names("chicken pie")[2:]) == {"Grilled Chicken", "Apple Pie", "Shepherd's Pie"}  # one word in the title
+    assert names("chicken pie")[:2] == ["Chicken Pot Pie", "Grilled Chicken"]  # every word in the title, then across title + description
+    assert names("chicken pie")[2:] == ["Chicken Soup", "Apple Pie", "Shepherd's Pie"]  # then one word in the title (starts-with first)
+    # the kitchen case: both words in the title beat a crowd of single-word matches
+    cookies = [{"id": str(i), "name": n, "description": d} for i, n, d in [
+        (1, "Pumpkin Pie", ""), (2, "Chocolate Chip Cookies", ""), (3, "Oatmeal Cookies", ""), (4, "Pumpkin Bread", ""),
+        (5, "Pecan Pumpkin Chocolate Chip Cookies", ""), (6, "Sugar Cookies", "great with pumpkin spice latte")]]
+    top = lambda q: [r["name"] for r in rank_recipes(q, cookies, [])]
+    assert top("pumpkin cookies")[:2] == ["Pecan Pumpkin Chocolate Chip Cookies", "Sugar Cookies"]
+    assert top("pumpkin cookie")[0] == "Pecan Pumpkin Chocolate Chip Cookies"  # singular finds the plural
+    assert top("pumpkin cookies")[2:4] == ["Pumpkin Bread", "Pumpkin Pie"]  # partial matches: titles starting with the first word first, A to Z
     assert names('"pot pie"') == ["Chicken Pot Pie", "Grilled Chicken"]  # exact phrase: title, then description
     assert names("roast", content=["4"]) == ["Pot Roast", "Chicken Soup"]  # then Mealie's ingredient matches
     assert names("ipe") == []  # words match at word starts only (no "recipe" inside other words)

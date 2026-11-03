@@ -1,10 +1,10 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.64.2";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.65.0";
 
 const COOK_IDLE_MS = 60 * 60000; // cook mode asks "Still cooking?" after an hour without a touch
 const COOK_ASK_MS = 60000; // and a minute later, with no answer, the screensaver comes on over the recipe
-import { keepAwake } from "./wake.js?v=1.64.2";
+import { keepAwake } from "./wake.js?v=1.65.0";
 
 export class MealsView {
   async _loadMealie() {
@@ -37,6 +37,7 @@ export class MealsView {
         ${current.map((m) => `<div class="mplan planned">
             ${m.recipe?.image ? `<img src="${m.recipe.image}" alt="">` : `<span class="noimg">📝</span>`}
             <div class="grow" ${m.recipe ? `data-action="view-recipe" data-recipe="${esc(m.recipe.id)}"` : ""}><b>✓ ${esc(this.mealieName(m))}</b>${m.recipe ? `<small>View recipe ›</small>` : m.text ? `<small>${esc(m.text)}</small>` : ""}</div>
+            <button class="mv" data-action="mealie-move-pick" data-meal="${m.id}" title="Move to another day or meal">📅 Move</button>
             <button class="x" data-action="mealie-remove" data-meal="${m.id}" aria-label="Remove">✕</button></div>`).join("")}
         ${synced.map((e) => `<div class="syncedrow">📅 <b>${esc(this.mealTitle(e))}</b> <small>from ${esc(this.entityName(e.entity))}</small></div>`).join("")}
         <div class="label" style="margin-top:14px">${current.length ? "Add another recipe" : "Add a recipe"}</div>
@@ -100,6 +101,33 @@ export class MealsView {
     await this._reloadMealie();
     if (this.ui.dialog === dlg) { dlg.query = ""; dlg.results = null; this.renderDialog(); }
     this._toast(extra.random ? "Random recipe added" : "Added to the plan");
+  }
+
+  // ---------- move a planned meal to any day (the grid shows one week, so dragging can't reach next week) ----------
+  openMealMoveDialog(mealId, fromDate, fromSlot) {
+    const meal = this.mealieMeals.find((m) => String(m.id) === String(mealId));
+    const a = parseYmd(fromDate);
+    const dlg = {
+      type: "mealmove", meal: mealId, slot: fromSlot, from: fromDate, month: new Date(a.getFullYear(), a.getMonth(), 1),
+      html: () => `<h2>Move ${esc(meal ? this.mealieName(meal) : "this meal")}</h2>
+        <p class="hint">Pick the meal, then tap the day.</p>
+        <div class="seg mvslots">${MEAL_SLOTS.map(([k, l, ic]) => `<button class="${dlg.slot === k ? "on" : ""}" data-action="mealmove-slot" data-slot="${k}">${ic} ${l}</button>`).join("")}</div>
+        ${this._monthGridHtml(dlg.month, { pick: "mealmove-day", nav: "mealmove-month", selected: parseYmd(dlg.from) })}
+        <div class="actions"><span class="spacer"></span><button data-action="close">Cancel</button></div>`,
+    };
+    this._openDialog(dlg);
+  }
+  async _mealMoveTo(date, slot) {
+    const dlg = this.ui.dialog;
+    if (dlg?.type !== "mealmove" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    if (date === dlg.from && slot === dlg.slot) { this.closeDialog(); return; }
+    try {
+      await this._ws({ type: "skylight/mealie/move", mealplan_id: Number(dlg.meal), date, slot });
+      this.closeDialog();
+      this.ui.anchor = parseYmd(date); // show the week it went to
+      await this._reloadMealie(); this.render();
+      this._toast(`Moved to ${MEAL_SLOTS.find((x) => x[0] === slot)?.[1].toLowerCase() || slot} on ${parseYmd(date).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}`);
+    } catch (e) { await this._reloadMealie(); }
   }
 
   // ---------- drag a planned meal to another day or row ----------

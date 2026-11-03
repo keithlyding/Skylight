@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.64.2";
-import { STYLES } from "./styles.js?v=1.64.2";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.64.2";
-import { CalendarView } from "./calendar.js?v=1.64.2";
-import { WeatherView } from "./weather.js?v=1.64.2";
-import { HomeView } from "./home.js?v=1.64.2";
-import { ChoresView } from "./chores.js?v=1.64.2";
-import { MealsView } from "./meals.js?v=1.64.2";
-import { ListsView } from "./lists.js?v=1.64.2";
-import { PhotosView } from "./photos.js?v=1.64.2";
-import { SettingsView } from "./settings.js?v=1.64.2";
-import { PickersView } from "./pickers.js?v=1.64.2";
-import { keepAwake } from "./wake.js?v=1.64.2";
-import { MlbView } from "./mlb.js?v=1.64.2";
-import { TravelView } from "./travel.js?v=1.64.2";
-import { NotesView } from "./notes.js?v=1.64.2";
-import { VerseView } from "./verses.js?v=1.64.2";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.65.0";
+import { STYLES } from "./styles.js?v=1.65.0";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.65.0";
+import { CalendarView } from "./calendar.js?v=1.65.0";
+import { WeatherView } from "./weather.js?v=1.65.0";
+import { HomeView } from "./home.js?v=1.65.0";
+import { ChoresView } from "./chores.js?v=1.65.0";
+import { MealsView } from "./meals.js?v=1.65.0";
+import { ListsView } from "./lists.js?v=1.65.0";
+import { PhotosView } from "./photos.js?v=1.65.0";
+import { SettingsView } from "./settings.js?v=1.65.0";
+import { PickersView } from "./pickers.js?v=1.65.0";
+import { keepAwake } from "./wake.js?v=1.65.0";
+import { MlbView } from "./mlb.js?v=1.65.0";
+import { TravelView } from "./travel.js?v=1.65.0";
+import { NotesView } from "./notes.js?v=1.65.0";
+import { VerseView } from "./verses.js?v=1.65.0";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -738,7 +738,7 @@ export class SkylightPanel extends HTMLElement {
       case "kb-show": {
         if (!this.kbEntity) { this._toast("Pick this screen's keyboard switch first"); break; }
         const on = !this.kbShowing;
-        this._kbShow(on); this._toast(on ? "Asked the kiosk to show its keyboard" : "Asked the kiosk to hide its keyboard");
+        this._kbShow(on); this._toast(on ? "Asked the kiosk to show its keyboard. If typing still goes nowhere, tap Reload this screen." : "Asked the kiosk to hide its keyboard");
         setTimeout(() => { if (this.ui.tab === "settings") this.render(); }, 600); // the button's label follows the switch
         break;
       }
@@ -909,6 +909,11 @@ export class SkylightPanel extends HTMLElement {
         if (!t) { this._toast("Type a note first"); return; }
         await this._mealieSet({ note_title: t }); break;
       }
+      case "mealie-move-pick": { const g = this.ui.dialog; if (g?.type === "mealie") this.openMealMoveDialog(d.meal, g.date, g.slot); break; }
+      case "mealmove-month": { const g = this.ui.dialog; if (g?.type === "mealmove") { g.month = new Date(g.month.getFullYear(), g.month.getMonth() + Number(d.dir), 1); this.renderDialog(); } break; }
+      case "mealmove-slot": { const g = this.ui.dialog; if (g?.type === "mealmove") { g.slot = d.slot; this.renderDialog(); } break; }
+      case "mealmove-day": await this._mealMoveTo(d.date, this.ui.dialog?.slot); break;
+      case "reload-screen": location.reload(); break;
       case "mealie-remove": {
         if (!confirm("Remove this meal from the plan?")) return;
         await this._ws({ type: "skylight/mealie/remove", mealplan_id: Number(d.meal) });

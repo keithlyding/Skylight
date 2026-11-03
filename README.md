@@ -64,7 +64,8 @@ Lyding Strike uses Home Assistant's built-in **Mealie** integration, so the tabl
 **On the tablet:**
 - The **Meals** tab shows the week from Mealie, with recipe photos.
 - Tap a slot and type to search your recipes (results appear as you type); tap one to add it. The editor stays open, so a meal can have **more than one recipe** (tacos and a salad). You can also use 🎲 for a random recipe, add a note ("Leftovers"), or import a recipe from a website.
-- **Move a meal:** drag a planned cell to another day or row (press and hold first on a touch screen). Everything in that cell moves.
+- **Move a meal:** drag a planned cell to another day or row (press and hold first on a touch screen). Everything in that cell moves. To reach another week, tap the meal, then **📅 Move** next to the recipe: pick the meal and the day on a month grid.
+- **Search:** recipes with every word in the title come first ("pumpkin cookies" puts *Pecan Pumpkin Chocolate Chip Cookies* at the top), then every word across title and description, then titles with some of the words, then Mealie's own ingredient matches.
 - Tap a planned recipe to see its **ingredients and steps**, then tick ingredients and send them to a shopping list.
 - Tap ✕ to remove a meal from the plan.
 
