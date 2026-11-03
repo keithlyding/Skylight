@@ -1,6 +1,6 @@
 /* Skylight panel: chores, chore editor and progress (methods mixed into SkylightPanel). */
 
-import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.67.0";
+import { CHORE_ICONS, WEEKDAYS, kidsOf, choreOwnersOf, ymd, parseYmd, addDays, startOfDay, sameDay, uid, esc } from "./helpers.js?v=1.68.0";
 
 // Choices offered in the chore editor.
 const EVERY_WEEKS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 13, 16, 20, 26, 52];
@@ -244,8 +244,31 @@ export class ChoresView {
       ${rows}</section>`;
   }
 
+  // All chores: every chore each kid has, listed once with when it repeats (the day view only shows what's due).
+  renderAllChores() {
+    const kind = this.choreKind, [, kindLabel] = CHORE_KINDS.find(([k]) => k === kind);
+    const back = `<button data-action="chores-mode" data-mode="day">‹ ${kindLabel}</button>`;
+    const kids = this.kindOwners(kind);
+    const cols = kids.map((m) => {
+      const seen = new Set();
+      const chores = (this.data.chores || []).filter((c) => c.member_id === m.id && kindOf(c) === kind)
+        .filter((c) => { const k = (c.title || "").trim().toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+        .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+      return `<div class="ccol" style="--c:${m.color}">
+        <div class="chead"><span class="av" style="background:${m.color}">${m.avatar}</span>
+          <div><div class="cname">${esc(m.name)}</div><div class="cstars">${chores.length} ${chores.length === 1 ? KIND_WORD[kind] : kindLabel.toLowerCase()}</div></div></div>
+        <div class="clist allchores">${chores.map((c) => `<div class="chore">
+            <div class="ctoggle static"><span class="ci">${esc(c.icon || "✅")}</span><span class="ct">${esc(c.title)}<small>🔁 ${esc(this._repeatText(c))}${c.repeat === "once" && c.start ? ` · ${esc(c.start)}` : ""}</small></span></div>
+            <button class="cedit" data-action="edit-chore" data-chore="${c.id}">⋯</button></div>`).join("") || `<p class="hint center">None yet</p>`}</div>
+        <button class="add wide" data-action="new-chore" data-member="${m.id}" data-kind="${kind}">+ Add ${KIND_WORD[kind]}</button>
+      </div>`;
+    }).join("");
+    return `<div class="toolbar"><div class="nav">${back}<h1>All ${kindLabel.toLowerCase()}</h1></div><span class="hint">Everything each person has, once, with when it repeats</span></div>
+      <div class="chores">${cols || `<div class="empty"><h2>No kids set up yet</h2></div>`}</div>`;
+  }
   renderChores() {
     if (this.ui.choresMode === "progress") return this.renderProgress();
+    if (this.ui.choresMode === "all") return this.renderAllChores();
     const day = this.ui.choreDay;
     const isToday = sameDay(day, new Date());
     const kind = this.choreKind, [, kindLabel, , example] = CHORE_KINDS.find(([k]) => k === kind);
@@ -280,6 +303,7 @@ export class ChoresView {
         <button class="icon" data-action="chore-day" data-dir="1">›</button>
         <h1>${isToday ? "Today" : day.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h1></div>
         ${kindBar}
+        <button data-action="chores-mode" data-mode="all">📋 All</button>
         <button data-action="chores-mode" data-mode="progress">📊 Progress</button></div>
       ${this._cvError ? `<p class="hint center">${esc(this._cvError)}</p>` : ""}
       <div class="chores">${cols}</div>`;

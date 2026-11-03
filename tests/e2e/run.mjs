@@ -1350,6 +1350,28 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // 📋 All on the Chores tab: every chore each kid has, once, with when it repeats.
+  async chores_all_view(browser, base) {
+    const p = await open(browser, base, { width: 1300, height: 912 });
+    await p.tab("chores");
+    await p.S('[data-action="chores-mode"][data-mode="all"]').click(); await p.waitForTimeout(300);
+    const want = await p.evaluate(() => { // per kid shown: distinct chore titles of the kind on screen
+      const kind = el.choreKind; const out = {};
+      for (const m of el.kindOwners(kind)) out[m.name] = [...new Set(el.data.chores.filter((c) => c.member_id === m.id && (c.kind || "chore") === kind).map((c) => c.title.trim().toLowerCase()))].sort();
+      return out;
+    });
+    const got = await p.evaluate(() => Object.fromEntries([...el.shadowRoot.querySelectorAll(".chores .ccol")].map((col) => [col.querySelector(".cname").textContent.trim(), [...col.querySelectorAll(".allchores .chore .ct")].map((t) => t.firstChild.textContent.trim().toLowerCase()).sort()])));
+    eq(got, want, "every kid's distinct chores, each once");
+    check(Object.values(want).some((l) => l.length > 1), "the fixture has kids with several chores (the view is doing something)");
+    const reps = await text(p.S(".allchores .ct small"));
+    check(reps.length > 0 && reps.every((r) => r.startsWith("🔁")), `each chore says when it repeats (${reps.slice(0, 3)})`);
+    eq(await p.S(".allchores .box").count(), 0, "no tick boxes here: this is the list, not today's work");
+    await p.S('[data-action="chores-mode"][data-mode="day"]').click(); await p.waitForTimeout(300);
+    eq(await p.S(".chores .ctoggle .box").count() > 0, true, "back to the day view");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);

@@ -511,6 +511,7 @@ label.check input { width:22px; height:22px; }
 .ckedit input, .ckedit textarea { font:inherit; font-size:18px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:inherit; width:100%; box-sizing:border-box; }
 .ckedit textarea { line-height:1.45; resize:vertical; } .ckedit2 { display:grid; grid-template-columns:1fr 2fr; gap:12px; }
 .ckedit .actions { display:flex; gap:10px; } .ckedit .actions button { min-height:48px; font-size:18px; }
+.allchores .ctoggle.static { cursor:default; } .allchores .ct small { display:block; font-weight:500; color:var(--muted); font-size:.78em; margin-top:2px; }
 .ckask { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.45); display:grid; place-items:center; }
 .ckaskcard { background:var(--card); border-radius:18px; padding:24px 28px; max-width:440px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.35); }
 .ckaskcard h3 { margin:0 0 8px; font-size:26px; } .ckaskcard p { font-size:18px; line-height:1.4; } .ckaskcard b { font-size:24px; }
