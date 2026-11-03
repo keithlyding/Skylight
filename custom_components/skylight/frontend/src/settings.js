@@ -1,8 +1,8 @@
 /* Skylight panel: settings, family members, birthdays, theme and PIN (methods mixed into SkylightPanel). */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.68.0";
-import { diag, diagPrevious, diagText } from "./diag.js?v=1.68.0";
-import { MLB_TEAMS } from "./mlb.js?v=1.68.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, MEMBER_COLORS, textOn, PALETTE, AVATARS, SKIN_TONES, withTone, toneOf, INFO_ICONS, INFO_COLORS, CAL_VIEWS, LEGACY_VIEWS, pad, choreOwnersOf, ROLE_LABEL, uid, THEMES, seasonFor, MONTHS, OCCASION_EMOJI, isLeap, esc, ALERT_TYPE_LABELS, ALERT_TYPES, REMINDERS, nightLevels } from "./helpers.js?v=1.68.1";
+import { diag, diagPrevious, diagText } from "./diag.js?v=1.68.1";
+import { MLB_TEAMS } from "./mlb.js?v=1.68.1";
 
 export class SettingsView {
 
@@ -121,6 +121,8 @@ export class SettingsView {
       <label class="inline">On-screen keyboard (kiosk) <select data-change="kb-entity"><option value="">None</option>${kbs.map((e) => `<option value="${e}" ${e === this.kbEntity ? "selected" : ""}>${esc(this.entityName(e))}</option>`).join("")}</select>
         <button type="button" data-action="kb-show" ${this.kbEntity ? "" : "disabled"}>⌨ ${this.kbShowing ? "Hide" : "Show"} keyboard</button></label>
       <p class="hint">For a kiosk app that exposes its keyboard as a switch (TouchKio: "Keyboard"). With one picked, this screen shows the keyboard whenever a text box is tapped and hides it afterwards; the button shows or hides it by hand if it ever gets stuck. Saved on this device.</p>
+      ${this.kbEntity ? `<label class="inline">Keyboard goes away <select data-change="kb-autohide"><option value="1" ${this.kbAutoHide ? "selected" : ""}>When typing ends</option><option value="0" ${this.kbAutoHide ? "" : "selected"}>Only with the Hide button</option></select></label>
+      <p class="hint">Try "Only with the Hide button" if typing stops working after the keyboard has gone away once: each hide makes the kiosk flip its window, and that flip has been seen to leave the screen without keyboard focus.</p>` : ""}
       <label class="inline">This screen stuck? <button type="button" data-action="reload-screen">🔄 Reload this screen</button></label>
       <p class="hint">Reloads the page, which is what brings a kiosk's keyboard hook-up back when text boxes stop taking typing. Nothing is lost.</p>
       <label class="inline">Fresh start every morning <select data-change="daily-reload"><option value="1" ${this.dailyReload ? "selected" : ""}>Yes (reload when the screen comes back on)</option><option value="0" ${this.dailyReload ? "" : "selected"}>No</option></select></label>

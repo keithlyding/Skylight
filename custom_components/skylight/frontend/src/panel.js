@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.68.0";
-import { STYLES } from "./styles.js?v=1.68.0";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.68.0";
-import { CalendarView } from "./calendar.js?v=1.68.0";
-import { WeatherView } from "./weather.js?v=1.68.0";
-import { HomeView } from "./home.js?v=1.68.0";
-import { ChoresView } from "./chores.js?v=1.68.0";
-import { MealsView } from "./meals.js?v=1.68.0";
-import { ListsView } from "./lists.js?v=1.68.0";
-import { PhotosView } from "./photos.js?v=1.68.0";
-import { SettingsView } from "./settings.js?v=1.68.0";
-import { PickersView } from "./pickers.js?v=1.68.0";
-import { keepAwake } from "./wake.js?v=1.68.0";
-import { MlbView } from "./mlb.js?v=1.68.0";
-import { TravelView } from "./travel.js?v=1.68.0";
-import { NotesView } from "./notes.js?v=1.68.0";
-import { VerseView } from "./verses.js?v=1.68.0";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.68.1";
+import { STYLES } from "./styles.js?v=1.68.1";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.68.1";
+import { CalendarView } from "./calendar.js?v=1.68.1";
+import { WeatherView } from "./weather.js?v=1.68.1";
+import { HomeView } from "./home.js?v=1.68.1";
+import { ChoresView } from "./chores.js?v=1.68.1";
+import { MealsView } from "./meals.js?v=1.68.1";
+import { ListsView } from "./lists.js?v=1.68.1";
+import { PhotosView } from "./photos.js?v=1.68.1";
+import { SettingsView } from "./settings.js?v=1.68.1";
+import { PickersView } from "./pickers.js?v=1.68.1";
+import { keepAwake } from "./wake.js?v=1.68.1";
+import { MlbView } from "./mlb.js?v=1.68.1";
+import { TravelView } from "./travel.js?v=1.68.1";
+import { NotesView } from "./notes.js?v=1.68.1";
+import { VerseView } from "./verses.js?v=1.68.1";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -286,12 +286,17 @@ export class SkylightPanel extends HTMLElement {
   _focusProbe(e) {
     const t = e.target;
     if (!this.kbEntity || !t?.matches?.("input:not([type=checkbox]):not([type=radio]):not([type=color]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly])")) return;
+    const at = Date.now();
+    const wasActive = this.shadowRoot.activeElement === t; // a tap inside the box being typed in brings no new focus event, and that's fine
     setTimeout(() => {
-      if (!t.isConnected || this.shadowRoot.activeElement === t || document.hasFocus()) { this._nofocus = 0; return; }
+      if (!t.isConnected) return;
+      const hasFocus = document.hasFocus();
+      const focused = (this._lastFocusIn || 0) >= at;
+      if (focused || (wasActive && hasFocus)) { this._nofocus = 0; return; }
       const now = Date.now();
       this._nofocus = (this._nofocus || 0) + 1;
-      diag("nofocus", `${this._nofocus} active=${this.shadowRoot.activeElement?.tagName || "none"}`);
-      if (this._nofocus < 2 || (this._healAt && now - this._healAt < 600000)) return; // two taps a bit apart, at most one heal per 10 min
+      diag("nofocus", `${this._nofocus} hasFocus=${hasFocus} active=${this.shadowRoot.activeElement?.tagName || "none"}${wasActive ? " (was active)" : ""}`);
+      if (this._nofocus < 2 || (this._healAt && now - this._healAt < 600000)) return; // two taps, at most one heal per 10 min
       this._healAt = now; this._nofocus = 0;
       let last = 0;
       try { last = Number(sessionStorage.getItem("skylight.focusHeal") || 0); sessionStorage.setItem("skylight.focusHeal", String(now)); } catch (err) { /* no storage */ }
@@ -355,9 +360,9 @@ export class SkylightPanel extends HTMLElement {
     this.shadowRoot.addEventListener("click", (e) => this._onClick(e));
     this.shadowRoot.addEventListener("focusout", () => this._settlePage()); // keyboard closing
     // Kiosk keyboard: show it while a text box has focus (see kbEntity).
-    this.shadowRoot.addEventListener("focusin", (e) => { if (this.kbEntity && this._kbTypingTarget(e.target)) { clearTimeout(this._kbTimer); this._kbShow(true); } });
+    this.shadowRoot.addEventListener("focusin", (e) => { this._lastFocusIn = Date.now(); if (this.kbEntity && this._kbTypingTarget(e.target)) { clearTimeout(this._kbTimer); this._kbShow(true); } });
     this.shadowRoot.addEventListener("focusout", (e) => {
-      if (!this.kbEntity || !this._kbTypingTarget(e.target)) return;
+      if (!this.kbEntity || !this._kbTypingTarget(e.target) || !this.kbAutoHide) return; // (auto-hide can be off: see Setup)
       clearTimeout(this._kbTimer);
       this._kbTimer = setTimeout(() => { if (!this._kbTypingTarget(this.shadowRoot.activeElement)) this._kbShow(false); }, 400);
     });
@@ -943,6 +948,7 @@ export class SkylightPanel extends HTMLElement {
       case "mealmove-slot": { const g = this.ui.dialog; if (g?.type === "mealmove") { g.slot = d.slot; this.renderDialog(); } break; }
       case "mealmove-day": await this._mealMoveTo(d.date, this.ui.dialog?.slot); break;
       case "reload-screen": this._reloadPage(); break;
+      case "kb-autohide": { try { localStorage.setItem("skylight.kbAutoHide", el.value); } catch (e) { /* private mode */ } this.render(); break; }
       case "mealie-remove": {
         if (!confirm("Remove this meal from the plan?")) return;
         await this._ws({ type: "skylight/mealie/remove", mealplan_id: Number(d.meal) });
@@ -1336,6 +1342,9 @@ export class SkylightPanel extends HTMLElement {
   // A kiosk's on-screen keyboard switch (TouchKio: switch.<name>_keyboard), saved on this device. With one set, the
   // keyboard is shown when a text box is tapped and hidden when typing ends; Setup also has a "Show keyboard" button.
   get kbEntity() { try { return localStorage.getItem("skylight.kbEntity") || ""; } catch (e) { return ""; } }
+  // Hide the kiosk keyboard when typing ends (default). Off: it stays until the Hide button, which avoids the
+  // window-state flip TouchKio does on each hide (seen to leave the window without keyboard focus).
+  get kbAutoHide() { try { return localStorage.getItem("skylight.kbAutoHide") !== "0"; } catch (e) { return true; } }
   // True while the kiosk's keyboard switch is on (a button-type entity can't say, so: never).
   get kbShowing() { const e = this.kbEntity; return !!e && !e.startsWith("button.") && this._hass?.states?.[e]?.state === "on"; }
   _kbTypingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !["checkbox", "radio", "range", "color", "file", "date", "time", "number"].includes(t.type) && !t.readOnly)); }

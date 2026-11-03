@@ -1,10 +1,10 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.68.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.68.1";
 
 const COOK_IDLE_MS = 60 * 60000; // cook mode asks "Still cooking?" after an hour without a touch
 const COOK_ASK_MS = 60000; // and a minute later, with no answer, the screensaver comes on over the recipe
-import { keepAwake } from "./wake.js?v=1.68.0";
+import { keepAwake } from "./wake.js?v=1.68.1";
 
 export class MealsView {
   async _loadMealie() {
