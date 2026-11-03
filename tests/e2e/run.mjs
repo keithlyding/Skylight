@@ -1233,6 +1233,30 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // Cook mode left alone: after an hour "Still cooking?" asks for a minute (any tap keeps it), then it closes.
+  async cook_idle_timeout(browser, base) {
+    const p = await open(browser, base, { width: 1300, height: 912 });
+    await p.evaluate(() => el.openCook("r1")); await p.waitForTimeout(500);
+    eq(await p.S(".cook .ckask").count(), 0, "no question while the recipe is fresh");
+    await p.evaluate(() => { el._lastActivity = Date.now() - 59 * 60000; el._checkIdle(); }); await p.waitForTimeout(100);
+    eq(await p.S(".cook .ckask").count(), 0, "59 minutes idle: still nothing");
+    await p.evaluate(() => { el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); }); await p.waitForTimeout(100);
+    eq(await p.S(".cook .ckask").count(), 1, "an hour idle: Still cooking? appears");
+    check(/closes in \d+ seconds/.test((await text(p.S(".ckaskcard")))[0]), "with a countdown");
+    await p.S('.ckaskbtns [data-action="cook-keep"]').click(); await p.waitForTimeout(100);
+    eq(await p.evaluate(() => [el.shadowRoot.querySelectorAll(".cook .ckask").length, !!el.cook?.r]), [0, true], "Keep cooking dismisses it and the recipe stays");
+    // ask again, touch nothing, and let the minute run out
+    await p.evaluate(() => { el._lastActivity = Date.now() - 61 * 60000; el._checkIdle(); el.cook.got.add(0); el.cook.step = 1; }); await p.waitForTimeout(100);
+    eq(await p.S(".cook .ckask").count(), 1, "asked again");
+    await p.evaluate(() => { el.cook.ask.until = Date.now() - 1; el._checkIdle(); }); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => [!!el.cook, el.shadowRoot.querySelectorAll(".cook").length]), [false, 0], "no answer for a minute: cook mode closed");
+    // reopening the same recipe brings the ticks and step back
+    await p.evaluate(() => el.openCook("r1")); await p.waitForTimeout(500);
+    eq(await p.evaluate(() => [[...el.cook.got], el.cook.step]), [[0], 1], "ticked ingredients and the step survive a reopen");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);

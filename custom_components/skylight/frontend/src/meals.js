@@ -1,7 +1,10 @@
 /* Skylight panel: meals, Mealie and cook mode (methods mixed into SkylightPanel). */
 
-import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.64.0";
-import { keepAwake } from "./wake.js?v=1.64.0";
+import { PANEL_VERSION, MEAL_SLOTS, ymd, parseYmd, addDays, sameDay, esc } from "./helpers.js?v=1.64.1";
+
+const COOK_IDLE_MS = 60 * 60000; // cook mode asks "Still cooking?" after an hour without a touch
+const COOK_ASK_MS = 60000; // and closes a minute later if nobody answers
+import { keepAwake } from "./wake.js?v=1.64.1";
 
 export class MealsView {
   async _loadMealie() {
@@ -258,14 +261,50 @@ export class MealsView {
     try {
       const r = await this._ws({ type: "skylight/mealie/cook", recipe: key });
       if (this.cook?.key !== key) return;
-      this.cook = { key, r, servings: r.servings || null, mult: 1, step: 0, got: new Set(), qr: false };
+      const m = this._cookMemo;
+      const back = m && m.key === key && Date.now() - m.at < 6 * 3600000 ? m : null; // reopened: ticks and step come back
+      this.cook = { key, r, servings: r.servings || null, mult: 1, step: back ? Math.min(back.step, Math.max(0, r.steps.length - 1)) : 0, got: new Set(back ? back.got : []), qr: false };
     } catch (e) {
       if (this.cook?.key !== key) return;
       this.cook = { key, error: /unknown command/i.test(e.message || "") ? `Restart Home Assistant to finish updating ${this.appName}.` : e.message };
     }
     this.renderCook();
   }
-  closeCook() { keepAwake(false, "cook"); this.cook = null; this.$cook.innerHTML = ""; this._lastActivity = Date.now(); }
+  closeCook() {
+    const c = this.cook;
+    if (c?.r) this._cookMemo = { key: c.key, got: [...c.got], step: c.step, at: Date.now() }; // ticks survive a reopen (6 h)
+    clearInterval(this._cookAskTimer); this._cookAskTimer = null;
+    keepAwake(false, "cook"); this.cook = null; this.$cook.innerHTML = ""; this._lastActivity = Date.now();
+  }
+  // A recipe left open isn't a person at the screen: after an hour without a touch, ask "Still cooking?" for a
+  // minute (any tap keeps it), then close so the screensaver and night mode can do their jobs again.
+  _cookIdleCheck() {
+    const c = this.cook;
+    if (!c?.r) return;
+    const now = Date.now();
+    if (c.ask) {
+      if (this._lastActivity > c.ask.since) { this._cookKeep(); return; } // someone touched the screen
+      if (now >= c.ask.until) { this.closeCook(); this._toast("Cook mode closed after an hour without a touch"); }
+      return;
+    }
+    if (now - this._lastActivity >= COOK_IDLE_MS) {
+      c.ask = { since: now, until: now + COOK_ASK_MS };
+      this.renderCook();
+      clearInterval(this._cookAskTimer);
+      this._cookAskTimer = setInterval(() => { // the countdown, once a second
+        const left = this.$cook?.querySelector("#ck-left");
+        if (!this.cook?.ask || !left) { clearInterval(this._cookAskTimer); this._cookAskTimer = null; return; }
+        left.textContent = String(Math.max(0, Math.ceil((this.cook.ask.until - Date.now()) / 1000)));
+        if (Date.now() >= this.cook.ask.until) this._cookIdleCheck();
+      }, 1000);
+    }
+  }
+  _cookKeep() {
+    if (!this.cook) return;
+    this.cook.ask = null; this._lastActivity = Date.now();
+    clearInterval(this._cookAskTimer); this._cookAskTimer = null;
+    this.renderCook();
+  }
   _cookFactor() {
     const c = this.cook;
     return c.r.servings && c.servings ? c.servings / c.r.servings : c.mult;
@@ -338,6 +377,9 @@ export class MealsView {
       ${r.steps.length ? `<div class="cknav"><button data-action="cook-prev" ${c.step <= 0 ? "disabled" : ""}>‹ Back</button>
         <span>Step ${c.step + 1} of ${r.steps.length}</span>
         <button class="primary" data-action="${c.step >= r.steps.length - 1 ? "cook-close" : "cook-next"}">${c.step >= r.steps.length - 1 ? "Done 🎉" : "Next ›"}</button></div>` : ""}
+      ${c.ask ? `<div class="ckask" data-action="cook-keep"><div class="ckaskcard"><h3>Still cooking?</h3>
+        <p>Nobody has touched the screen for an hour. This recipe closes in <b id="ck-left">${Math.max(0, Math.ceil((c.ask.until - Date.now()) / 1000))}</b> seconds. Tap anywhere to keep it.</p>
+        <div class="ckaskbtns"><button class="primary" data-action="cook-keep">Keep cooking</button><button data-action="cook-close">Close now</button></div></div></div>` : ""}
       ${c.qr ? `<div class="ckqr" data-action="cook-qr"><div class="ckqrcard"><h3>Scan with your phone</h3><div class="qrbox">${c.qrSvg || "…"}</div>
         <p class="hint">Opens this recipe in Mealie. Your phone must be able to reach Mealie (same Wi-Fi, or a link set in Setup → Mealie).</p><small class="qrurl">${esc(r.link)}</small></div></div>` : ""}`);
     [".ckbody", ".ckings", ".cksteps"].forEach((sel, i) => { const el = this.$cook.querySelector(sel); if (el) el.scrollTop = kept[i]; });

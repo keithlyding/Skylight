@@ -1,6 +1,6 @@
 /* Skylight panel: photos and screensaver (methods mixed into SkylightPanel). */
 
-import { parseYmd, esc } from "./helpers.js?v=1.64.0";
+import { parseYmd, esc } from "./helpers.js?v=1.64.1";
 
 export class PhotosView {
 
@@ -26,7 +26,7 @@ export class PhotosView {
 
   _checkIdle() {
     // On a wall display, drift back to "now" after 3 minutes without touches.
-    if (this.cook) return; // cooking: keep the recipe on screen
+    if (this.cook) { this._cookIdleCheck(); return; } // cooking: keep the recipe on screen (but not forever, see meals.js)
     if (!this.ui.dialog && Date.now() - this._lastActivity > 180000 && Date.now() - (this._lastSnap || 0) > 180000) {
       this._lastSnap = Date.now();
       this._scrollGridHome();

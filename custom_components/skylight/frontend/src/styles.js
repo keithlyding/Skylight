@@ -506,6 +506,10 @@ label.check input { width:22px; height:22px; }
 .cookbtn { display:inline-block; margin-top:4px; font-weight:800; color:var(--accent); }
 .tonight .tothers { font-weight:600; margin-top:4px; }
 .cook { position:fixed; inset:0; z-index:400; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; }
+.ckask { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.45); display:grid; place-items:center; }
+.ckaskcard { background:var(--card); border-radius:18px; padding:24px 28px; max-width:440px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+.ckaskcard h3 { margin:0 0 8px; font-size:26px; } .ckaskcard p { font-size:18px; line-height:1.4; } .ckaskcard b { font-size:24px; }
+.ckaskbtns { display:flex; gap:12px; justify-content:center; margin-top:14px; } .ckaskbtns button { min-height:48px; font-size:18px; padding:10px 20px; }
 .cktop { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
 .cktop img { width:64px; height:64px; border-radius:12px; object-fit:cover; }
 .cktitle h2 { margin:0; font-size:26px; } .cktitle small { color:var(--muted); font-size:15px; }

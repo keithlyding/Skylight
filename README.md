@@ -70,7 +70,7 @@ Lyding Strike uses Home Assistant's built-in **Mealie** integration, so the tabl
 
 **Recipes and cook mode:**
 - **Meals → 📖 Recipes** browses your whole Mealie library: search, categories, tags, and sort by name, newest or rating.
-- Tap any recipe (or **Tonight's dinner** on the Today screen) for **cook mode**: a full-screen recipe with large text, ingredients to tick off, and one highlighted step at a time. Use Next/Back or swipe. The screensaver stays off while cooking.
+- Tap any recipe (or **Tonight's dinner** on the Today screen) for **cook mode**: a full-screen recipe with large text, ingredients to tick off, and one highlighted step at a time. Use Next/Back or swipe. The screensaver stays off while cooking. A recipe nobody has touched for an hour asks **Still cooking?** for a minute (any tap keeps it), then closes so the screensaver and night mode take over; reopening the same recipe within 6 hours brings its ticked ingredients and step back.
 - **Servings −/+** rescales ingredient amounts (for ingredients Mealie has parsed into amount/unit/food; plain-text ingredients are shown as written).
 - **Delete a recipe:** open it, then press and hold its picture at the top-left of cook mode for 5 seconds. A red **🗑 Delete** button appears for 15 seconds; tapping it asks for confirmation. Deleting is permanent in Mealie and affects everyone. For bigger clean-ups, use Mealie itself.
 - **📱 On my phone** shows a QR code that opens the recipe in Mealie. If your phone reaches Mealie by a different address than Home Assistant does, set it under Setup → Mealie → *Link for phones*.
