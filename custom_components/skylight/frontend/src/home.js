@@ -1,6 +1,6 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.68.2";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.68.3";
 
 export class HomeView {
 
@@ -96,7 +96,8 @@ export class HomeView {
       </div>`;
     }).join("");
     if (this.settings.weather_hints !== false && this._wxSourceOk()) this._loadWeatherFull();
-    // The side column is wide in every view (7 days no longer squeezes it): the family cards span it; under them the kids' chores (and tonight's
+    // The side column is wide in every view (7 days no longer squeezes it): the family cards span it, with upcoming dates and tonight's
+    // dinner side by side; under them the kids' chores
     // dinner, filling the space beside them) flow in columns, and grown-ups' lists in their own block below, so a
     // long list never sits above a kid's chores. Upcoming dates stay up top, one column wide. 7 days keeps a
     // narrow single column.
@@ -131,10 +132,10 @@ export class HomeView {
         ${this.renderMlbNote()}
         ${wideSide ? "" : tonight}
         ${this.renderVerseNote()}
-        ${upcoming}
+        ${wideSide ? `<div class="hpair">${upcoming}${tonight}</div>` : upcoming}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
         </div>
-        ${chores || (wideSide && tonight) ? `<div class="hcols">${chores}${wideSide ? tonight : ""}</div>` : ""}
+        ${chores ? `<div class="hcols">${chores}</div>` : ""}
         ${listCards ? `<div class="hcols">${listCards}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
       </div></aside></div>`;

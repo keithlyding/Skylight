@@ -385,6 +385,9 @@ label.check input { width:22px; height:22px; }
 .hcols { column-width:225px; column-gap:8px; }
 .hcols .tonight { break-inside:avoid; margin-bottom:8px; padding:8px 10px; }
 .hinfo.wide .upcoming { width:calc(50% - 4px); margin-bottom:0; padding:8px 10px; } /* one column wide, up top with the other cards */
+.hinfo.wide .hpair { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; align-items:start; } /* upcoming dates | tonight's dinner */
+.hinfo.wide .hpair .upcoming, .hinfo.wide .hpair .tonight { width:auto; margin-bottom:0; padding:8px 10px; }
+.hinfo.wide .hpair .tonight img, .hinfo.wide .hpair .tnoimg { width:64px; height:64px; }
 .hinfo.wide .hintrow { padding:6px 10px; }
 .hinfo.wide .board.empty { padding:6px 12px; } .hinfo.wide .board.empty .boardadd { min-height:32px; padding:4px 12px; }
 .hinfo.wide .verse { padding:8px 12px; } .hcols .tonight img, .hcols .tnoimg { width:64px; height:64px; }

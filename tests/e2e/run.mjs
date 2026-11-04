@@ -1501,13 +1501,15 @@ const SCENARIOS = {
     const layout = () => p.evaluate(() => {
       const body = el.shadowRoot.querySelector(".hbody").getBoundingClientRect(), info = el.shadowRoot.querySelector(".hinfo").getBoundingClientRect();
       return { fullWidth: Math.abs(info.width - body.width) < 2, bottom: Math.round(el.shadowRoot.querySelector(".hside").getBoundingClientRect().bottom), infoBottom: Math.round(info.bottom),
-        cards: [...el.shadowRoot.querySelectorAll(".hchores, .hcols .tonight")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }),
+        cards: [...el.shadowRoot.querySelectorAll(".hchores")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }),
+        pair: (() => { const u = el.shadowRoot.querySelector(".hinfo .hpair .upcoming"), t = el.shadowRoot.querySelector(".hinfo .hpair .tonight"); if (!u || !t) return null; const a = u.getBoundingClientRect(), b = t.getBoundingClientRect(); return { sameRow: Math.abs(a.top - b.top) < 4, side: b.left > a.right - 2 }; })(),
         chores: [...el.shadowRoot.querySelectorAll(".hchores")].map((c) => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.bottom)]; }) };
     });
     for (const v of ["agenda", "1", "3", "5"]) {
       await p.evaluate((v) => { el.homeAgenda = v === "agenda"; if (v !== "agenda") el.homeDays = Number(v); el.render(); }, v); await p.waitForTimeout(300);
       const l = await layout();
-      eq(l.cards.length, 4, `${v}: three kids' chores plus tonight's dinner in the columns`);
+      eq(l.cards.length, 3, `${v}: three kids' chores in the columns`);
+      eq(l.pair, { sameRow: true, side: true }, `${v}: tonight's dinner sits beside the upcoming dates, up top`);
       check(await p.evaluate(() => { const u = el.shadowRoot.querySelector(".hinfo .upcoming"), b = el.shadowRoot.querySelector(".hbody"); return u && u.getBoundingClientRect().width < b.getBoundingClientRect().width * 0.55; }), `${v}: upcoming dates card is up top, one column wide`);
       check(l.fullWidth, `${v}: tips, messages and verse span the whole side column`);
       check(new Set(l.cards.map(([left]) => left)).size >= 2, `${v}: cards flow into 2+ columns (${JSON.stringify(l)})`);
