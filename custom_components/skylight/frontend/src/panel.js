@@ -1,22 +1,22 @@
 /* Skylight panel: the <skylight-panel> element: lifecycle, data, actions, layout. Each tab's code lives in its own file. */
 
-import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.68.1";
-import { STYLES } from "./styles.js?v=1.68.1";
-import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.68.1";
-import { CalendarView } from "./calendar.js?v=1.68.1";
-import { WeatherView } from "./weather.js?v=1.68.1";
-import { HomeView } from "./home.js?v=1.68.1";
-import { ChoresView } from "./chores.js?v=1.68.1";
-import { MealsView } from "./meals.js?v=1.68.1";
-import { ListsView } from "./lists.js?v=1.68.1";
-import { PhotosView } from "./photos.js?v=1.68.1";
-import { SettingsView } from "./settings.js?v=1.68.1";
-import { PickersView } from "./pickers.js?v=1.68.1";
-import { keepAwake } from "./wake.js?v=1.68.1";
-import { MlbView } from "./mlb.js?v=1.68.1";
-import { TravelView } from "./travel.js?v=1.68.1";
-import { NotesView } from "./notes.js?v=1.68.1";
-import { VerseView } from "./verses.js?v=1.68.1";
+import { DEFAULT_APP_NAME, PANEL_VERSION, normHex, withTone, baseOf, INFO_COLORS, LEGACY_VIEWS, viewDays, TABS, WEATHER_ICONS, pad, ymd, parseYmd, addDays, startOfDay, THEMES, THEME_CSS, seasonFor, isNightAt, isTouchScreen, nightLevels, esc } from "./helpers.js?v=1.68.2";
+import { STYLES } from "./styles.js?v=1.68.2";
+import { diag, diagStart, diagPrevious, diagCurrent, diagText } from "./diag.js?v=1.68.2";
+import { CalendarView } from "./calendar.js?v=1.68.2";
+import { WeatherView } from "./weather.js?v=1.68.2";
+import { HomeView } from "./home.js?v=1.68.2";
+import { ChoresView } from "./chores.js?v=1.68.2";
+import { MealsView } from "./meals.js?v=1.68.2";
+import { ListsView } from "./lists.js?v=1.68.2";
+import { PhotosView } from "./photos.js?v=1.68.2";
+import { SettingsView } from "./settings.js?v=1.68.2";
+import { PickersView } from "./pickers.js?v=1.68.2";
+import { keepAwake } from "./wake.js?v=1.68.2";
+import { MlbView } from "./mlb.js?v=1.68.2";
+import { TravelView } from "./travel.js?v=1.68.2";
+import { NotesView } from "./notes.js?v=1.68.2";
+import { VerseView } from "./verses.js?v=1.68.2";
 
 export class SkylightPanel extends HTMLElement {
   constructor() {
@@ -296,20 +296,8 @@ export class SkylightPanel extends HTMLElement {
       const now = Date.now();
       this._nofocus = (this._nofocus || 0) + 1;
       diag("nofocus", `${this._nofocus} hasFocus=${hasFocus} active=${this.shadowRoot.activeElement?.tagName || "none"}${wasActive ? " (was active)" : ""}`);
-      if (this._nofocus < 2 || (this._healAt && now - this._healAt < 600000)) return; // two taps, at most one heal per 10 min
-      this._healAt = now; this._nofocus = 0;
-      let last = 0;
-      try { last = Number(sessionStorage.getItem("skylight.focusHeal") || 0); sessionStorage.setItem("skylight.focusHeal", String(now)); } catch (err) { /* no storage */ }
-      const refresh = this.kbEntity.replace(/^switch\./, "button.").replace(/_keyboard$/, "_refresh"); // TouchKio's Refresh button
-      if (now - last < 180000 && this._hass?.states?.[refresh]) { // a reload 3 minutes ago didn't fix it: let the kiosk app restart its window
-        diag("focus-heal", "kiosk refresh");
-        this._toast("The keyboard still isn't connecting. Asking the kiosk to refresh…");
-        this._hass.callService("button", "press", { entity_id: refresh }).catch((err) => diag("focus-heal-fail", String(err?.message || err)));
-        return;
-      }
-      diag("focus-heal", "reload");
-      this._toast("The screen lost its keyboard connection. Reloading…");
-      setTimeout(() => this._reloadPage(), 1200);
+      if (this._nofocus < 2) return; // two dead taps before healing
+      this._focusHeal("taps got no focus");
     }, 350);
   }
 
@@ -362,7 +350,7 @@ export class SkylightPanel extends HTMLElement {
     // Kiosk keyboard: show it while a text box has focus (see kbEntity).
     this.shadowRoot.addEventListener("focusin", (e) => { this._lastFocusIn = Date.now(); if (this.kbEntity && this._kbTypingTarget(e.target)) { clearTimeout(this._kbTimer); this._kbShow(true); } });
     this.shadowRoot.addEventListener("focusout", (e) => {
-      if (!this.kbEntity || !this._kbTypingTarget(e.target) || !this.kbAutoHide) return; // (auto-hide can be off: see Setup)
+      if (!this.kbEntity || !this._kbTypingTarget(e.target)) return;
       clearTimeout(this._kbTimer);
       this._kbTimer = setTimeout(() => { if (!this._kbTypingTarget(this.shadowRoot.activeElement)) this._kbShow(false); }, 400);
     });
@@ -948,7 +936,6 @@ export class SkylightPanel extends HTMLElement {
       case "mealmove-slot": { const g = this.ui.dialog; if (g?.type === "mealmove") { g.slot = d.slot; this.renderDialog(); } break; }
       case "mealmove-day": await this._mealMoveTo(d.date, this.ui.dialog?.slot); break;
       case "reload-screen": this._reloadPage(); break;
-      case "kb-autohide": { try { localStorage.setItem("skylight.kbAutoHide", el.value); } catch (e) { /* private mode */ } this.render(); break; }
       case "mealie-remove": {
         if (!confirm("Remove this meal from the plan?")) return;
         await this._ws({ type: "skylight/mealie/remove", mealplan_id: Number(d.meal) });
@@ -1342,9 +1329,6 @@ export class SkylightPanel extends HTMLElement {
   // A kiosk's on-screen keyboard switch (TouchKio: switch.<name>_keyboard), saved on this device. With one set, the
   // keyboard is shown when a text box is tapped and hidden when typing ends; Setup also has a "Show keyboard" button.
   get kbEntity() { try { return localStorage.getItem("skylight.kbEntity") || ""; } catch (e) { return ""; } }
-  // Hide the kiosk keyboard when typing ends (default). Off: it stays until the Hide button, which avoids the
-  // window-state flip TouchKio does on each hide (seen to leave the window without keyboard focus).
-  get kbAutoHide() { try { return localStorage.getItem("skylight.kbAutoHide") !== "0"; } catch (e) { return true; } }
   // True while the kiosk's keyboard switch is on (a button-type entity can't say, so: never).
   get kbShowing() { const e = this.kbEntity; return !!e && !e.startsWith("button.") && this._hass?.states?.[e]?.state === "on"; }
   _kbTypingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && !["checkbox", "radio", "range", "color", "file", "date", "time", "number"].includes(t.type) && !t.readOnly)); }
@@ -1355,6 +1339,42 @@ export class SkylightPanel extends HTMLElement {
     if (domain === "button") { if (on) { diag("kb", "press"); this._hass.callService("button", "press", { entity_id: entity }).catch((e) => diag("kb-fail", String(e?.message || e))); } return; }
     diag("kb", on ? "on" : "off");
     this._hass.callService(domain === "input_boolean" ? "input_boolean" : "switch", on ? "turn_on" : "turn_off", { entity_id: entity }).catch((e) => diag("kb-fail", String(e?.message || e)));
+    if (!on) this._afterHideCheck();
+  }
+  // The kiosk flips its window back to fullscreen when the keyboard hides, and that flip has been seen to leave
+  // the window without keyboard focus (text boxes then never get focus again). Check 1.5 s after each hide; if
+  // the document reports no focus, try to take it back, and failing that heal right away rather than waiting
+  // for someone to find out by tapping.
+  _afterHideCheck() {
+    clearTimeout(this._afterHideTimer);
+    this._afterHideTimer = setTimeout(() => {
+      if (document.hasFocus()) { diag("after-hide", "focus ok"); return; }
+      try { window.focus(); } catch (e) { /* not allowed */ }
+      setTimeout(() => {
+        if (document.hasFocus()) { diag("after-hide", "focus taken back"); return; }
+        diag("after-hide", "no focus");
+        this._focusHeal("after the keyboard hid");
+      }, 400);
+    }, 1500);
+  }
+  // Reload the page; if that was done less than 3 minutes ago and didn't help, press the kiosk's Refresh button.
+  // At most once per 10 minutes.
+  _focusHeal(why) {
+    const now = Date.now();
+    if (this._healAt && now - this._healAt < 600000) return;
+    this._healAt = now; this._nofocus = 0;
+    let last = 0;
+    try { last = Number(sessionStorage.getItem("skylight.focusHeal") || 0); sessionStorage.setItem("skylight.focusHeal", String(now)); } catch (err) { /* no storage */ }
+    const refresh = this.kbEntity.replace(/^switch\./, "button.").replace(/_keyboard$/, "_refresh"); // TouchKio's Refresh button
+    if (now - last < 180000 && this._hass?.states?.[refresh]) {
+      diag("focus-heal", `kiosk refresh (${why})`);
+      this._toast("The keyboard still isn't connecting. Asking the kiosk to refresh…");
+      this._hass.callService("button", "press", { entity_id: refresh }).catch((err) => diag("focus-heal-fail", String(err?.message || err)));
+      return;
+    }
+    diag("focus-heal", `reload (${why})`);
+    this._toast("The screen lost its keyboard connection. Reloading…");
+    setTimeout(() => this._reloadPage(), 1200);
   }
   // Night dimming is for wall displays. Phones and tablets (the Home Assistant app, iPhone, iPad, Android) keep
   // their own brightness unless this screen is switched on in Setup; saved on the device.

@@ -1348,15 +1348,11 @@ const SCENARIOS = {
     await box.dispatchEvent("pointerdown"); await p.waitForTimeout(500);
     await box.dispatchEvent("pointerdown"); await p.waitForTimeout(500);
     eq(await p.evaluate(() => [window.RELOADS, calls.filter((c) => c.svc === "button.press" && c.data.entity_id === "button.touchkio_kitchen_refresh").length]), [1, 1], "a repeat soon after a reload presses the kiosk's Refresh instead");
-    // keyboard auto-hide can be switched off: leaving a box then sends no turn_off
-    await p.evaluate(() => { document.hasFocus = () => true; });
-    await p.tab("settings"); await p.S('[data-action="setup-tab"][data-tab="screens"]').click(); await p.waitForTimeout(300);
-    eq(await p.S('select[data-change="kb-autohide"]').count(), 1, "the auto-hide choice shows once a keyboard switch is picked");
-    await p.evaluate(() => { const sel = el.shadowRoot.querySelector('select[data-change="kb-autohide"]'); sel.value = "0"; sel.dispatchEvent(new Event("change", { bubbles: true })); }); await p.waitForTimeout(300);
-    await p.evaluate(() => { calls.length = 0; el.openEventDialog(null, "2026-10-05", 16); }); await p.waitForTimeout(300);
-    await p.S("#ev-title").focus(); await p.waitForTimeout(100); await p.S("#ev-title").blur(); await p.waitForTimeout(600);
-    eq(await p.evaluate(() => calls.filter((c) => c.svc === "switch.turn_on" || c.svc === "switch.turn_off").map((c) => c.svc)), ["switch.turn_on"], "with auto-hide off, leaving the box doesn't hide the keyboard");
-    await p.evaluate(() => localStorage.setItem("skylight.kbAutoHide", "1"));
+    // after the keyboard hides, the window keeping focus is checked: fine when it has focus, healed at once when not
+    await p.evaluate(() => { document.hasFocus = () => true; el._healAt = 0; window.RELOADS = 0; el._kbShow(false); }); await p.waitForTimeout(2300);
+    eq(await p.evaluate(() => window.RELOADS), 0, "focus kept after a hide: nothing to do");
+    await p.evaluate(() => { document.hasFocus = () => false; el._healAt = 0; sessionStorage.removeItem("skylight.focusHeal"); el._kbShow(false); }); await p.waitForTimeout(3600);
+    eq(await p.evaluate(() => window.RELOADS), 1, "focus lost after a hide: reloaded without waiting for a dead tap");
     eq(p.errors, [], "no page errors");
     await p.context().close();
   },
