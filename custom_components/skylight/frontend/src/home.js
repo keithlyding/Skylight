@@ -1,18 +1,31 @@
 /* Skylight panel: Today screen (methods mixed into SkylightPanel). */
 
-import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.68.3";
+import { MEAL_SLOTS, orderItems, ymd, addDays, startOfDay, allOccasions, upcomingOccasions, occasionText, esc } from "./helpers.js?v=1.69.0";
 
 export class HomeView {
 
   // ---------- Today screen: upcoming birthdays and anniversaries ----------
-  renderUpcoming() {
+  // Rows for the Upcoming card: countdowns first, then birthdays and anniversaries.
+  _upcomingRows() {
     const list = upcomingOccasions(allOccasions(this.members, this.data.occasions, this.settings.family_color || "#ff9f43"),
       new Date(), Number(this.settings.upcoming_days ?? 60), Number(this.settings.upcoming_count ?? 3));
     const cds = this.renderCountdownRows();
-    if (!list.length && !cds) return "";
-    return `<div class="upcoming"><div class="uhead">Upcoming</div>${cds}${list.map((u) => `
+    return [...(cds ? [cds] : []), ...list.map((u) => `
       <div class="urow ${u.days === 0 ? "today" : ""}" style="--c:${u.color}"><span class="uemoji">${u.emoji}</span>
-        <span class="utext"><b>${esc(u.title)}</b><small>${esc(occasionText(u).split(" — ")[1] || "")}</small></span></div>`).join("")}</div>`;
+        <span class="utext"><b>${esc(u.title)}</b><small>${esc(occasionText(u).split(" — ")[1] || "")}</small></span></div>`)];
+  }
+  renderUpcoming() {
+    const rows = this._upcomingRows();
+    return rows.length ? `<div class="upcoming"><div class="uhead">Upcoming</div>${rows.join("")}</div>` : "";
+  }
+  // The wide side column: the top card keeps the nearest `n` rows (so it stays as short as the dinner card beside
+  // it); anything beyond that goes to a "More coming up" card under the chores. Returns [top, more].
+  renderUpcomingSplit(n) {
+    const rows = this._upcomingRows();
+    if (!rows.length) return ["", ""];
+    const more = rows.slice(n);
+    return [`<div class="upcoming"><div class="uhead">Upcoming</div>${rows.slice(0, n).join("")}</div>`,
+      more.length ? `<div class="upcoming more"><div class="uhead">More coming up</div>${more.join("")}</div>` : ""];
   }
 
   // ---------- Mealie: tonight's dinner on the Today screen ----------
@@ -104,6 +117,7 @@ export class HomeView {
     const wideSide = true; // every view: the calendar never grows past the 5-day width
     const tonight = this.renderTonight();
     const upcoming = this.renderUpcoming();
+    const [upTop, upMore] = this.renderUpcomingSplit(2); // the wide layout: two rows up top, the rest under the chores
     if (this.portraitPhone) {
       return `<div class="home portrait"><p class="hint turnhint">↻ Turn your phone sideways for the calendar</p>
       <aside class="hside"><div class="hbody"><div class="hinfo">
@@ -132,10 +146,11 @@ export class HomeView {
         ${this.renderMlbNote()}
         ${wideSide ? "" : tonight}
         ${this.renderVerseNote()}
-        ${wideSide ? `<div class="hpair">${upcoming}${tonight}</div>` : upcoming}
+        ${wideSide ? `<div class="hpair">${upTop}${tonight}</div>` : upcoming}
         ${this.members.length ? "" : `<div class="empty"><p>Add your family in Setup to see chores here.</p></div>`}
         </div>
         ${chores ? `<div class="hcols">${chores}</div>` : ""}
+        ${wideSide ? upMore : ""}
         ${listCards ? `<div class="hcols">${listCards}</div>` : ""}
         ${free.length ? `<p class="nochores">No chores today: ${free.map((m) => `<span class="av sm" style="background:${m.color}">${m.avatar}</span>${esc(m.name)}`).join(", ")}</p>` : ""}
       </div></aside></div>`;

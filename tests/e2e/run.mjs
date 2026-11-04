@@ -1379,6 +1379,30 @@ const SCENARIOS = {
     await p.context().close();
   },
 
+  // Upcoming dates up top never grow past two rows: the rest land in "More coming up" under the chores.
+  async upcoming_overflow(browser, base) {
+    const p = await open(browser, base, { width: 1536, height: 864 });
+    const occ = (days) => p.evaluate((days) => {
+      D.occasions = days.map((n, i) => { const d = new Date(Date.now() + n * 864e5); return { id: `o${i}`, title: `Occasion ${i + 1}`, type: "birthday", month: d.getMonth() + 1, day: d.getDate() }; });
+      D.settings.upcoming_count = 10; push(); el.ui.alertPop = null; el.homeAgenda = false; el.homeDays = 3; el.render();
+    }, days);
+    await occ([3, 5]); await p.waitForTimeout(400);
+    eq(await p.evaluate(() => [el.shadowRoot.querySelectorAll(".hpair .upcoming .urow").length, el.shadowRoot.querySelectorAll(".upcoming.more").length]), [2, 0], "two dates: both up top, no overflow card");
+    await occ([3, 5, 8, 12, 20]); await p.waitForTimeout(400);
+    const r = await p.evaluate(() => {
+      const top = [...el.shadowRoot.querySelectorAll(".hpair .upcoming .urow b")].map((b) => b.textContent);
+      const more = el.shadowRoot.querySelector(".upcoming.more");
+      const rows = more ? [...more.querySelectorAll(".urow b")].map((b) => b.textContent) : null;
+      const choresBottom = Math.max(...[...el.shadowRoot.querySelectorAll(".hchores")].map((c) => c.getBoundingClientRect().bottom));
+      return { top, rows, below: more ? more.getBoundingClientRect().top >= choresBottom - 1 : null };
+    });
+    eq(r.top, ["Occasion 1", "Occasion 2"], "the two nearest dates stay up top");
+    eq(r.rows, ["Occasion 3", "Occasion 4", "Occasion 5"], "the rest are in More coming up");
+    eq(r.below, true, "which sits under the chores");
+    eq(p.errors, [], "no page errors");
+    await p.context().close();
+  },
+
   async forecast_once(browser, base) {
     // A weather source without twice_daily is asked once, not on every refresh (it logs an error in HA each time).
     const p = await open(browser, base);
